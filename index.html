@@ -700,7 +700,7 @@
     <button class="pbtn main" id="resumeBtn">RESUME</button>
     <button class="pbtn" id="soundBtn">SOUND: ON</button>
     <button class="pbtn" id="restartBtn">RESET SAVE</button>
-    <div class="pcontrols">Drag to slash · Click / Tap or SPACE = Spin Slash · Keys 1-7 = weapons · F / K = Sphere Grid · V = weapon skill · Q / E / R / T = skills · Z / X / C = items · B = bank / shop / inn · Esc = pause</div>
+    <div class="pcontrols">Drag to slash · Click / Tap or SPACE = Weapon Skill · Keys 1-7 = weapons · F / K = Sphere Grid · V = weapon skill · Q / E / R / T = skills · Z / X / C = items · B = bank / shop / inn · Esc = pause</div>
   </div>
 </div>
 <div id="bankPanel" class="hidden panelWrap">
@@ -789,7 +789,7 @@
       <div class="bankLine" id="menuPeers">Solo — invite friends!</div>
       <button class="pbtn" id="menuSoundBtn">SOUND: ON</button>
       <div class="menuHead">HOW TO PLAY</div>
-      <div class="pcontrols">Move mouse / drag finger to swing your sword through slimes. Tap or click for a SPIN SLASH. Sphere Points come from level-ups, bounties, Kings (+1), Emperors (+3) and the Bank exchange (price rises with every purchase) — spend them on the SPHERE GRID: stats, passives, active skills AND every weapon's skill path (the paths CROSS at X nodes), GEMS for soul-gem sockets.<br>Keys 1-7 = weapons · M = menu · F / K = Sphere tab · G = Gems tab · V = weapon skill · Q / E / R / T = skills · Z / X / C = items · B = bank / shop / inn (in town) · Esc = close / pause<br>There is only ONE world — send the link to friends and they drop straight into it with you.</div>
+      <div class="pcontrols">Move mouse / drag finger to swing your sword through slimes. Tap or click to use your WEAPON SKILL (once its Sphere path node is unlocked). Sphere Points come from level-ups, bounties, Kings (+1), Emperors (+3) and the Bank exchange (price rises with every purchase) — spend them on the SPHERE GRID: stats, passives, active skills AND every weapon's skill path (the paths CROSS at X nodes), GEMS for soul-gem sockets.<br>Keys 1-7 = weapons · M = menu · F / K = Sphere tab · G = Gems tab · V = weapon skill · Q / E / R / T = skills · Z / X / C = items · B = bank / shop / inn (in town) · Esc = close / pause<br>There is only ONE world — send the link to friends and they drop straight into it with you.</div>
       <button class="pbtn" id="menuResetBtn">RESET SAVE</button>
     </div>
     <button class="pbtn" id="menuCloseBtn">CLOSE</button>
@@ -806,7 +806,7 @@
   <button id="playBtn" class="px-btn">PLAY</button>
   <button id="howtoBtn" class="px-btn">HOW TO PLAY <span id="howtoChev">▼</span></button>
   <button id="titleReset" class="hidden">RESET SAVE</button>
-  <div id="howto" class="hidden">Move mouse / drag finger to swing your sword through slimes.<br>Tap or click for a SPIN SLASH. Sphere Points come from level-ups, bounties, Kings (+1), Emperors (+3) and the Bank exchange (price rises per purchase) — spend them on the SPHERE GRID for stats, passives, active skills and every weapon's skill path.<br>There is only ONE world — send the link to friends and they drop straight into it with you. No rooms, no codes, no sign-up.<br>B — BANK / SHOP / INN (in town)</div>
+  <div id="howto" class="hidden">Move mouse / drag finger to swing your sword through slimes.<br>Tap or click to use your WEAPON SKILL (unlock it on the Sphere grid). Sphere Points come from level-ups, bounties, Kings (+1), Emperors (+3) and the Bank exchange (price rises per purchase) — spend them on the SPHERE GRID for stats, passives, active skills and every weapon's skill path.<br>There is only ONE world — send the link to friends and they drop straight into it with you. No rooms, no codes, no sign-up.<br>B — BANK / SHOP / INN (in town)</div>
 </div>
 
 <script type="module">
@@ -841,7 +841,7 @@ const sfx = {
   coin: ()=>{ beep(950,.07,'square',.07); setTimeout(()=>beep(1420,.12,'square',.07),55); },
   lvl:  ()=>{ [523,659,784,1046].forEach((f,i)=>setTimeout(()=>beep(f,.14,'triangle',.1),i*80)); },
   buy:  ()=>{ beep(700,.08,'triangle',.1); setTimeout(()=>beep(980,.12,'triangle',.1),70); },
-  spin: ()=>beep(300,.16,'sawtooth',.045,700),
+  whirl: ()=>beep(300,.16,'sawtooth',.045,700),
   sting: ()=>{ beep(196,.32,'sawtooth',.09,-30); setTimeout(()=>beep(392,.3,'triangle',.1,140),60); setTimeout(()=>beep(587,.38,'triangle',.09,80),130); },
   combo: ()=>beep(880,.09,'square',.07,320),
   ting: ()=>beep(1900,.07,'sine',.09,-200),   // metal slime ping
@@ -962,7 +962,7 @@ function gainWxp(i, n){
    'Each skill is gated inside the sphere. Sphere path per weapon and they
    crosses.'). Node ids w<weaponIdx><tier> are unchanged from the old
    separate skill trees, so old saves keep every unlock. */
-const WSKILLS = [   // per weapon index: the V-key active granted by tree node 3
+const WSKILLS = [   // per weapon index: the weapon-skill active (tap / SPACE / V) granted by Sphere path node 3
   { name:'SHADOW STAB',   mp:25, cd:8000,  node:'w03' },
   { name:'WHIRLWIND',     mp:30, cd:10000, node:'w13' },
   { name:'IAIDO WAVE',    mp:30, cd:9000,  node:'w23' },
@@ -973,6 +973,9 @@ const WSKILLS = [   // per weapon index: the V-key active granted by tree node 3
 ];
 // tree bonus helper: true only while the matching weapon is equipped
 const wHas = (wi, nid) => me.weapon===wi && unlocked.has(nid);
+// effective weapon-skill cooldown: Sphere node a4 'Swift Skills' (fx
+// skillCd — formerly the Spin Slash recharge stat) multiplies it
+const wSkillCd = sk => Math.round(sk.cd * Math.max(.5, 1 + S.skillCd));
 const weaponSVG = (w,locked)=> locked
  ? `<svg viewBox="0 0 40 40"><path d="M13 18v-3a7 7 0 0114 0v3h3v14H10V18h3zm7 4a3.2 3.2 0 00-2 5.4V30h4v-2.6a3.2 3.2 0 00-2-5.4z" fill="#8d6e63"/></svg>`
  : `<img src="assets/weapons/${w.id}.png" alt="${w.name}" style="width:34px;height:34px;object-fit:contain;transform:rotate(-38deg)">`;
@@ -1017,13 +1020,13 @@ const me = {
   gemBag: [], sockets: {},   // SOUL GEMS: every gem owned + per-weapon socketed gem ids (persisted)
   stabT0:0, stabAng:0,
   ptrSpeedPx:0,   // latest pointer speed (px/s, max of recent events, decayed per frame) — an idle blade must not cut
-  lastHitAt:new Map(), spinUntil:0, spinCdUntil:0, trail:[],
+  lastHitAt:new Map(), whirlUntil:0, trail:[],   // whirlUntil: WHIRLWIND skill render state only — the tap Spin Slash is gone
   swingT0:0, swingDir:1,
 };
 // The sword sweeps an ARC when you flick: it cocks back, then whips past
 // your heading — direction follows the swipe (right swipe = clockwise arc…).
 function swordAngleAt(now){
-  if (now < me.spinUntil) return me.angle;
+  if (now < me.whirlUntil) return me.angle;   // WHIRLWIND render: pose frozen while drawSword spins the blade
   const el = now - me.swingT0;
   if (me.swingT0 && el < 190){
     const p = el/190, e = 1-Math.pow(1-p,3);
@@ -1086,7 +1089,7 @@ let combo=0, comboUntil=0;                 // kill-chain combo (2.5s window)
 let bounty=null;                           // current bounty objective (session scope)
 let paused=false;
 let myTrail=[];                            // slash trail: full blade segments {bx, by (grip, world), tx, ty (tip, world), t} — rendered as swept quads
-let hintsSeen = { slash:false, spin:false, sphere:false };
+let hintsSeen = { slash:false, skill:false, sphere:false };
 let startedAt = 0;                         // when PLAY was pressed (banner suppression window)
 const SAVE_KEY = 'slimeslash-save-v1';
 
@@ -1790,12 +1793,11 @@ function myCd(){
   return Math.max(50, wCd * Math.max(.5, 1 + S.cd)) * (performance.now()<me.frenzyUntil ? .55 : 1);   // cooldown multiplier floored at .5x (gem haste + Sphere Quick Hands can never push it lower); 50ms absolute floor stays
 }
 
-// The blade only cuts while it is being WIELDED: spinning, mid-swing-arc
+// The blade only cuts while it is being WIELDED: mid-swing-arc
 // (same 190ms window swordAngleAt animates), mid-stab-lunge (same 150ms
 // window bladeAt animates), or the pointer itself moving fast right now.
 // A parked sword is scenery — slimes that wander into it must NOT die.
 function bladeLive(now){
-  if (now < me.spinUntil) return true;
   if (myWeapon().motion==='stab') { if (me.stabT0 && now-me.stabT0<150) return true; }
   else if (me.swingT0 && now-me.swingT0<190) return true;
   return (me.ptrSpeedPx||0) > 240;
@@ -1804,11 +1806,10 @@ function localHitCheck(now){
   if (!bladeLive(now)) return;   // idle/AFK sword cuts nothing — no free kills
   // blade = segment from hand (pointer) to tip along the sword's CURRENT
   // angle; SWING weapons also test the swept arc since last frame so fast
-  // arcs can't tunnel through slimes between frames; spin = full circle
-  const spinning = now < me.spinUntil;
+  // arcs can't tunnel through slimes between frames
   const blade = bladeAt(now);
   const sa = blade.ang;
-  const reach = myReach() * (spinning?1.15:1) * (1 + blade.ext);
+  const reach = myReach() * (1 + blade.ext);
   const thick = myWeapon().motion==='stab' ? .006 : .012 + S.arcWide;   // stab = thin line, swing = wide arc
   const segHit = (s, ang) => {
     const bx = me.x + Math.cos(ang)*reach, by = me.y + Math.sin(ang)*reach;
@@ -1817,7 +1818,7 @@ function localHitCheck(now){
     return dist2(me.x+dx*t, me.y+dy*t, s.x, s.y) < (s.r+thick)**2;
   };
   let testAngles = [sa];
-  if (!spinning && myWeapon().motion==='swing' && me.prevSa!==undefined){
+  if (myWeapon().motion==='swing' && me.prevSa!==undefined){
     let dA = sa - me.prevSa;
     while (dA > Math.PI) dA -= Math.PI*2;
     while (dA < -Math.PI) dA += Math.PI*2;
@@ -1827,9 +1828,7 @@ function localHitCheck(now){
   for (const s of slimes.values()){
     const last = me.lastHitAt.get(s.id)||0;
     if (now-last < myCd()) continue;
-    let hit=false;
-    if (spinning){ hit = dist2(me.x,me.y,s.x,s.y) < (reach + s.r)*(reach + s.r); }
-    else hit = testAngles.some(ang => segHit(s, ang));
+    const hit = testAngles.some(ang => segHit(s, ang));
     if (hit){
       me.lastHitAt.set(s.id, now);
       let dmg = myDamage();
@@ -1851,9 +1850,7 @@ function localHitCheck(now){
   for (const n of nodes.values()){
     const nk = 'node:'+n.id, nlast = me.lastHitAt.get(nk)||0;
     if (now - nlast < myCd()) continue;
-    let hit = false;
-    if (spinning){ hit = dist2(me.x,me.y,n.x,n.y) < (reach + n.r)*(reach + n.r); }
-    else hit = testAngles.some(ang => segHit(n, ang));
+    const hit = testAngles.some(ang => segHit(n, ang));
     if (!hit) continue;
     me.lastHitAt.set(nk, now);
     n.shakeT = now;   // prediction: the rock shakes on my screen right away
@@ -2383,7 +2380,7 @@ function joinWorld(roomCode){
     if (typeof d.x!=='number'||typeof d.y!=='number') return;
     p.tx=clamp(d.x,0,WORLD); p.ty=clamp(d.y,0,WORLD); p.angle=+d.a||0; p.ext=+d.e||0; p.weapon=clamp(d.w|0,0,WEAPONS.length-1); p.weaponId=WEAPONS[p.weapon].id;
     if (d.n) p.name=cleanName(d.n); if (d.c) p.color=String(d.c).slice(0,32);
-    p.spinning = !!d.s; p.lastSeen=performance.now();
+    p.whirling = !!d.s; p.lastSeen=performance.now();
     if (typeof d.l==='number') p.level = clamp(d.l|0, 1, 999);   // peer level rides the pos payload — the host scales the Emperor to the strongest player present
     if (scores[id]) scores[id].name=p.name;
   });
@@ -2405,7 +2402,7 @@ function joinWorld(roomCode){
   setTimeout(refreshPeers, 15500);
 }
 setInterval(()=>{ // sword state @ ~20Hz
-  if (started && sendPos){ const bl = bladeAt(performance.now()); sendPos({ x:+me.x.toFixed(3), y:+me.y.toFixed(3), a:+bl.ang.toFixed(2), e:+bl.ext.toFixed(2), w:me.weapon, n:me.name, c:me.color, s: performance.now()<me.spinUntil, l: me.level }); }
+  if (started && sendPos){ const bl = bladeAt(performance.now()); sendPos({ x:+me.x.toFixed(3), y:+me.y.toFixed(3), a:+bl.ang.toFixed(2), e:+bl.ext.toFixed(2), w:me.weapon, n:me.name, c:me.color, s: performance.now()<me.whirlUntil, l: me.level }); }
 }, 50);
 
 /* ============================================================ input */
@@ -2414,7 +2411,7 @@ let lastClient=null, lastMoveT=0;
 // Touch lift: on touch devices the sword would sit hidden under the player's
 // finger, so the effective sword position is lifted ~48px up-screen. The
 // offset is applied ONCE here at input time — hit detection, drawing and
-// spin all read me.x/me.y, so they stay consistent. Flick direction/speed
+// skill casts all read me.x/me.y, so they stay consistent. Flick direction/speed
 // below keep using RAW client deltas, which a constant offset never changes.
 const TOUCH_LIFT = 48;
 const ptrY = e => e.clientY - (e.pointerType==='touch' ? TOUCH_LIFT : 0);
@@ -2431,14 +2428,14 @@ addEventListener('pointermove', e=>{
     const dtm=Math.max(1, now-lastMoveT);
     spd=Math.hypot(cdx,cdy)/dtm*1000;
     if (Math.hypot(cdx,cdy)>1.5) me.angle=Math.atan2(cdy,cdx);
-    if (downInfo) downInfo.travel += Math.hypot(cdx,cdy);   // tap-vs-drag tracking for the spin gate
+    if (downInfo) downInfo.travel += Math.hypot(cdx,cdy);   // tap-vs-drag tracking for the tap gate
   }
   lastClient={x:e.clientX, y:e.clientY}; lastMoveT=now;
   me.speed = spd;
   me.ptrSpeedPx = Math.max(me.ptrSpeedPx||0, spd);   // decayed per frame in frame(); gates idle-blade hits
   // a fast flick attacks: SWING weapons arc (direction follows the swipe),
   // STAB weapons lunge straight along it
-  if (started && now>=me.spinUntil){
+  if (started && now>=me.whirlUntil){
     if (myWeapon().motion==='stab'){
       if (spd>950 && now-me.stabT0>170){ me.stabT0=now; me.stabAng=me.angle; }
     } else if (spd>620 && now-me.swingT0>200){
@@ -2448,27 +2445,29 @@ addEventListener('pointermove', e=>{
   }
   me.px=me.x; me.py=me.y; me.x=x; me.y=y;
 });
-let downInfo = null;   // canvas pointerdown record for the tap-vs-drag spin gate
+let downInfo = null;   // canvas pointerdown record for the tap-vs-drag skill gate
 addEventListener('pointerdown', e=>{
   uiPointer = e.target !== cv;   // UI presses are for buttons/panels — flag them so pointermove ignores the drag
   if (!started) return;
   if (e.target.closest && e.target.closest('#hud') && !e.target.closest('#game')) { /* UI taps handled by buttons */ }
   if (e.target===cv){
-    // snap the sword to the (touch-lifted) tap point so a spin centres there
+    // snap the sword to the (touch-lifted) tap point so the skill tap lands there
     me.px=me.x; me.py=me.y;
     me.x=clamp(cam.x + e.clientX/UNIT(), .02, WORLD-.02);
     me.y=clamp(cam.y + ptrY(e)/UNIT(), .02, WORLD-.02);
     me.trailBreak = true;   // sword teleported to the tap point — don't streak the trail across the screen
-    // spin fires on pointerUP, and only for a genuine tap (see pointerup) —
-    // releasing a drag must NOT spin
+    // the weapon skill fires on pointerUP, and only for a genuine tap
+    // (see pointerup) — releasing a drag must NOT cast
     downInfo = { t:performance.now(), travel:0 };
   }
 });
 addEventListener('pointerup', e=>{
-  if (uiPointer){ uiPointer = false; lastClient = null; return; }   // release of a UI press: no spin, no stale delta
+  if (uiPointer){ uiPointer = false; lastClient = null; return; }   // release of a UI press: no cast, no stale delta
   if (!downInfo) return;
   const info = downInfo; downInfo = null;
-  if (performance.now() - info.t < 260 && info.travel < 14) trySpin();
+  // a genuine tap (quick, barely moved) casts the weapon skill — the exact
+  // same code path as the V key and the skill button (lock/MP/cooldown incl.)
+  if (performance.now() - info.t < 260 && info.travel < 14) castWeaponSkill();
 });
 addEventListener('pointercancel', ()=>{ downInfo = null; uiPointer = false; });
 addEventListener('touchmove', e=>{ e.preventDefault(); }, {passive:false});
@@ -2479,7 +2478,7 @@ addEventListener('keydown', e=>{
   if (e.key==='Escape' || e.key==='p' || e.key==='P'){ togglePause(); return; }
   const n = parseInt(e.key);
   if (n>=1 && n<=WEAPONS.length) equip(n-1);
-  if (e.key===' ') { e.preventDefault(); trySpin(); }
+  if (e.key===' ') { e.preventDefault(); castWeaponSkill(); }
   if (e.key==='f'||e.key==='F') toggleForge();
   if (e.key==='g'||e.key==='G') toggleGems();
   const lk = e.key.toLowerCase();
@@ -2495,15 +2494,6 @@ addEventListener('keydown', e=>{
   if (lk==='x') useItem('bomb');
   if (lk==='c') useItem('shield');
 });
-function trySpin(){
-  const now=performance.now();
-  if (now < me.spinCdUntil) return;
-  me.spinUntil = now+260; me.spinCdUntil = now + 900*(1 + S.spinCd);
-  popRings.push({ x:me.x, y:me.y, r:.02, life:1, color:myWeapon().color });   // visible spin-start ring
-  sfx.spin();
-  if (!hintsSeen.spin){ hintsSeen.spin = true; updateHint(); }
-}
-
 /* ============================================================ HUD */
 function refreshHUD(){
   $('#coins').textContent = me.coins;
@@ -2878,7 +2868,7 @@ const NODES = [
   {id:'a1', b:2, t:'stat',    icon:'XP',  name:'Scholar',       desc:'+20% XP from every kill.', cost:1, fx:{xp:.20}},
   {id:'a2', b:2, t:'stat',    icon:'GLD', name:'Greed',         desc:'+20% coins from every kill.', cost:1, fx:{coin:.20}},
   {id:'a3', b:2, t:'stat',    icon:'SPD', name:'Quick Hands',   desc:'Hit again 10% faster.', cost:1, fx:{cd:-.10}},
-  {id:'a4', b:2, t:'passive', icon:'SPN', name:'Swift Spin',    desc:'PASSIVE: Spin Slash recharges 40% faster.', cost:2, fx:{spinCd:-.40}},
+  {id:'a4', b:2, t:'passive', icon:'SKL', name:'Swift Skills',  desc:'PASSIVE: Weapon skills recharge 40% faster.', cost:2, fx:{skillCd:-.40}},
   {id:'a5', b:2, t:'stat',    icon:'ATK', name:'Power +3',      desc:'Damage +3 on every hit.', cost:1, fx:{dmg:3}},
   {id:'a6', b:2, t:'active',  icon:'FRZ', name:'FRENZY',        desc:'ACTIVE SKILL (key R): 5 seconds of +50% damage and much faster hits.', cost:2, fx:{active:'frenzy'}},
   {id:'a7', b:2, t:'stat',    icon:'XP',  name:'Scholar II',    desc:'+15% XP from every kill.', cost:1, fx:{xp:.15}},
@@ -2961,10 +2951,10 @@ const nodePos = n => {
 const unlocked = new Set();
 let S = null;
 function recalc(){
-  S = { dmg:0, reach:0, cd:0, crit:0, coin:0, xp:0, splash:0, kingBane:0, double:0, arcWide:0, spinCd:0, bounty:0, comboWin:0, exec:0, maxHp:0, regen:0, socket:0, actives:new Set() };
+  S = { dmg:0, reach:0, cd:0, crit:0, coin:0, xp:0, splash:0, kingBane:0, double:0, arcWide:0, skillCd:0, bounty:0, comboWin:0, exec:0, maxHp:0, regen:0, socket:0, actives:new Set() };
   for (const n of NODES) if (unlocked.has(n.id)){
     const f = n.fx || {};   // weapon-path tiers 1-4 carry no global fx (equipped-only effects live in wHas checks); CROSS nodes do
-    for (const k of ['dmg','reach','cd','crit','coin','xp','kingBane','double','arcWide','spinCd','bounty','comboWin','exec','maxHp','regen','socket']) if (f[k]) S[k]+=f[k];
+    for (const k of ['dmg','reach','cd','crit','coin','xp','kingBane','double','arcWide','skillCd','bounty','comboWin','exec','maxHp','regen','socket']) if (f[k]) S[k]+=f[k];
     if (f.splash) S.splash = Math.max(S.splash, f.splash);
     if (f.active) S.actives.add(f.active);
   }
@@ -3151,7 +3141,7 @@ function updateHint(){
   if (!started || paused || nearBuilding || !$('#menuPanel').classList.contains('hidden')){ h.classList.add('hidden'); return; }
   let txt = '';
   if (!hintsSeen.slash) txt = 'DRAG TO SLASH!';
-  else if (!hintsSeen.spin) txt = 'CLICK / TAP — SPIN SLASH';
+  else if (!hintsSeen.skill) txt = 'CLICK / TAP — WEAPON SKILL';
   else if (!hintsSeen.sphere && (me.level>=2 || me.sp>0)) txt = 'F — OPEN THE SPHERE GRID';
   if (!txt){ h.classList.add('hidden'); return; }
   h.textContent = txt; h.classList.remove('hidden');
@@ -3178,7 +3168,7 @@ function resetRun(){
   unlocked.clear(); recalc();   // one shared set: branch, weapon-path and cross nodes all reset
   combo=0; comboUntil=0; updateComboBadge(false);
   if (scores[me.id]) scores[me.id].kills = 0;
-  hintsSeen = { slash:false, spin:false, sphere:false };
+  hintsSeen = { slash:false, skill:false, sphere:false };
   try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
   rollBounty();
   buildRack(); buildActives(); buildSphere(); refreshHUD(); updateHint();
@@ -3241,7 +3231,7 @@ function loadGame(){
   if (d.items) me.items = { potion:Math.max(0, d.items.potion|0), bomb:Math.max(0, d.items.bomb|0), shield:Math.max(0, d.items.shield|0) };
   me.purse = !!d.purse;
   if (d.name){ me.name = cleanName(d.name); $('#nameIn').value = me.name; }
-  if (d.hintsSeen) hintsSeen = { slash:!!d.hintsSeen.slash, spin:!!d.hintsSeen.spin, sphere:!!d.hintsSeen.sphere };
+  if (d.hintsSeen) hintsSeen = { slash:!!d.hintsSeen.slash, skill:!!(d.hintsSeen.skill || d.hintsSeen.spin), sphere:!!d.hintsSeen.sphere };   // old saves carry the retired 'spin' hint key — it maps onto 'skill'
   if (typeof d.rackCollapsed === 'boolean') rackCollapsed = d.rackCollapsed;
   if (d.spawnAt && isFinite(d.spawnAt.x) && isFinite(d.spawnAt.y)){
     me.spawnAt = { x:+d.spawnAt.x, y:+d.spawnAt.y };
@@ -3345,7 +3335,7 @@ function tickActives(now, dt){
   }
   // weapon skill button cooldown sweep
   const wsOv = document.getElementById('wsCdov');
-  if (wsOv){ const sk = WSKILLS[me.weapon]; wsOv.style.height = (sk ? clamp((me.wSkillCdUntil-now)/sk.cd*100, 0, 100) : 0) + '%'; }
+  if (wsOv){ const sk = WSKILLS[me.weapon]; wsOv.style.height = (sk ? clamp((me.wSkillCdUntil-now)/wSkillCd(sk)*100, 0, 100) : 0) + '%'; }
   // cooldown overlays
   for (const [id, a] of Object.entries(ACTIVES)){
     const b = document.getElementById('abtn-'+id); if (!b) continue;
@@ -3357,17 +3347,18 @@ function tickActives(now, dt){
     else if (id==='goldrush') b.style.background = '#fff8e7';
   }
 }
-/* ============================================================ weapon skills (V)
+/* ============================================================ weapon skills (tap / SPACE / V)
    One active per weapon, granted by the SKILL node of its Sphere path, paid in MP.
    All effects are LOCAL claims through doHit — the host still validates. */
 function castWeaponSkill(){
   if (!started || paused) return;
   const now = performance.now();
   const sk = WSKILLS[me.weapon]; if (!sk) return;
+  if (!hintsSeen.skill){ hintsSeen.skill = true; updateHint(); }   // casting by tap/SPACE/V retires the skill hint
   if (!unlocked.has(sk.node)){ notify('Unlock ' + sk.name + ' on the SPHERE grid (key K)'); return; }
   if (now < me.wSkillCdUntil) return;
   if (me.mp < sk.mp){ notify('Not enough MP!'); return; }
-  me.mp -= sk.mp; me.wSkillCdUntil = now + sk.cd;
+  me.mp -= sk.mp; me.wSkillCdUntil = now + wSkillCd(sk);
   const dmg = myDamage(), ang = bladeAt(now).ang, wcol = myWeapon().color;
   if (me.weapon===0){          // DAGGER — SHADOW STAB: dash along the blade, cutting the path
     const x0 = me.x, y0 = me.y;
@@ -3387,8 +3378,8 @@ function castWeaponSkill(){
     const R = myReach()*1.6;
     for (const s of [...slimes.values()]) if (dist2(s.x,s.y,me.x,me.y) < R*R) doHit(s, Math.round(dmg*1.6));
     popRings.push({ x:me.x, y:me.y, r:myReach(), life:1, color:wcol });
-    me.spinUntil = now + 260;   // reuse the spin render
-    sfx.spin();
+    me.whirlUntil = now + 260;   // the sword spins for the WHIRLWIND render (peers see it via the pos s flag)
+    sfx.whirl();
   } else if (me.weapon===2){   // KATANA — IAIDO WAVE: faster, longer, harder crescent
     waves.push({ x:me.x, y:me.y, ang, t0:now, hit:new Set(), dmgMul:2.2, spd:.00065, life:1150, col:'#f8bbd0' });
     beep(300,.18,'sawtooth',.06,1200);
@@ -4474,14 +4465,14 @@ function drawGhosts(t, occluders){
     }
   }
 }
-function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,spinning,ext=0){
+function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,whirling,ext=0){
   const w=WEAPONS[weaponIdx];
   const reachPx = (isMe?myReach():(w.reach)) * SCALE() * (1+ext);
-  const spinA = spinning ? (t/38)%(Math.PI*2) : 0;
-  const a = spinning ? spinA : angle;
+  const whirlA = whirling ? (t/38)%(Math.PI*2) : 0;
+  const a = whirling ? whirlA : angle;
   const tipX = x+Math.cos(a)*reachPx, tipY = y+Math.sin(a)*reachPx;
   // swing swoosh: translucent wedge over the arc swept in the last ~80ms
-  if (isMe && !spinning){
+  if (isMe && !whirling){
     const span = a - swordAngleAt(t-80);
     if (Math.abs(span) > .12){
       ctx.save(); ctx.translate(x,y);
@@ -4748,18 +4739,18 @@ function frame(now){
   for (const [id,p] of peers){
     if (now-p.lastSeen>6000) continue;
     p.x += (p.tx-p.x)*peerK; p.y += (p.ty-p.y)*peerK;
-    drawSword(NX(p.x),NY(p.y),p.angle,p.weapon,p.color,p.name,false,now,p.spinning,p.ext||0);
+    drawSword(NX(p.x),NY(p.y),p.angle,p.weapon,p.color,p.name,false,now,p.whirling,p.ext||0);
   }
   // my sword on top, with the slash trail: the full blade segment (grip +
   // tip) is recorded EVERY frame it moves >4px on screen — any fast wielded
-  // motion counts (drag, flick, swing, stab, spin) — and rendered as swept
+  // motion counts (drag, flick, swing, stab, whirlwind) — and rendered as swept
   // quads between consecutive segments (see LIGHTSABER v4 below).
   {
     const bl = bladeAt(now);
     if (started){
-      const spinningNow = now < me.spinUntil;
-      const ang = spinningNow ? (now/38)%(Math.PI*2) : bl.ang;
-      const reach = myReach() * (spinningNow?1.15:1) * (1 + bl.ext);
+      const whirlingNow = now < me.whirlUntil;
+      const ang = whirlingNow ? (now/38)%(Math.PI*2) : bl.ang;
+      const reach = myReach() * (whirlingNow?1.15:1) * (1 + bl.ext);
       const tipX = me.x + Math.cos(ang)*reach, tipY = me.y + Math.sin(ang)*reach;
       if (me.trailBreak){ myTrail.length = 0; me.trailBreak = false; }
       // sample the FULL blade segment (grip + tip), not just the tip —
@@ -4790,7 +4781,7 @@ function frame(now){
            the full blade's edge, not just the tip). Each sample stores the
            whole blade segment (grip + tip in screen space); consecutive
            samples form quads = the actual area the blade swept, so a swing
-           paints the blade's full length and a spin slash paints a glowing
+           paints the blade's full length and a whirlwind paints a glowing
            fan of quads. Passes (all 'lighter', per-segment alpha x ageFade,
            470ms life unchanged):
            A full swept quad in the player colour @ .13 — broad glow body;
@@ -4846,7 +4837,7 @@ function frame(now){
       ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 2.5;
       ctx.beginPath(); ctx.arc(NX(me.x), NY(me.y), (myReach()+.045)*UNIT(), 0, 7); ctx.stroke();
     }
-    drawSword(NX(me.x),NY(me.y),bl.ang,me.weapon,me.color, started?me.name:'', true, now, now<me.spinUntil, bl.ext);
+    drawSword(NX(me.x),NY(me.y),bl.ang,me.weapon,me.color, started?me.name:'', true, now, now<me.whirlUntil, bl.ext);
   }
 
   // pause guarantee: with dt frozen at 0 the trail vanishes and the sword can
