@@ -134,8 +134,14 @@
   .upg button:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
   .upg button:disabled { filter:grayscale(.6); opacity:.6; cursor:default; }
 
+  /* ---------- ANNOUNCEMENT TOP LANE ----------
+     Handler: 'All announcements to top.' Every banner/toast lives in a
+     fixed slot of one centred lane under the boss bar — slot 1 kingBanner
+     56px, then +52px per slot: deathBanner, zoneBanner, streakBanner,
+     toast. Elements keep their own show/fade timing; an idle slot just
+     leaves a gap. The <=640px and portrait blocks re-space the lane. */
   #toast {
-    position:fixed; z-index:40; top:130px; left:50%; transform:translateX(-50%);
+    position:fixed; z-index:40; top:264px; left:50%; transform:translateX(-50%);
     background:#3a2b23; color:#ffd94d; font-family:"Press Start 2P",monospace; font-size:11px; line-height:1.7; text-align:center;
     padding:10px 20px; border-radius:0; border:3px solid #ffd94d;
     box-shadow:5px 5px 0 rgba(0,0,0,.35); animation:pop .2s cubic-bezier(.2,2.2,.4,1); pointer-events:none;
@@ -170,7 +176,7 @@
   }
   @keyframes hintBob { 0%,100% { transform:translateX(-50%) translateY(0); } 50% { transform:translateX(-50%) translateY(-5px); } }
   #kingBanner {
-    position:fixed; z-index:35; top:34%; left:50%; transform:translateX(-50%);
+    position:fixed; z-index:35; top:56px; left:50%; transform:translateX(-50%);
     font-family:"Press Start 2P",monospace; font-size:clamp(18px, 7.2vw, 40px); line-height:1.45; color:#ffd94d; text-align:center;
     max-width:100vw; box-sizing:border-box; padding:0 8px;
     -webkit-text-stroke:2px #8a5a12; text-shadow:4px 4px 0 #8a5a12, 8px 8px 0 rgba(0,0,0,.25);
@@ -178,7 +184,7 @@
   }
   #kingBanner.show { animation:kingIn 2.5s ease forwards; }
   #streakBanner {
-    position:fixed; z-index:35; top:22%; left:50%; transform:translateX(-50%);
+    position:fixed; z-index:35; top:212px; left:50%; transform:translateX(-50%);
     font-family:"Press Start 2P",monospace; font-size:clamp(13px, 5.5vw, 20px); line-height:1.45; color:#ff8a2e; text-align:center;
     max-width:100vw; box-sizing:border-box; padding:0 8px;
     -webkit-text-stroke:1.5px #8a4a12; text-shadow:3px 3px 0 #8a4a12, 6px 6px 0 rgba(0,0,0,.25);
@@ -186,7 +192,7 @@
   }
   #streakBanner.show { animation:kingIn 1.6s ease forwards; }
   #zoneBanner {
-    position:fixed; z-index:34; top:64px; left:50%; transform:translateX(-50%);
+    position:fixed; z-index:34; top:160px; left:50%; transform:translateX(-50%);
     background:#fff6df; border:3px solid #3a2b23; border-radius:0; padding:8px 22px;
     color:#3a2b23; font-family:"Press Start 2P",monospace; font-size:12px; line-height:1.6; text-align:center;
     box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 4px 4px 0 rgba(0,0,0,.30); pointer-events:none;
@@ -263,8 +269,12 @@
     .abtn { width:48px; height:48px; font-size:7px; border-width:3px; }
     #comboBadge { right:auto; left:8px; bottom:calc(var(--dockH, 92px) + 142px); font-size:9px; padding:7px 10px; border-width:3px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
     #hint { bottom:calc(var(--dockH, 92px) + 12px); font-size:8px; max-width:72vw; white-space:normal; text-align:center; padding:7px 10px; }
-    #toast { top:auto; bottom:calc(var(--dockH, 92px) + 60px); font-size:9px; padding:8px 14px; border-width:3px; }
-    #zoneBanner { font-size:10px; padding:6px 14px; max-width:94vw; }
+    /* announcement lane, phone spacing: starts 60px, slots +46px */
+    #kingBanner { top:60px; }
+    #deathBanner { top:106px; }
+    #streakBanner { top:198px; }
+    #toast { top:244px; font-size:9px; padding:8px 14px; border-width:3px; }
+    #zoneBanner { top:152px; font-size:10px; padding:6px 14px; max-width:94vw; }
   }
 
   /* ---------- survival pass: HP flash / boss bar / death / items / bank & shop ---------- */
@@ -281,7 +291,7 @@
   #bossTrack { height:13px; background:#2a0a12; border:2px solid #ffd94d; border-radius:0; overflow:hidden; }
   #bossFill { height:100%; width:100%; background-color:#e5484d; background-image:repeating-linear-gradient(90deg, rgba(0,0,0,0) 0 6px, rgba(0,0,0,.18) 6px 8px); transition:width .25s; }
   #deathBanner {
-    position:fixed; z-index:46; top:38%; left:50%; transform:translate(-50%,-50%);
+    position:fixed; z-index:42; top:108px; left:50%; transform:translateX(-50%);
     background:#40121d; color:#ffd9d9; border:3px solid #e5484d; border-radius:0;
     padding:20px 30px; font-family:"Press Start 2P",monospace; font-size:clamp(12px, 3.8vw, 15px); line-height:1.8; text-align:center; max-width:88vw; box-sizing:border-box;
     box-shadow:5px 5px 0 rgba(0,0,0,.35); pointer-events:none;
@@ -574,7 +584,6 @@
     /* boss bar drops below the top badge row; the left badge column
        shifts down while a boss is up (body.boss-on) so nothing overlaps */
     #bossBar { top:calc(env(safe-area-inset-top) + 46px); width:min(76vw, 520px); }
-    #zoneBanner { top:calc(env(safe-area-inset-top) + 102px); }
     body.boss-on #lvlBadge { top:104px; }
   }
 
@@ -658,15 +667,15 @@
     #pauseBtn { width:36px; height:36px; }
     /* interact prompt (OPEN INN etc.) */
     #interactPrompt { font-size:13px; padding:8px 14px; }
-    /* zone banner: a compact pill parked BELOW the top HUD cluster
-       (~200px) — it used to ride at ~102px, right over the stat panel,
-       covering the MP bar's right end (round-3 fix) */
-    #zoneBanner { top:calc(env(safe-area-inset-top) + 200px); font-size:13px; padding:6px 12px; max-width:72vw; }
+    /* announcement lane, portrait: starts below the stat cluster
+       (safe-area + 148px), slots +44px. This supersedes the old round-3
+       zoneBanner perch — every banner takes its lane slot. */
+    #kingBanner { top:calc(env(safe-area-inset-top) + 148px); white-space:normal; letter-spacing:0; width:100vw; }
+    #deathBanner { top:calc(env(safe-area-inset-top) + 192px); }
+    #zoneBanner { top:calc(env(safe-area-inset-top) + 236px); font-size:13px; padding:6px 12px; max-width:72vw; }
     #zoneBanner small { font-size:10px; }
-    body.boss-on #zoneBanner { top:calc(env(safe-area-inset-top) + 248px); }
-    /* banners wrap inside the screen instead of clipping off the edges */
-    #kingBanner { white-space:normal; letter-spacing:0; width:100vw; }
-    #streakBanner { white-space:normal; letter-spacing:0; max-width:100vw; }
+    #streakBanner { top:calc(env(safe-area-inset-top) + 280px); white-space:normal; letter-spacing:0; max-width:100vw; }
+    #toast { top:calc(env(safe-area-inset-top) + 324px); }
   }
 </style>
 </head>
