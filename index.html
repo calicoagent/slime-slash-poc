@@ -259,8 +259,12 @@
     #actives { bottom:calc(var(--dockH, 92px) + 8px); right:8px; gap:8px; }
     #wSkillBtn { width:auto; max-width:40vw; font-size:7px; }
     .abtn { width:48px; height:48px; font-size:7px; border-width:3px; }
-    /* combo badge rides above the new items row (row top = --dockH + 164px) */
-    #comboBadge { right:auto; left:8px; bottom:calc(var(--dockH, 92px) + 172px); font-size:9px; padding:7px 10px; border-width:3px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
+    /* combo badge rides above the new items row: chip tops reach
+       --dockH + 171px (row top 164px + 7px chip protrusion), so the
+       badge bottom sits 21px clear of them — its pop animation dips
+       ~11px at worst (scale overshoot + -2deg corner), never covering
+       the chips (only toasts may cover other UI) */
+    #comboBadge { right:auto; left:8px; bottom:calc(var(--dockH, 92px) + 192px); font-size:9px; padding:7px 10px; border-width:3px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
     #hint { bottom:calc(var(--dockH, 92px) + 12px); font-size:8px; max-width:72vw; white-space:normal; text-align:center; padding:7px 10px; }
   }
 
@@ -636,8 +640,11 @@
     .ibtn { width:48px; min-height:48px; padding:2px; }
     .ibtn svg { width:24px; height:24px; }
     .ibtn .cnt { min-width:20px; height:20px; font-size:13px; top:-6px; right:-6px; }
-    /* combo badge clears the items row (row top = --dockH + 148px here) */
-    #comboBadge { bottom:calc(var(--dockH, 92px) + 156px); }
+    /* combo badge clears the items row incl. its count chips: chip
+       tops reach --dockH + 154px (row top 148px + 6px protrusion), so
+       the badge bottom sits 24px clear — pop dip ~11px on phones
+       (larger badge at 641-700px: ~16px) still never covers them */
+    #comboBadge { bottom:calc(var(--dockH, 92px) + 178px); }
     /* boss bar strip, portrait: ~31px tall, nearly full width */
     #bossBar { width:min(88vw, 520px); padding:6px 8px; gap:8px; }
     #bossBar b { font-size:10px; }
