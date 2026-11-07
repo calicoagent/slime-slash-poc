@@ -965,7 +965,7 @@ const hitClaimsAt = new Map(); // host-side rate limiting
 let combo=0, comboUntil=0;                 // kill-chain combo (2.5s window)
 let bounty=null;                           // current bounty objective (session scope)
 let paused=false;
-let myTrail=[];                            // slash trail: blade TIP path points {x, y (world), t} — drawn as a tapering ribbon
+let myTrail=[];                            // slash trail: full blade segments {bx, by (grip, world), tx, ty (tip, world), t} — rendered as swept quads
 let hintsSeen = { slash:false, spin:false, sphere:false };
 const seenKings = new Set();               // king ids already announced by the banner
 let startedAt = 0;                         // when PLAY was pressed (banner suppression window)
@@ -3302,22 +3302,34 @@ function drawBuildings(only){
   }
   }
 }
-/* Elite radiance: banded golden aura pooled on the ground UNDER the slime
-   (hard-edged steps, no blur), with motes rising and fading in a loop.
-   Anchored to the ground — the body hops inside it, the aura stays put. */
+/* Elite radiance — NO circles (Handler: the banded rings still read as
+   circles). A star of 8 jagged RAYS radiates from behind the body, slowly
+   rotating, over a rotated-square (diamond) pool of ground light. Hard
+   edges only: triangles and a diamond — no arcs, no ellipses, no
+   gradients. Motes rise and fade as before. Drawn UNDER the slime. */
 function drawEliteAura(x, y, baseR, seed, t){
   const pr = 1 + 0.07 * Math.sin(t/260 + seed * 9);   // pulse
   ctx.save();
-  ctx.fillStyle = 'rgba(255,183,47,.05)';
-  ctx.beginPath(); ctx.arc(x, y, baseR*2.6*pr, 0, 7); ctx.fill();
-  ctx.fillStyle = 'rgba(255,183,47,.08)';
-  ctx.beginPath(); ctx.arc(x, y, baseR*2.05*pr, 0, 7); ctx.fill();
+  // ground light: diamond pool (rotated square), squashed flat
+  const rx = baseR*1.5*pr, ry = rx*.45;
   ctx.fillStyle = 'rgba(255,183,47,.13)';
-  ctx.beginPath(); ctx.arc(x, y, baseR*1.55*pr, 0, 7); ctx.fill();
-  // ground pool
-  const rx = baseR*1.5*pr;
+  ctx.beginPath();
+  ctx.moveTo(x, y - ry); ctx.lineTo(x + rx, y); ctx.lineTo(x, y + ry); ctx.lineTo(x - rx, y);
+  ctx.closePath(); ctx.fill();
+  // rays: 8 narrow triangles, bases at .9r, tips breathing around 1.9r
   ctx.fillStyle = 'rgba(255,183,47,.16)';
-  ctx.beginPath(); ctx.ellipse(x, y, rx, rx*.42, 0, 0, 7); ctx.fill();
+  const rot = t/2400 + seed;
+  for (let i = 0; i < 8; i++){
+    const a = rot + i * Math.PI/4;
+    const ca = Math.cos(a), sa = Math.sin(a);
+    const tipR = baseR * (1.9 + 0.25 * Math.sin(t/240 + seed*7 + i));
+    const bx = x + ca*baseR*.9, by = y + sa*baseR*.9, hw = baseR*.22;
+    ctx.beginPath();
+    ctx.moveTo(bx - sa*hw, by + ca*hw);
+    ctx.lineTo(x + ca*tipR, y + sa*tipR);
+    ctx.lineTo(bx + sa*hw, by - ca*hw);
+    ctx.closePath(); ctx.fill();
+  }
   // rising motes: seeded squares that climb and fade, looping
   ctx.fillStyle = '#ffd54a';
   for (let k = 0; k < 3; k++){
@@ -3738,10 +3750,10 @@ function frame(now){
     p.x += (p.tx-p.x)*.4; p.y += (p.ty-p.y)*.4;
     drawSword(NX(p.x),NY(p.y),p.angle,p.weapon,p.color,p.name,false,now,p.spinning,p.ext||0);
   }
-  // my sword on top, with the slash trail: the blade tip's own recent path
-  // is recorded EVERY frame it moves >6px on screen — any fast wielded
-  // motion counts (drag, flick, swing, stab, spin) — and drawn as
-  // multi-pass strokes along that path (see LIGHTSABER streak v3 below).
+  // my sword on top, with the slash trail: the full blade segment (grip +
+  // tip) is recorded EVERY frame it moves >4px on screen — any fast wielded
+  // motion counts (drag, flick, swing, stab, spin) — and rendered as swept
+  // quads between consecutive segments (see LIGHTSABER v4 below).
   {
     const bl = bladeAt(now);
     if (started){
@@ -3750,76 +3762,74 @@ function frame(now){
       const reach = myReach() * (spinningNow?1.15:1) * (1 + bl.ext);
       const tipX = me.x + Math.cos(ang)*reach, tipY = me.y + Math.sin(ang)*reach;
       if (me.trailBreak){ myTrail.length = 0; me.trailBreak = false; }
+      // sample the FULL blade segment (grip + tip), not just the tip —
+      // the render sweeps quads between consecutive segments
+      const seg = { bx:me.x, by:me.y, tx:tipX, ty:tipY, t:now };
       const lastP = myTrail[myTrail.length-1];
       if (!lastP){
-        myTrail.push({ x:tipX, y:tipY, t:now });
+        myTrail.push(seg);
       } else {
-        const dx = tipX-lastP.x, dy = tipY-lastP.y;
-        const movedPx = Math.hypot(dx*UNIT(), dy*UNIT());
+        const movedPx = Math.max(
+          Math.hypot((seg.tx-lastP.tx)*UNIT(), (seg.ty-lastP.ty)*UNIT()),
+          Math.hypot((seg.bx-lastP.bx)*UNIT(), (seg.by-lastP.by)*UNIT()));
         if (movedPx > 4){
           // interpolate along big jumps (coarse pointer events / fast flicks)
-          // so the ribbon follows the path instead of being cleared by them
+          // so the swept area stays continuous instead of gapping
           const steps = Math.min(10, Math.floor(movedPx/14));
-          for (let s2=1; s2<=steps; s2++)
-            myTrail.push({ x:lastP.x + dx*s2/(steps+1), y:lastP.y + dy*s2/(steps+1), t:now });
-          myTrail.push({ x:tipX, y:tipY, t:now });
+          for (let s2=1; s2<=steps; s2++){
+            const f = s2/(steps+1);
+            myTrail.push({ bx:lastP.bx+(seg.bx-lastP.bx)*f, by:lastP.by+(seg.by-lastP.by)*f, tx:lastP.tx+(seg.tx-lastP.tx)*f, ty:lastP.ty+(seg.ty-lastP.ty)*f, t:now });
+          }
+          myTrail.push(seg);
         }
       }
       if (myTrail.length > 34) myTrail.splice(0, myTrail.length-34);
       myTrail = myTrail.filter(p => now - p.t < 470);
       if (myTrail.length > 1){
-        // Catmull-Rom resample the tip path into a dense centreline
-        // (~9px steps) carrying each point's ageFade (1 = live tip);
-        // the stroke passes below taper width+alpha along it.
-        const raw = myTrail.map(p => ({ x:NX(p.x), y:NY(p.y), age: clamp(1-(now-p.t)/470, 0, 1) }));
-        const pts = [];
-        const P = i => raw[clamp(i, 0, raw.length-1)];
-        for (let i=0; i<raw.length-1; i++){
-          const p0=P(i-1), p1=P(i), p2=P(i+1), p3=P(i+2);
-          const n = Math.max(1, Math.min(6, Math.round(Math.hypot(p2.x-p1.x, p2.y-p1.y)/9)));
-          for (let j=0; j<n; j++){
-            const t = j/n, t2 = t*t, t3 = t2*t;
-            pts.push({
-              x: .5*((2*p1.x) + (-p0.x+p2.x)*t + (2*p0.x-5*p1.x+4*p2.x-p3.x)*t2 + (-p0.x+3*p1.x-3*p2.x+p3.x)*t3),
-              y: .5*((2*p1.y) + (-p0.y+p2.y)*t + (2*p0.y-5*p1.y+4*p2.y-p3.y)*t2 + (-p0.y+3*p1.y-3*p2.y+p3.y)*t3),
-              age: p1.age + (p2.age-p1.age)*t
-            });
-          }
-        }
-        pts.push({ ...raw[raw.length-1] });
-        /* LIGHTSABER streak v3 — multi-pass polyline STROKES over the
-           resampled tip path. Two gauntlets found the ribbon-quad versions
-           faint/thin both in motion and in stills, so the technique
-           changes: each pass strokes the dense centreline segment by
-           segment (round caps/joins — smooth at any speed), per-segment
-           alpha = pass alpha * ageFade, per-segment width scaled by
-           ageTaper (0.25 at the tail tip -> 1 at the live blade).
-           p.age here is ageFade: 1 = newest, 0 = 470ms old. */
+        /* LIGHTSABER v4 — the SWEPT BLADE (Handler: the effect must render
+           the full blade's edge, not just the tip). Each sample stores the
+           whole blade segment (grip + tip in screen space); consecutive
+           samples form quads = the actual area the blade swept, so a swing
+           paints the blade's full length and a spin slash paints a glowing
+           fan of quads. Passes (all 'lighter', per-segment alpha x ageFade,
+           470ms life unchanged):
+           A full swept quad in the player colour @ .13 — broad glow body;
+           B outer-half quad (45% -> tip) in colour @ .35 — brightness
+             concentrated toward the leading edge;
+           C leading (tip) edge stroked white, hw*.8 @ .9, plus the
+             trailing (grip) edge stroked in colour, 3px @ .3 — both edges
+             of the blade read. age here is ageFade: 1 = newest. */
+        const S2 = myTrail.map(p => ({ bx:NX(p.bx), by:NY(p.by), tx:NX(p.tx), ty:NY(p.ty), age: clamp(1-(now-p.t)/470, 0, 1) }));
         const hw = clamp(myReach() * SCALE() * (1 + bl.ext) * .16, 9, 26);   // saber halfwidth follows weapon reach, as drawSword computes it
         ctx.save(); ctx.lineCap='round'; ctx.lineJoin='round';
         ctx.globalCompositeOperation = 'lighter';   // additive light blending
-        const saberStroke = (wMul, style, aMul)=>{
-          ctx.strokeStyle = style;
-          for (let i=1; i<pts.length; i++){
-            const p0 = pts[i-1], p1 = pts[i], ageFade = (p0.age + p1.age)/2;
-            if (ageFade <= .01) continue;
-            ctx.globalAlpha = aMul * ageFade;
-            ctx.lineWidth = Math.max(1, hw * wMul * (.25 + .75*ageFade));
-            ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
-          }
+        const quad = (ax, ay, bx2, by2, cx, cy, dx, dy)=>{
+          ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx2, by2); ctx.lineTo(cx, cy); ctx.lineTo(dx, dy); ctx.closePath(); ctx.fill();
         };
-        saberStroke(3.2, me.color, .15);   // A: wide faint halo
-        saberStroke(1.7, me.color, .8);    // B: saturated blade body
-        saberStroke(.8, '#ffffff', .95);   // C: white-hot core
+        for (let i=1; i<S2.length; i++){
+          const p0 = S2[i-1], p1 = S2[i], ageFade = (p0.age + p1.age)/2;
+          if (ageFade <= .01) continue;
+          ctx.fillStyle = me.color;
+          ctx.globalAlpha = .13 * ageFade;   // A: full swept quad
+          quad(p0.bx, p0.by, p0.tx, p0.ty, p1.tx, p1.ty, p1.bx, p1.by);
+          const o0x = p0.bx + (p0.tx-p0.bx)*.45, o0y = p0.by + (p0.ty-p0.by)*.45;
+          const o1x = p1.bx + (p1.tx-p1.bx)*.45, o1y = p1.by + (p1.ty-p1.by)*.45;
+          ctx.globalAlpha = .35 * ageFade;   // B: outer half toward the edge
+          quad(o0x, o0y, p0.tx, p0.ty, p1.tx, p1.ty, o1x, o1y);
+          ctx.globalAlpha = .9 * ageFade; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(1, hw*.8);   // C: leading edge
+          ctx.beginPath(); ctx.moveTo(p0.tx, p0.ty); ctx.lineTo(p1.tx, p1.ty); ctx.stroke();
+          ctx.globalAlpha = .3 * ageFade; ctx.strokeStyle = me.color; ctx.lineWidth = 3;                    // C: trailing edge
+          ctx.beginPath(); ctx.moveTo(p0.bx, p0.by); ctx.lineTo(p1.bx, p1.by); ctx.stroke();
+        }
         /* HEAD GLOW at the live tip — the saber's head must read even in
            a frozen screenshot: colour bloom disc + white-hot core with a
            real shadowBlur in the player's colour. */
-        const tipP = pts[pts.length-1];
+        const tipP = S2[S2.length-1];
         ctx.globalAlpha = .35; ctx.fillStyle = me.color;
-        ctx.beginPath(); ctx.arc(tipP.x, tipP.y, hw*1.5, 0, 7); ctx.fill();
+        ctx.beginPath(); ctx.arc(tipP.tx, tipP.ty, hw*1.5, 0, 7); ctx.fill();
         ctx.globalAlpha = .95; ctx.fillStyle = '#ffffff';
         ctx.shadowColor = me.color; ctx.shadowBlur = 18;
-        ctx.beginPath(); ctx.arc(tipP.x, tipP.y, hw*.9, 0, 7); ctx.fill();
+        ctx.beginPath(); ctx.arc(tipP.tx, tipP.ty, hw*.9, 0, 7); ctx.fill();
         ctx.restore(); ctx.globalAlpha = 1;
       }
     }
