@@ -259,6 +259,7 @@
     #actives { bottom:calc(var(--dockH, 196px) + 8px); right:8px; gap:8px; }
     #wSkillBtn { width:96px; font-size:7px; }
     #treeBtn { font-size:8px; padding:9px 10px; border-width:3px; border-radius:0; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
+    #gemBtn { font-size:8px; padding:9px 10px; border-width:3px; border-radius:0; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
     .abtn { width:48px; height:48px; font-size:7px; border-width:3px; }
     #comboBadge { right:auto; left:8px; bottom:calc(var(--dockH, 196px) + 142px); font-size:9px; padding:7px 10px; border-width:3px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
     #hint { bottom:calc(var(--dockH, 196px) + 12px); font-size:8px; max-width:72vw; white-space:normal; text-align:center; padding:7px 10px; }
@@ -401,6 +402,27 @@
     box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
   }
   #treeBtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
+  #gemBtn {
+    cursor:pointer;
+    background:#1f9e8f; border:3px solid #3a2b23; border-radius:0; color:#fff;
+    font-family:"Press Start 2P",monospace; font-size:11px; padding:12px 14px;
+    box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
+  }
+  #gemBtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
+  /* soul gem panel bits */
+  .gemDot { display:inline-block; width:10px; height:10px; transform:rotate(45deg); margin-right:8px; border:2px solid #3a2b23; vertical-align:-1px; }
+  .gemBagHead, .gemEquipHead { font-family:"Press Start 2P",monospace; font-size:10px; color:#5b3a1e; margin:12px 0 6px; }
+  .gemSlotsRow { display:flex; gap:8px; flex-wrap:wrap; }
+  .gemSlot { display:flex; align-items:center; gap:7px; padding:7px 10px; border:3px solid #3a2b23; background:#fff6df; font-family:"VT323",monospace; font-size:16px; color:#3a2b23; }
+  .gemSlot i { width:11px; height:11px; transform:rotate(45deg); flex:none; border:2px solid #3a2b23; }
+  .gemSlot.empty { opacity:.55; border-style:dashed; }
+  .gemSlot.empty i { background:transparent; }
+  button.gemSlot { cursor:pointer; }
+  button.gemSlot:active { transform:translate(2px,2px); }
+  /* rack socket pips: tiny diamonds under each weapon card */
+  .wcard .wpips { display:flex; gap:2px; justify-content:center; margin-top:3px; min-height:6px; }
+  .wcard .wpips i { width:5px; height:5px; transform:rotate(45deg); background:transparent; border:1px solid #8a6f4d; }
+  .wcard .wpips i.on { border-color:#3a2b23; }
   #wSkillBtn {
     position:relative; width:118px; padding:8px 6px; border-radius:0; cursor:pointer; overflow:hidden;
     border:3px solid #3a2b23; background:#fff6df; color:#3a2b23;
@@ -570,6 +592,7 @@
     <div id="rackBtns">
       <button id="treeBtn" class="px-btn">SKILLS</button>
       <button id="forgeBtn" class="px-btn">SPHERE</button>
+      <button id="gemBtn" class="px-btn">GEMS</button>
     </div>
     <div id="rackTabRow"><button id="rackTab" class="px-btn"><span id="rackTabName">Sword</span><span id="rackTabChev">▲</span></button></div>
     <div id="rack"></div>
@@ -668,6 +691,16 @@
       <button id="tdBtn"></button>
     </div>
     <button class="pbtn" id="treeCloseBtn">CLOSE</button>
+  </div>
+</div>
+<div id="gemPanel" class="hidden panelWrap">
+  <div class="pauseCard px-panel" style="width:min(94vw,560px);max-height:88dvh;overflow-y:auto">
+    <div class="sheetHead"><span class="sheetTitle">SOUL GEMS</span><button class="pbtn" id="gemSheetClose">CLOSE</button></div>
+    <h2>SOUL GEMS <span id="gemBagCount" style="font-size:12px;color:#97754a"></span></h2>
+    <div id="gemSlots"></div>
+    <div id="gemBagList"></div>
+    <div id="gemOther"></div>
+    <button class="pbtn" id="gemCloseBtn">CLOSE</button>
   </div>
 </div>
 
@@ -924,6 +957,7 @@ const me = {
   mp:100, maxMp:100, wSkillCdUntil:0,   // MP is LOCAL only too — never networked, never persisted (loads full, like HP)
   banked:0, items:{ potion:0, bomb:0, shield:0 }, purse:false, owned:new Set([0,6]),
   gems: freshGems(), wxp:{}, gemRushUntil:0,   // mining state: gem pouch + per-weapon {lv,xp} (persisted)
+  gemBag: [], sockets: {},   // SOUL GEMS: every gem owned + per-weapon socketed gem ids (persisted)
   stabT0:0, stabAng:0,
   ptrSpeedPx:0,   // latest pointer speed (px/s, max of recent events, decayed per frame) — an idle blade must not cut
   lastHitAt:new Map(), spinUntil:0, spinCdUntil:0, trail:[],
@@ -1502,7 +1536,7 @@ function myReach(){
 }
 function myCd(){
   const wCd = myWeapon().cd * (wHas(0,'w02') ? .90 : 1);   // Dagger tree: Rapid Hands
-  return Math.max(50, wCd * (1 + S.cd)) * (performance.now()<me.frenzyUntil ? .55 : 1);
+  return Math.max(50, wCd * Math.max(.5, 1 + S.cd)) * (performance.now()<me.frenzyUntil ? .55 : 1);   // cooldown multiplier floored at .5x (gem haste + Sphere Quick Hands can never push it lower); 50ms absolute floor stays
 }
 
 // The blade only cuts while it is being WIELDED: spinning, mid-swing-arc
@@ -1665,6 +1699,14 @@ function onKillFx(f){
     me.coins += cg; me.kills++;
     me.mp = Math.min(me.maxMp, me.mp + 2);   // +2 MP per kill (own kills only)
     gainWxp(me.weapon, 10);   // +10 XP to the EQUIPPED weapon (all weapons level this way)
+    /* SOUL GEM drops — rolled HERE, the single place local kill rewards
+       are granted (remote kills and host/client overlap can't double-fire:
+       this block runs once, for my kills only) */
+    if (f.kind==='boss'){ grantGem(2, f.x, f.y); grantGem(2, f.x, f.y); grantGem(2, f.x, f.y); }   // 3 gems, floor Rare
+    else if (f.kind==='king') grantGem(1, f.x, f.y);          // 1 gem, floor Fine
+    else if (f.kind==='metal') grantGem(2, f.x, f.y);         // 1 gem, floor Rare
+    else if (f.elite){ if (Math.random() < .30) grantGem(0, f.x, f.y); }
+    else if (Math.random() < .05) grantGem(0, f.x, f.y);
     gainXp(f.xp); sfx.coin();
     addFloat(f.x, f.y-.04, '+'+cg+' coins', '#ffd94d');
     if (f.kind==='king'){ bubble('KING SLAYER!', me.x, me.y); }
@@ -1723,7 +1765,7 @@ function damagePlayer(amount, now){
      town at all, but the check stands on its own regardless. */
   if (!$('#bankPanel').classList.contains('hidden') || !$('#shopPanel').classList.contains('hidden') ||
       !$('#hospitalPanel').classList.contains('hidden') || !$('#forge').classList.contains('hidden') ||
-      !$('#treePanel').classList.contains('hidden')) return;
+      !$('#treePanel').classList.contains('hidden') || !$('#gemPanel').classList.contains('hidden')) return;
   if (dist2(me.x, me.y, WORLD/2, WORLD/2) < TOWN_R*TOWN_R) return;
   if (now < me.shieldUntil) return;        // Aegis Charm blocks ALL damage
   if (now <= me.invulnUntil) return;
@@ -2111,12 +2153,14 @@ addEventListener('touchmove', e=>{ e.preventDefault(); }, {passive:false});
 addEventListener('keydown', e=>{
   if (!started) return;
   if (e.key==='Escape' && !$('#treePanel').classList.contains('hidden')){ toggleTree(false); return; }
+  if (e.key==='Escape' && !$('#gemPanel').classList.contains('hidden')){ toggleGems(false); return; }
   if (e.key==='Escape' && !$('#hospitalPanel').classList.contains('hidden')){ $('#hospitalPanel').classList.add('hidden'); return; }
   if (e.key==='Escape' || e.key==='p' || e.key==='P'){ togglePause(); return; }
   const n = parseInt(e.key);
   if (n>=1 && n<=WEAPONS.length) equip(n-1);
   if (e.key===' ') { e.preventDefault(); trySpin(); }
   if (e.key==='f'||e.key==='F') toggleForge();
+  if (e.key==='g'||e.key==='G') toggleGems();
   const lk = e.key.toLowerCase();
   if (lk==='q') castActive('wave');
   if (lk==='e') castActive('meteor');
@@ -2247,7 +2291,15 @@ function buildRack(){
       const wp = wxpOf(i), need = wp.lv < WLV_MAX ? xpNeed(wp.lv) : 0;
       const pct = wp.lv >= WLV_MAX ? 100 : clamp(wp.xp/need*100, 0, 100);
       const ready = isGate(wp.lv) && wp.xp >= need;   // gate bar full: pulses (see .wxpbar.ready) until the Forge breakthrough
-      extra = `<div class="key">${i+1}</div><div class="wlv">Lv ${wp.lv}${ready?'!':''}</div><div class="wxpbar${ready?' ready':''}"><div style="width:${pct}%"></div></div>`;
+      // soul-gem socket pips: filled (rarity colour) / total slots, tiny diamonds
+      const sTot = slotsFor(i), sIds = me.sockets[i] || [];
+      let pips = '<div class="wpips">';
+      for (let p = 0; p < sTot; p++){
+        const gem = sIds[p] ? me.gemBag.find(g => g.id === sIds[p]) : null;
+        pips += gem ? `<i class="on" style="background:${GEM_RARITY_COL[gem.rarity]}"></i>` : '<i></i>';
+      }
+      pips += '</div>';
+      extra = `<div class="key">${i+1}</div><div class="wlv">Lv ${wp.lv}${ready?'!':''}</div><div class="wxpbar${ready?' ready':''}"><div style="width:${pct}%"></div></div>${pips}`;
     }
     d.innerHTML = weaponSVG(w,locked)+`<div class="wn${w.name.length>8?' long':''}">${w.name}</div>`+extra;
     d.title = w.name+' — '+w.dmg+' dmg, '+w.desc+(locked?' (craft it at the FORGE in the shop)':'');
@@ -2268,6 +2320,60 @@ function toggleForge(){
   if (!$('#forge').classList.contains('hidden')) hintsSeen.sphere = true;
   buildSphere(); refreshHUD(); updateHint();
 }
+/* ---- SOUL GEM panel: equipped weapon's slots, the loose-gem bag, and
+   other weapons' socketed gems (unsocketing from anywhere is allowed) ---- */
+function toggleGems(force){
+  const p = $('#gemPanel');
+  const show = force !== undefined ? force : p.classList.contains('hidden');
+  p.classList.toggle('hidden', !show);
+  if (show) buildGemPanel();
+}
+function socketGem(gid){
+  const wi = me.weapon, sock = me.sockets[wi] || (me.sockets[wi] = []);
+  if (sock.length >= slotsFor(wi) || sock.includes(gid)) return;
+  sock.push(gid);
+  afterGemChange();
+}
+function unsocketGem(gid){
+  for (const k of Object.keys(me.sockets)) me.sockets[k] = me.sockets[k].filter(id => id !== gid);
+  afterGemChange();
+}
+function afterGemChange(){ recalc(); refreshHUD(); buildRack(); saveGame(); buildGemPanel(); }
+function buildGemPanel(){
+  $('#gemBagCount').textContent = '(' + me.gemBag.length + ' / 99)';
+  const wi = me.weapon, sock = me.sockets[wi] || [], total = slotsFor(wi);
+  let sh = `<div class="gemEquipHead">${WEAPONS[wi].name.toUpperCase()} — SOCKETS ${sock.length}/${total}</div><div class="gemSlotsRow">`;
+  for (let i = 0; i < total; i++){
+    const gem = sock[i] ? me.gemBag.find(g => g.id === sock[i]) : null;
+    sh += gem
+      ? `<button class="gemSlot filled" data-unsocket="${gem.id}" title="Click to unsocket"><i style="background:${GEM_RARITY_COL[gem.rarity]}"></i><span>${gemLabel(gem)}</span></button>`
+      : `<div class="gemSlot empty"><i></i><span>EMPTY SLOT</span></div>`;
+  }
+  $('#gemSlots').innerHTML = sh + '</div>';
+  const socketedIds = new Set(Object.values(me.sockets).flat());
+  const free = me.gemBag.filter(g => !socketedIds.has(g.id));
+  let bh = '<div class="gemBagHead">GEM BAG — loose gems</div>';
+  if (!free.length) bh += '<div class="own">No loose gems. Slimes drop soul gems — elites, Kings, metals and the Emperor drop them best.</div>';
+  for (const gem of free){
+    bh += `<div class="shopRow"><div class="info"><b><i class="gemDot" style="background:${GEM_RARITY_COL[gem.rarity]}"></i>${gemLabel(gem)}</b><span>${GEM_RARITY_NAME[gem.rarity]}</span></div><button data-socket="${gem.id}" ${sock.length >= total ? 'disabled' : ''}>SOCKET</button></div>`;
+  }
+  $('#gemBagList').innerHTML = bh;
+  let oh = '';
+  WEAPONS.forEach((w2, i2) => {
+    if (i2 === wi) return;
+    for (const gid of (me.sockets[i2] || [])){
+      const gem = me.gemBag.find(g => g.id === gid); if (!gem) continue;
+      oh += `<div class="shopRow"><div class="info"><b><i class="gemDot" style="background:${GEM_RARITY_COL[gem.rarity]}"></i>${gemLabel(gem)}</b><span>In ${w2.name}</span></div><button data-unsocket="${gid}">UNSOCKET</button></div>`;
+    }
+  });
+  $('#gemOther').innerHTML = oh ? '<div class="gemBagHead">SOCKETED ELSEWHERE</div>' + oh : '';
+  $('#gemPanel').querySelectorAll('[data-socket]').forEach(b => b.onclick = () => socketGem(b.dataset.socket));
+  $('#gemPanel').querySelectorAll('[data-unsocket]').forEach(b => b.onclick = () => unsocketGem(b.dataset.unsocket));
+}
+$('#gemBtn').onclick = () => toggleGems();
+$('#gemCloseBtn').onclick = () => toggleGems(false);
+$('#gemSheetClose').onclick = () => toggleGems(false);
+$('#gemPanel').addEventListener('click', e => { if (e.target.id === 'gemPanel') toggleGems(false); });
 $('#forgeBtn').onclick = toggleForge;
 $('#rackTab').onclick = toggleRack;
 if (window.ResizeObserver) new ResizeObserver(()=>syncDockH()).observe($('#rackDock'));
@@ -2276,6 +2382,47 @@ addEventListener('resize', ()=>{ syncRackUI(); });
 /* ============================================================ SPHERE GRID (FFX-style)
    Three branches from a centre node. Walk a path: a node unlocks when the
    node before it on its branch is yours. Stats / Passives / Active skills. */
+/* ============================================================ SOUL GEMS
+   Monsters drop soul gems; gems socket into weapons for stats. A gem =
+   { id, stat, rarity } — ONE stat per gem. Only the EQUIPPED weapon's
+   socketed gems are active (folded into S by recalc). ---- */
+const GEM_RARITY_COL  = ['#e8e4da', '#57d93d', '#5eb2ff', '#b388ff', '#ffb52e'];
+const GEM_RARITY_NAME = ['COMMON', 'FINE', 'RARE', 'EPIC', 'LEGENDARY'];
+const GEM_STATS = {
+  crit:     { name:'CRIT',     vals:[2, 4, 7, 11, 16],    fmt:v => '+'+v+'%' },
+  dmg:      { name:'DMG',      vals:[1, 2, 4, 6, 9],      fmt:v => '+'+v },
+  reach:    { name:'REACH',    vals:[3, 5, 8, 12, 18],    fmt:v => '+'+v+'%' },
+  haste:    { name:'HASTE',    vals:[3, 5, 8, 11, 15],    fmt:v => '-'+v+'% CD' },
+  greed:    { name:'GREED',    vals:[5, 9, 14, 20, 28],   fmt:v => '+'+v+'%' },
+  wisdom:   { name:'WISDOM',   vals:[5, 9, 14, 20, 28],   fmt:v => '+'+v+'%' },
+  vitality: { name:'VITALITY', vals:[10, 20, 35, 55, 80], fmt:v => '+'+v+' HP' },
+  mending:  { name:'MENDING',  vals:[.3, .6, 1, 1.6, 2.4], fmt:v => '+'+v.toFixed(1)+' HP/s' },
+};
+function gemLabel(gem){ const st = GEM_STATS[gem.stat]; return st ? st.name + ' ' + st.fmt(st.vals[gem.rarity]) : 'GEM'; }
+function rollGemRarity(floor){
+  const weights = [55, 27, 12, 5, 1];   // Common/Fine/Rare/Epic/Legendary
+  let tot = 0; for (let i = floor; i < 5; i++) tot += weights[i];
+  let r = Math.random() * tot;
+  for (let i = floor; i < 5; i++){ r -= weights[i]; if (r <= 0) return i; }
+  return 4;
+}
+let gemSeq = 1;
+function grantGem(floor, x, y){
+  if (me.gemBag.length >= 99){ me.coins += 15; addFloat(x, y - .16, '+15c (BAG FULL)', '#ffd94d'); return; }   // bag cap 99: the drop converts to coins
+  const stats = Object.keys(GEM_STATS);
+  const gem = { id:'g' + Date.now().toString(36) + (gemSeq++), stat:stats[Math.floor(Math.random()*stats.length)], rarity:rollGemRarity(floor) };
+  me.gemBag.push(gem);
+  addFloat(x, y - .16, '+ SOUL GEM', GEM_RARITY_COL[gem.rarity], { big:true });
+  for (let i=0;i<10;i++) particles.push({ x, y, vx:rand(-.09,.09), vy:rand(-.16,-.02), life:1, color:GEM_RARITY_COL[gem.rarity], r:rand(2,4) });
+  capParticles();
+  sfx.gem();
+  saveGame();
+}
+/* sockets per weapon: 1 base + Lv8 + Lv16 (player) + weapon Lv4 + the
+   ARCANE capstone node a9 'Soul Socket' — max 5 */
+function slotsFor(wi){
+  return 1 + (me.level >= 8 ? 1 : 0) + (me.level >= 16 ? 1 : 0) + (wxpOf(wi).lv >= 4 ? 1 : 0) + (unlocked.has('a9') ? 1 : 0);
+}
 const BRANCHES = [
   { name:'POWER',   color:'#ff6b5e', ang:-90 },
   { name:'FINESSE', color:'#57d93d', ang:180 },
@@ -2307,6 +2454,7 @@ const NODES = [
   {id:'a6', b:2, t:'active',  icon:'FRZ', name:'FRENZY',        desc:'ACTIVE SKILL (key R): 5 seconds of +50% damage and much faster hits.', cost:2, fx:{active:'frenzy'}},
   {id:'a7', b:2, t:'stat',    icon:'XP',  name:'Scholar II',    desc:'+15% XP from every kill.', cost:1, fx:{xp:.15}},
   {id:'a8', b:2, t:'passive', icon:'BANE',name:'Regicide',      desc:'PASSIVE: +30% damage to Slime Kings.', cost:2, fx:{kingBane:.3}},
+  {id:'a9', b:2, t:'passive', icon:'SKT', name:'Soul Socket',   desc:'PASSIVE: +1 gem socket on every weapon.', cost:2, fx:{socket:1}},
   {id:'g1', b:3, t:'stat',    icon:'GLD', name:'Coin Charm',    desc:'+25% coins from every kill.', cost:1, fx:{coin:.25}},
   {id:'g2', b:3, t:'stat',    icon:'XP',  name:'Treasure Sense',desc:'+25% XP from every kill.', cost:1, fx:{xp:.25}},
   {id:'g3', b:3, t:'passive', icon:'BNT', name:'Bounty Hunter', desc:'PASSIVE: +50% bounty rewards.', cost:2, fx:{bounty:.5}},
@@ -2319,20 +2467,37 @@ const NODES = [
 const nodePos = n => {
   const idx = NODES.filter(m=>m.b===n.b).indexOf(n);
   const a = BRANCHES[n.b].ang * Math.PI/180;
-  const dist = 8.6 + idx*5.2;                                  // % of board from centre (8 nodes per branch)
-  const perp = (idx===0 ? 0 : (idx%2 ? 1 : -1) * (3 + idx*2.5)) * Math.PI/180;   // growing zig-zag keeps nodes apart
+  const dist = 8.6 + Math.min(idx, 7)*5.2;                     // % of board from centre; the capstone (idx 8) stays at the tip radius (idx 7 = 45.0) — idx*5.2 would put it at 50.2, off the board
+  const perp = (idx===0 ? 0 : idx===8 ? 32 : (idx%2 ? 1 : -1) * (3 + idx*2.5)) * Math.PI/180;   // growing zig-zag keeps nodes apart; the capstone fans +32° beside the branch tip (same side as idx 7's +20.5°; chord ~9.0% > node width 8.6%, outer edge 49.3% < 50% board)
   const x = 50 + Math.cos(a+perp)*dist, y = 50 + Math.sin(a+perp)*dist;
   return { x, y, idx };
 };
 const unlocked = new Set();
 let S = null;
 function recalc(){
-  S = { dmg:0, reach:0, cd:0, crit:0, coin:0, xp:0, splash:0, kingBane:0, double:0, arcWide:0, spinCd:0, bounty:0, comboWin:0, exec:0, maxHp:0, regen:0, actives:new Set() };
+  S = { dmg:0, reach:0, cd:0, crit:0, coin:0, xp:0, splash:0, kingBane:0, double:0, arcWide:0, spinCd:0, bounty:0, comboWin:0, exec:0, maxHp:0, regen:0, socket:0, actives:new Set() };
   for (const n of NODES) if (unlocked.has(n.id)){
     const f = n.fx;
-    for (const k of ['dmg','reach','cd','crit','coin','xp','kingBane','double','arcWide','spinCd','bounty','comboWin','exec','maxHp','regen']) if (f[k]) S[k]+=f[k];
+    for (const k of ['dmg','reach','cd','crit','coin','xp','kingBane','double','arcWide','spinCd','bounty','comboWin','exec','maxHp','regen','socket']) if (f[k]) S[k]+=f[k];
     if (f.splash) S.splash = Math.max(S.splash, f.splash);
     if (f.active) S.actives.add(f.active);
+  }
+  /* SOUL GEMS: only the EQUIPPED weapon's socketed gems fold into S —
+     crit->crit (%), dmg->dmg (flat), reach->reach (%), haste->cd (—, its
+     multiplier is floored at .5x where cooldowns are applied), greed->
+     coin (%), wisdom->xp (%), vitality->maxHp (flat), mending->regen. */
+  for (const gid of (me.sockets[me.weapon] || [])){
+    const gem = me.gemBag.find(g => g.id === gid);
+    if (!gem || !GEM_STATS[gem.stat]) continue;
+    const v = GEM_STATS[gem.stat].vals[gem.rarity];
+    if (gem.stat==='crit') S.crit += v/100;
+    else if (gem.stat==='dmg') S.dmg += v;
+    else if (gem.stat==='reach') S.reach += v/100;
+    else if (gem.stat==='haste') S.cd -= v/100;
+    else if (gem.stat==='greed') S.coin += v/100;
+    else if (gem.stat==='wisdom') S.xp += v/100;
+    else if (gem.stat==='vitality') S.maxHp += v;
+    else if (gem.stat==='mending') S.regen += v;
   }
   /* MAX HP derivation: 100 base + 10 per level past 1 + S.maxHp (Sphere
      vitality — no nodes grant maxHp/regen YET; the hooks are wired so
@@ -2507,9 +2672,9 @@ function setMuted(v){
 }
 function resetRun(){
   me.level=1; me.xp=0; me.coins=0; me.kills=0; me.sp=0; me.weapon=0; me.owned=new Set([0,6]);
-  me.gems=freshGems(); me.wxp={}; me.gemRushUntil=0;
+  me.gems=freshGems(); me.wxp={}; me.gemRushUntil=0; me.gemBag=[]; me.sockets={};
   me.hp=me.maxHp; me.mp=me.maxMp; me.wSkillCdUntil=0; me.banked=0; me.items={ potion:0, bomb:0, shield:0 }; me.purse=false; me.shieldUntil=0; me.spawnAt=null;
-  $('#bankPanel').classList.add('hidden'); $('#shopPanel').classList.add('hidden'); $('#hospitalPanel').classList.add('hidden'); $('#treePanel').classList.add('hidden');
+  $('#bankPanel').classList.add('hidden'); $('#shopPanel').classList.add('hidden'); $('#hospitalPanel').classList.add('hidden'); $('#treePanel').classList.add('hidden'); $('#gemPanel').classList.add('hidden');
   unlocked.clear(); recalc();   // one shared set: Sphere nodes AND weapon-tree nodes both reset
   combo=0; comboUntil=0; updateComboBadge(false);
   if (scores[me.id]) scores[me.id].kills = 0;
@@ -2530,6 +2695,7 @@ function saveGame(){
       unlocked:[...unlocked], weapon:me.weapon, name:me.name, muted, hintsSeen,
       banked:me.banked, items:me.items, purse:me.purse, owned:[...me.owned],
       gems:me.gems, wxp:me.wxp, rackCollapsed, spawnAt: me.spawnAt || null,
+      gemBag: me.gemBag, sockets: me.sockets,
       bounty: bounty ? { type:bounty.type, key:bounty.key, label:bounty.label, need:bounty.need, have:bounty.have, reward:bounty.reward } : null
     }));
   }catch(e){}
@@ -2542,6 +2708,15 @@ function loadGame(){
   me.xp = Math.max(0, d.xp|0); me.coins = Math.max(0, d.coins|0);
   me.kills = Math.max(0, d.kills|0); me.sp = Math.max(0, d.sp|0);
   if (Array.isArray(d.unlocked)) for (const id of d.unlocked) if (NODES.some(n=>n.id===id) || WTREE_IDS.has(id)) unlocked.add(id);
+  // SOUL GEMS restore BEFORE recalc, so socketed vitality counts toward
+  // the derived maxHp. Validated: known stat, rarity 0-4, string id;
+  // socket lists keep only ids that reference a real bag gem. Old saves
+  // (no gemBag/sockets fields) migrate to empty.
+  me.gemBag = Array.isArray(d.gemBag) ? d.gemBag.filter(g => g && typeof g.id === 'string' && GEM_STATS[g.stat] && (g.rarity|0) >= 0 && (g.rarity|0) <= 4).map(g => ({ id:g.id, stat:g.stat, rarity:g.rarity|0 })) : [];
+  me.sockets = {};
+  if (d.sockets && typeof d.sockets === 'object') for (const [wi, ids] of Object.entries(d.sockets)){
+    if (WEAPONS[wi|0] && Array.isArray(ids)) me.sockets[wi|0] = ids.filter(id => me.gemBag.some(g => g.id === id));
+  }
   recalc();   // derives me.maxHp from the loaded level (Lv12 -> 210)
   me.hp = me.maxHp;   // HP is not persisted — a loaded character starts full at the scaled max
   if (Array.isArray(d.owned)) me.owned = new Set(d.owned.filter(i=>WEAPONS[i|0]).map(i=>i|0));
