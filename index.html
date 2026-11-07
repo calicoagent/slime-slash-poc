@@ -1140,7 +1140,6 @@ let bounty=null;                           // current bounty objective (session 
 let paused=false;
 let myTrail=[];                            // slash trail: full blade segments {bx, by (grip, world), tx, ty (tip, world), t} — rendered as swept quads
 let hintsSeen = { slash:false, spin:false, sphere:false };
-const seenKings = new Set();               // king ids already announced by the banner
 let startedAt = 0;                         // when PLAY was pressed (banner suppression window)
 const SAVE_KEY = 'slimeslash-save-v1';
 
@@ -1410,7 +1409,6 @@ function hostTick(now,dt){
       color:'#cfd8dc', seed:seedForId(mid), squish:0, flash:0, mul:mzone.mul, elite:false,
       guaranteed:true, bornAt:now });   // guaranteed: edge arrow + 1500ms spawn-in freeze key off these (host-local flavour; the world payload doesn't carry them)
     lastMetalAt = now;   // a metal entered the world
-    notify('A WILD METAL SLIME APPEARED!', { type:'king' });
   }
   /* ---- SLIME EMPEROR: timed spawn + bullet-hell volleys (host decides,
      every client sims the bullets locally from the 'boss' events) ---- */
@@ -1987,7 +1985,6 @@ function onKillFx(f){
   sfx.pop();
   if (f.elite) addFloat(f.x, f.y-.09, 'ELITE DOWN!', '#ffd94d', {big:true});
   if (f.kind==='metal') addFloat(f.x, f.y-.09, 'METAL SLIME DOWN!', '#eef3f7', {big:true});
-  if (f.kind==='king') notify('THE SLIME KING HAS FALLEN!', { type:'king' });
   if (f.kind==='boss') notify('THE EMPEROR HAS FALLEN!', { type:'king' });
   if (f.by===me.id){
     const now = performance.now();
@@ -3032,10 +3029,8 @@ function scanKings(){
   if (!started) return;
   const fresh = performance.now() - startedAt >= 3000;   // never banner in the first 3s after PLAY
   for (const s of slimes.values()){
-    if (s.kind==='king' && !seenKings.has(s.id) && fresh){ seenKings.add(s.id); notify('THE SLIME KING HAS APPEARED!', { type:'king' }); }
     if (s.kind==='boss' && !seenBosses.has(s.id) && fresh){ seenBosses.add(s.id); notify('THE SLIME EMPEROR HAS AWAKENED!', { type:'king' }); }
   }
-  for (const id of [...seenKings]) if (!slimes.has(id)) seenKings.delete(id);
   for (const id of [...seenBosses]) if (!slimes.has(id)) seenBosses.delete(id);
 }
 /* zone toast: fires when the PLAYER crosses into a different ring */
