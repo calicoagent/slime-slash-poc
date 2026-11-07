@@ -621,8 +621,13 @@
     #kills { font-size:11px !important; }
     #xpTrack, #hpTrack, #mpTrack { width:100%; }
     #xpTrack { height:8px; }
-    #hpTrack, #mpTrack { height:14px; }
-    #hpText, #mpText { font-size:13px; }
+    #hpTrack, #mpTrack { position:relative; overflow:hidden; height:14px; }
+    /* both overlay spans get literally ONE shared rule — identical
+       treatment, no per-bar drift possible */
+    #hpText, #mpText {
+      position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+      line-height:1; font-size:12px;
+    }
     /* coin badge + gem chips: small */
     #coinBadge { padding:4px 8px; font-size:13px; }
     #gemBadge { top:128px; left:8px; padding:3px 6px; font-size:11px; gap:5px; }
@@ -652,16 +657,29 @@
     .ibtn .cnt { min-width:20px; height:20px; font-size:13px; top:-6px; right:-6px; }
     /* minimap + dock stack (SKILLS / SPHERE / GEMS) shrink */
     #minimap { width:84px; height:84px; }
-    #forgeBtn, #treeBtn, #gemBtn { font-size:10px; padding:5px 9px; min-height:44px; }
+    /* fixed 108px for all three dock buttons — 'SPHERE (106)' can no
+       longer stretch its button wider than SKILLS / GEMS */
+    #forgeBtn, #treeBtn, #gemBtn {
+      width:108px; box-sizing:border-box; font-size:9px; letter-spacing:0; padding:5px 4px;
+      min-height:44px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
     /* weapon-skill hint box ('SKILL LOCKED — V · SKILLS tree (K)') */
-    #wSkillBtn { width:auto; max-width:42vw; padding:6px 8px; font-size:10px; }
-    #wSkillBtn .k { font-size:11px; }
-    /* peer badge ('Connecting to world...' / '2 players') + pause */
-    #peerBadge { font-size:11px; padding:4px 8px; }
+    #wSkillBtn { width:auto; max-width:34vw; padding:5px 7px; font-size:9px; }
+    #wSkillBtn .k { font-size:9px; }
+    /* peer badge ('Connecting to world...' / '2 players') + pause:
+       capped at 36vw — the label ellipsises instead of stretching it */
+    #peerBadge { font-size:10px; padding:4px 8px; max-width:36vw; white-space:nowrap; overflow:hidden; }
+    #peerBadge #peers { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     #peerBadge .dot { width:9px; height:9px; }
     #pauseBtn { width:36px; height:36px; }
     /* interact prompt (OPEN INN etc.) */
     #interactPrompt { font-size:13px; padding:8px 14px; }
+    /* zone banner: a compact pill parked BELOW the top HUD cluster
+       (~200px) — it used to ride at ~102px, right over the stat panel,
+       covering the MP bar's right end (round-3 fix) */
+    #zoneBanner { top:calc(env(safe-area-inset-top) + 200px); font-size:13px; padding:6px 12px; max-width:72vw; }
+    #zoneBanner small { font-size:10px; }
+    body.boss-on #zoneBanner { top:calc(env(safe-area-inset-top) + 248px); }
     /* banners wrap inside the screen instead of clipping off the edges */
     #kingBanner { white-space:normal; letter-spacing:0; width:100vw; }
     #streakBanner { white-space:normal; letter-spacing:0; max-width:100vw; }
