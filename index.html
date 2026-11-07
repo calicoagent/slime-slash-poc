@@ -1010,7 +1010,7 @@ const WSKILLS = [   // per weapon index: the weapon-skill active (tap / SPACE / 
 const wHas = (wi, nid) => me.weapon===wi && unlocked.has(nid);
 // effective weapon-skill cooldown: Sphere node a4 'Swift Skills' (fx
 // skillCd — formerly the Spin Slash recharge stat) multiplies it
-const wSkillCd = sk => Math.round(sk.cd * Math.max(.5, 1 + S.skillCd));
+const wSkillCd = sk => Math.round(sk.cd * Math.max(.5, 1 + ses.stats.skillCd));
 const weaponSVG = (w,locked)=> locked
  ? `<svg viewBox="0 0 40 40"><path d="M13 18v-3a7 7 0 0114 0v3h3v14H10V18h3zm7 4a3.2 3.2 0 00-2 5.4V30h4v-2.6a3.2 3.2 0 00-2-5.4z" fill="#8d6e63"/></svg>`
  : `<img src="assets/weapons/${w.id}.png" alt="${w.name}" style="width:34px;height:34px;object-fit:contain;transform:rotate(-38deg)">`;
@@ -1038,9 +1038,8 @@ addEventListener('resize',resize); resize();
 /* The world is WORLD x WORLD units — much bigger than one screen.
    1 unit ≈ one screenful. The camera (cam = top-left, world coords) follows your sword. */
 const WORLD = 6.0;
-const cam = { x: WORLD/2 - .5, y: WORLD/2 - .5 };
 const UNIT = () => Math.min(W,H);                   // px per world unit
-const NX = x => (x - cam.x) * UNIT(), NY = y => (y - cam.y) * UNIT();
+const NX = x => (x - ses.cam.x) * UNIT(), NY = y => (y - ses.cam.y) * UNIT();
 const SCALE = () => UNIT();
 
 /* ============================================================ STATE STORE
@@ -1091,14 +1090,18 @@ const freshWorld = () => ({
   worldTimer: null,          // 220ms heartbeat interval
   worldDirty: false,         // a hit/kill/mine changed the world: flush ONE payload at the end of the frame
 });
-const store = createStore(() => ({
-  world: freshWorld(),
-}));
-const world = store.getState().world;
-
-const me = {
+/* session  LOCAL + EPHEMERAL. This tab's player body (position, blade pose,
+            HP/MP, cooldown stamps), combo, input/pointer state, camera,
+            menus, local FX lists, frame clocks, and the derived stat
+            cache (stats, re-derived from progress by recalc). Never
+            persisted, never synced (the pos payload still carries
+            exactly x/y/a/e/w/n/c/s/l). Stable object like world: the
+            frame loop writes it in place. `ses` is the slice, `me` is
+            ses.player (the local player's live body). */
+const freshSession = () => ({
+  player: {
   id: selfId, name:'Knight', color:`hsl(${hashHue(selfId)} 80% 55%)`,
-  x:.5, y:.6, px:.5, py:.6, angle:-Math.PI/4, speed:0,
+  x: WORLD/2, y: WORLD/2 + .1, px:.5, py:.6, angle:-Math.PI/4, speed:0,   // spawn at world centre (loadGame moves it to a saved respawn)
   weapon:1, coins:0, xp:0, level:1, kills:0,
   sp:0, spBuys:0, actCd:{ wave:0, meteor:0, frenzy:0, goldrush:0 }, frenzyUntil:0, goldRushUntil:0,
   // survival + economy (HP is LOCAL only — never networked)
@@ -1111,7 +1114,54 @@ const me = {
   ptrSpeedPx:0,   // latest pointer speed (px/s, max of recent events, decayed per frame) — an idle blade must not cut
   lastHitAt:new Map(), whirlUntil:0, trail:[],   // whirlUntil: WHIRLWIND skill render state only — the tap Spin Slash is gone
   swingT0:0, swingDir:1,
-};
+  },
+  stats: null,               // derived stat totals (Sphere nodes + equipped weapon's soul gems) — rebuilt by recalc(), never a source of truth
+  // run lifecycle
+  started: false,            // PLAY pressed: this tab is in the world
+  startedAt: 0,              // when PLAY was pressed (banner suppression window)
+  paused: false,
+  // camera: top-left of the view, world coords — follows the sword
+  cam: { x: WORLD/2 - .5, y: WORLD/2 - .5 },
+  // combat feel
+  combo: 0, comboUntil: 0,   // kill-chain combo (window stretched by Combo Charm)
+  dmgFlashAt: 0,             // last time the player took damage (flat red flash decay stamp)
+  myTrail: [],               // slash trail: full blade segments {bx, by (grip, world), tx, ty (tip, world), t} — rendered as swept quads
+  hitPruneAt: 0,             // last me.lastHitAt prune (was localHitCheck._prune)
+  lastTingAt: 0,             // metal 'ting' sound throttle
+  lastPickToastAt: 0,        // 'NEED THE PICKAXE' toast throttle
+  // local FX + player projectiles (client-local, never networked)
+  particles: [], floats: [], popRings: [],
+  dmgFloats: [], dmgCue: 0,  // floating damage numbers; dmgCue = rotating stack counter so simultaneous numbers don't merge
+  waves: [], meteors: [], shots: [],   // shots: thrown-spear projectiles (pierce)
+  // where the player is
+  myZone: -1,                // current zone ring (banner fires on change; -1 = unset)
+  nearBuilding: null,        // 'bank' | 'shop' | 'hospital' | null — drives the interact prompt
+  seenBosses: new Set(),     // boss ids already announced by the banner
+  // input / pointer
+  pointerDown: false, lastClient: null, lastMoveT: 0,
+  uiPointer: false,          // a press that started on UI (not the canvas) must never move the sword
+  downInfo: null,            // canvas pointerdown record for the tap-vs-drag skill gate
+  // menus + panels
+  menuTab: 'inventory',
+  selNode: null,             // selected Sphere node
+  sphereCentered: false,     // the scrollable board auto-centres on the branch disc once per menu open (reset in closeMenu)
+  sphereZoom: 1,
+  resetArmed: false, menuResetArmed: false, titleResetArmed: false,   // two-tap RESET SAVE confirmations
+  bubbleTimer: null,
+  gemSeq: 1,                 // soul-gem id counter (ids also carry a timestamp)
+  // frame clocks
+  lastT: performance.now(),  // previous frame timestamp
+  posSendAcc: 0,
+  minimapAt: 0, slowTickAt: 0,   // minimap redraw (50ms) / peers+zone (500ms) throttles (were frame._mm / frame._b)
+  autoSaveAt: 0,             // HUD-cadence save throttle, 2.5s (was refreshHUD._sv)
+});
+const store = createStore(() => ({
+  world: freshWorld(),
+  session: freshSession(),
+}));
+const world = store.getState().world;
+const ses = store.getState().session;
+const me = ses.player;
 // The sword sweeps an ARC when you flick: it cocks back, then whips past
 // your heading — direction follows the swipe (right swipe = clockwise arc…).
 function swordAngleAt(now){
@@ -1136,10 +1186,6 @@ function bladeAt(now){
   }
   return { ang: swordAngleAt(now), ext: 0 };
 }
-me.x = WORLD/2; me.y = WORLD/2 + .1;   // start at world centre
-let particles = [], floats = [], popRings = [];
-let started=false;
-let lastPickToastAt = 0;        // 'NEED THE PICKAXE' toast throttle
 /* ---- survival pass state ---- */
 const CONTACT_DMG = { baby:4, dart:4, mid:6, gold:2, metal:5, splitter:7, big:9, tank:13, king:16, boss:26 };
 const BANK_POS = { x: WORLD/2 - .67, y: WORLD/2 - .54 };
@@ -1147,17 +1193,10 @@ const SHOP_POS = { x: WORLD/2 + .67, y: WORLD/2 - .54 };
 const HOSPITAL_POS = { x: WORLD/2, y: WORLD/2 + .70 };
 const TOWN_R = 1.30;   // safe-zone radius around the town centre — 1.30 ≈ .75*sqrt(3), so the plaza AREA is 3x the old disc; covers all three buildings + the plaza; NO enemies inside, NO damage inside
 const KING_BAR_RANGE = 1.0;   // a Slime King's floating HP bar renders only when the LOCAL player is within this many world units (Handler)
-let dmgFlashAt = 0;             // last time the player took damage (flat red flash decay stamp)
-let nearBuilding = null;        // 'bank' | 'shop' | 'hospital' | null — drives the interact prompt
-const seenBosses = new Set();   // boss ids already announced by the banner
 
 /* ---- polish pass state ---- */
-let combo=0, comboUntil=0;                 // kill-chain combo (2.5s window)
 let bounty=null;                           // current bounty objective (session scope)
-let paused=false;
-let myTrail=[];                            // slash trail: full blade segments {bx, by (grip, world), tx, ty (tip, world), t} — rendered as swept quads
 let hintsSeen = { slash:false, skill:false, sphere:false };
-let startedAt = 0;                         // when PLAY was pressed (banner suppression window)
 const SAVE_KEY = 'slimeslash-save-v1';
 
 /* ============================================================ slimes */
@@ -1193,7 +1232,6 @@ function zoneOf(x,y){
   const d = Math.hypot(x - WORLD/2, y - WORLD/2);
   return d < 1.1 ? 0 : d < 2.1 ? 1 : 2;
 }
-let myZone = -1;   // player's current zone (banner fires on change; -1 = unset)
 function pickKind(zone=0){
   let tot = 0;
   const ws = SLIME_KINDS.map(k=>{
@@ -1646,14 +1684,14 @@ function applyWorld(p){
     }
     if (!world.isHost) for (const [id, n] of [...world.nodes.entries()]) if (!seenN.has(id)){
       // a node that vanishes mid-life CRUMBLES (it was mined out)
-      if (n.left > 0){ for (let i=0;i<14;i++) particles.push({ x:n.x+rand(-.04,.04), y:n.y+rand(-.04,.04), vx:rand(-.1,.1), vy:rand(-.14,.02), life:1, color:'#9aa0a3', r:rand(2,5) }); capParticles(); }
+      if (n.left > 0){ for (let i=0;i<14;i++) ses.particles.push({ x:n.x+rand(-.04,.04), y:n.y+rand(-.04,.04), vx:rand(-.1,.1), vy:rand(-.14,.02), life:1, color:'#9aa0a3', r:rand(2,5) }); capParticles(); }
       world.nodes.delete(id);
     }
   }
 }
 
 /* ============================================================ fx */
-function capParticles(){ if (particles.length>420) particles.splice(0, particles.length-420); }
+function capParticles(){ if (ses.particles.length>420) ses.particles.splice(0, ses.particles.length-420); }
 /* Mining chips: chunky stone shards, light greys — see the unit audit
    inside mineChips for why the previous generations were invisible. */
 function mineChips(x, y, n){
@@ -1672,25 +1710,23 @@ function mineChips(x, y, n){
      multiplier (grav 5) so they ARC AND FALL at the node instead of
      rocketing off the top of the screen. Counts 12/chunk, 5/hit;
      life unchanged (~1.2s). */
-  for (let i=0;i<n;i++) particles.push({ x:x+rand(-.03,.03), y:y+rand(-.03,.03), vx:rand(-.10,.10), vy:rand(-.16,-.05), life:2.5, grav:5, color: i%2 ? '#e8ecec' : '#b9c0c2', r:rand(6,9) });
+  for (let i=0;i<n;i++) ses.particles.push({ x:x+rand(-.03,.03), y:y+rand(-.03,.03), vx:rand(-.10,.10), vy:rand(-.16,-.05), life:2.5, grav:5, color: i%2 ? '#e8ecec' : '#b9c0c2', r:rand(6,9) });
   capParticles();
 }
-function spawnHitFx(x,y,color,n=6){ for(let i=0;i<n;i++) particles.push({x,y,vx:rand(-.12,.12),vy:rand(-.16,.02),life:1,color,r:rand(2,5)}); capParticles(); }
-function spawnPopFx(x,y,color,n=22,r0=.01){ for(let i=0;i<n;i++){ const a=rand(0,Math.PI*2),v=rand(.04,.22); particles.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-.05,life:1,color,r:rand(2,7)});} capParticles(); popRings.push({x,y,r:r0,life:1,color}); }
+function spawnHitFx(x,y,color,n=6){ for(let i=0;i<n;i++) ses.particles.push({x,y,vx:rand(-.12,.12),vy:rand(-.16,.02),life:1,color,r:rand(2,5)}); capParticles(); }
+function spawnPopFx(x,y,color,n=22,r0=.01){ for(let i=0;i<n;i++){ const a=rand(0,Math.PI*2),v=rand(.04,.22); ses.particles.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-.05,life:1,color,r:rand(2,7)});} capParticles(); ses.popRings.push({x,y,r:r0,life:1,color}); }
 function addFloat(x,y,text,color,opts={}){
   const now = performance.now();
   // dedupe: an identical float already alive at (nearly) the same spot is enough
-  for (const f of floats)
+  for (const f of ses.floats)
     if (f.text===text && now-(f.t||0)<300 && dist2(f.x,f.y,x,y) < .03*.03) return;
-  floats.push({x,y,text,color,life:1,big:!!opts.big,size:opts.size||0,t:now});
-  if (floats.length>48) floats.splice(0, floats.length-48);
+  ses.floats.push({x,y,text,color,life:1,big:!!opts.big,size:opts.size||0,t:now});
+  if (ses.floats.length>48) ses.floats.splice(0, ses.floats.length-48);
 }
 /* Glyph damage numbers — ONLY damage (and crits) render through these; every
    other float (coins, gems, heals, CLINK...) stays on the text path above.
    Timings are the ISW combatFx ones; px values scale by UNIT()/1000.
    Until the atlas JSON lands, dmgFloat falls back to the old text float. */
-const dmgFloats = [];
-let dmgCue = 0;   // rotating stack counter so simultaneous numbers don't merge
 const _qOut = p => 1-(1-p)*(1-p), _qIn = p => p*p;
 const _backOut = p => { const c1=1.70158, c3=c1+1; return 1 + c3*Math.pow(p-1,3) + c1*Math.pow(p-1,2); };
 function dmgFloat(x, y, amount, crit){
@@ -1702,19 +1738,19 @@ function dmgFloat(x, y, amount, crit){
     return;
   }
   const S = UNIT()/1000;
-  dmgFloats.push({ x, y, amt:amount, crit:!!crit, t0:performance.now(),
-    jx:(Math.random()*2-1)*14*S, stack:(dmgCue++ % 3)*10*S,
+  ses.dmgFloats.push({ x, y, amt:amount, crit:!!crit, t0:performance.now(),
+    jx:(Math.random()*2-1)*14*S, stack:(ses.dmgCue++ % 3)*10*S,
     burst:(Math.random()*12)|0, brot:(Math.random()*2-1)*.5 });
-  if (dmgFloats.length > 40) dmgFloats.splice(0, dmgFloats.length-40);
+  if (ses.dmgFloats.length > 40) ses.dmgFloats.splice(0, ses.dmgFloats.length-40);
 }
 function drawDmgFloats(now){
-  if (!dmgFloats.length || !DIGITS.frames || !imgOk(DIGITS.img)) return;
+  if (!ses.dmgFloats.length || !DIGITS.frames || !imgOk(DIGITS.img)) return;
   const S = UNIT()/1000;
-  for (let i = dmgFloats.length-1; i >= 0; i--){
-    const f = dmgFloats[i];
+  for (let i = ses.dmgFloats.length-1; i >= 0; i--){
+    const f = ses.dmgFloats[i];
     const P = f.crit ? { pop:1.6, hold:420, rise:720, risePx:44 } : { pop:1.35, hold:220, rise:620, risePx:34 };
     const e = now - f.t0, riseStart = 80 + 110 + P.hold, total = riseStart + P.rise;
-    if (e >= total){ dmgFloats.splice(i,1); continue; }
+    if (e >= total){ ses.dmgFloats.splice(i,1); continue; }
     let scale, alpha = 1, yOff = 0;
     if (e < 80) scale = .4 + (P.pop - .4) * _qOut(e/80);                        // pop in (Quad easeOut)
     else if (e < 190) scale = P.pop + (1 - P.pop) * _backOut((e-80)/110);       // settle (Back easeOut)
@@ -1813,8 +1849,7 @@ function restackToasts(){
   }
   box.style.height = kids.length ? (kids[0].offsetHeight + (kids.length - 1) * TOAST_PEEK + 6) + 'px' : '0px';
 }
-let bubbleTimer=null;
-function bubble(text,x,y,ms=1600){ const b=$('#bubble'); b.textContent=text; b.style.left=NX(x)+'px'; b.style.top=NY(y)+'px'; b.classList.remove('hidden'); clearTimeout(bubbleTimer); bubbleTimer=setTimeout(()=>b.classList.add('hidden'),ms); }
+function bubble(text,x,y,ms=1600){ const b=$('#bubble'); b.textContent=text; b.style.left=NX(x)+'px'; b.style.top=NY(y)+'px'; b.classList.remove('hidden'); clearTimeout(ses.bubbleTimer); ses.bubbleTimer=setTimeout(()=>b.classList.add('hidden'),ms); }
 
 /* ============================================================ boss bullets (client-local sim)
    The host broadcasts PATTERN EVENTS on the 'boss' action; every client
@@ -1854,24 +1889,24 @@ function bossEvent(d){
 /* ============================================================ combat */
 function myWeapon(){ return WEAPONS[me.weapon]; }
 function myDamage(){
-  let base = myWeapon().dmg + S.dmg + (me.level-1);
+  let base = myWeapon().dmg + ses.stats.dmg + (me.level-1);
   if (wHas(1,'w11')) base += 3;   // Sword tree: Heavy Blade
   if (wHas(4,'w42')) base += 6;   // Greatsword tree: Heavy Blade
   if (wHas(5,'w51')) base += 8;   // Warhammer tree: Heavy Head
   if (wHas(6,'w61')) base += 3;   // Pickaxe tree: Strong Arms
   base *= 1 + .15 * (Math.min(wxpOf(me.weapon).lv, 10) - 1) + .08 * Math.max(0, wxpOf(me.weapon).lv - 10);   // weapon-level damage taper: +15%/lv through Lv10, +8%/lv after (Lv10 x2.35, Lv20 x3.15, Lv50 x5.55)
   if (wHas(me.weapon, 'w'+me.weapon+'4')) base *= 1.2;   // Sphere MASTERY node (path tier 4): +20% damage with this weapon only
-  return (combo>=15 && performance.now()<comboUntil) ? base*1.15 : base;   // ON FIRE combo bonus
+  return (ses.combo>=15 && performance.now()<ses.comboUntil) ? base*1.15 : base;   // ON FIRE combo bonus
 }
 function myReach(){
   let r = myWeapon().reach;
   if (wHas(2,'w21')) r *= 1.12;   // Katana tree: Long Blade
   if (wHas(3,'w32')) r *= 1.10;   // Spear tree: Long Haft
-  return r * (1 + S.reach);
+  return r * (1 + ses.stats.reach);
 }
 function myCd(){
   const wCd = myWeapon().cd * (wHas(0,'w02') ? .90 : 1);   // Dagger tree: Rapid Hands
-  return Math.max(50, wCd * Math.max(.5, 1 + S.cd)) * (performance.now()<me.frenzyUntil ? .55 : 1);   // cooldown multiplier floored at .5x (gem haste + Sphere Quick Hands can never push it lower); 50ms absolute floor stays
+  return Math.max(50, wCd * Math.max(.5, 1 + ses.stats.cd)) * (performance.now()<me.frenzyUntil ? .55 : 1);   // cooldown multiplier floored at .5x (gem haste + Sphere Quick Hands can never push it lower); 50ms absolute floor stays
 }
 
 // The blade only cuts while it is being WIELDED: mid-swing-arc
@@ -1889,8 +1924,8 @@ function localHitCheck(now){
      and ids are never reused, so without pruning it grows for the whole
      session. Every few seconds, once it is fat, drop entries whose
      target no longer exists (their cooldown can never matter again). */
-  if (me.lastHitAt.size > 400 && now - (localHitCheck._prune||0) > 4000){
-    localHitCheck._prune = now;
+  if (me.lastHitAt.size > 400 && now - ses.hitPruneAt > 4000){
+    ses.hitPruneAt = now;
     for (const k of me.lastHitAt.keys()){
       if (typeof k === 'string' && k.startsWith('node:')){ if (!world.nodes.has(k.slice(5))) me.lastHitAt.delete(k); }
       else if (!world.slimes.has(k)) me.lastHitAt.delete(k);
@@ -1902,7 +1937,7 @@ function localHitCheck(now){
   const blade = bladeAt(now);
   const sa = blade.ang;
   const reach = myReach() * (1 + blade.ext);
-  const thick = myWeapon().motion==='stab' ? .006 : .012 + S.arcWide;   // stab = thin line, swing = wide arc
+  const thick = myWeapon().motion==='stab' ? .006 : .012 + ses.stats.arcWide;   // stab = thin line, swing = wide arc
   const segHit = (s, ang) => {
     const bx = me.x + Math.cos(ang)*reach, by = me.y + Math.sin(ang)*reach;
     const dx = bx-me.x, dy = by-me.y, L2 = dx*dx+dy*dy||1e-6;
@@ -1925,9 +1960,9 @@ function localHitCheck(now){
       me.lastHitAt.set(s.id, now);
       let dmg = myDamage();
       if (now < me.frenzyUntil) dmg *= 1.5;
-      if (s.kind==='king') dmg *= (1 + S.kingBane);
-      if (S.exec && s.hp < s.max*.35) dmg *= (1 + S.exec);   // Executioner: finish wounded slimes harder
-      let critCh = myWeapon().crit + S.crit;
+      if (s.kind==='king') dmg *= (1 + ses.stats.kingBane);
+      if (ses.stats.exec && s.hp < s.max*.35) dmg *= (1 + ses.stats.exec);   // Executioner: finish wounded slimes harder
+      let critCh = myWeapon().crit + ses.stats.crit;
       if (wHas(2,'w22')) critCh += .10;   // Katana tree: Keen Eye
       let critMul = myWeapon().critDmg;
       if (wHas(0,'w01')) critMul += .30;  // Dagger tree: Keen Edge
@@ -1954,18 +1989,17 @@ function localHitCheck(now){
       else if (world.sendMine) world.sendMine(claim);
     } else {
       addFloat(n.x, n.y-.09, 'CLINK', '#cfd8dc');
-      if (now - lastPickToastAt > 3000){ lastPickToastAt = now; notify('You need the PICKAXE to mine ore — press 7'); }
+      if (now - ses.lastPickToastAt > 3000){ ses.lastPickToastAt = now; notify('You need the PICKAXE to mine ore — press 7'); }
     }
   }
 }
-let lastTingAt = 0;
 function doHit(s, dmg, opts={}){
   if (s.kind==='metal'){
     /* METAL SLIME: exactly 1 damage from EVERY hit instance — swings, crits,
        splash, actives, skills, bombs, waves, spears all just chip it. */
     dmg = 1; opts = { ...opts, crit:false };
     const nowT = performance.now();
-    if (nowT - lastTingAt > 60){ lastTingAt = nowT; sfx.ting(); }
+    if (nowT - ses.lastTingAt > 60){ ses.lastTingAt = nowT; sfx.ting(); }
   }
   s.squish=1; s.flash=1; s.flinchUntil=performance.now()+220;   // ISW flinch: red flash + shudder for 220ms
   // ISW sampled hits replace the synth beep on the damage path: crit sample
@@ -1981,13 +2015,13 @@ function doHit(s, dmg, opts={}){
   if (wHas(1,'w12')) treeSplash += .04;   // Sword tree: Sweeping Arc
   if (wHas(4,'w41')) treeSplash += .04;   // Greatsword tree: Wider Cleave
   if (wHas(5,'w52')) treeSplash += .03;   // Warhammer tree: Shockwave
-  const spR = Math.max(S.splash, (myWeapon().splash||0) + treeSplash);   // swing weapons splash natively; passive + tree add more
+  const spR = Math.max(ses.stats.splash, (myWeapon().splash||0) + treeSplash);   // swing weapons splash natively; passive + tree add more
   if (!opts.noSplash && spR>0){
     for (const o of world.slimes.values())
       if (o!==s && dist2(o.x,o.y,s.x,s.y) < spR*spR)
         setTimeout(()=>{ if (world.slimes.get(o.id)===o) doHit(o, Math.max(1,Math.ceil(dmg*.5)), {noSplash:true}); }, 40);
   }
-  if (!opts.noDouble && S.double>0 && Math.random()<S.double){
+  if (!opts.noDouble && ses.stats.double>0 && Math.random()<ses.stats.double){
     setTimeout(()=>{ if (world.slimes.get(s.id)===s) doHit(s, Math.max(1,Math.ceil(dmg*.6)), {noSplash:true, noDouble:true}); }, 100);
   }
 }
@@ -2043,7 +2077,7 @@ function onKillFx(f){
   if (f.kind==='boss') notify('THE EMPEROR HAS FALLEN!', { type:'king' });
   if (f.by===me.id){
     const now = performance.now();
-    let cg = Math.round(f.coins * (1 + S.coin));
+    let cg = Math.round(f.coins * (1 + ses.stats.coin));
     if (now < me.goldRushUntil) cg *= 2;   // GOLD RUSH: double coins
     me.coins += cg; me.kills++;
     me.mp = Math.min(me.maxMp, me.mp + 2);   // +2 MP per kill (own kills only)
@@ -2066,17 +2100,17 @@ function onKillFx(f){
     if (f.kind==='king'){ bubble('KING SLAYER!', me.x, me.y); }
     if (f.kind==='boss'){ bubble('EMPEROR SLAYER!', me.x, me.y); }
     // combo chain: kills within the window of each other keep it alive (Combo Charm stretches it)
-    combo = (now < comboUntil) ? combo+1 : 1;
-    comboUntil = now + 3000 * (1 + S.comboWin);
+    ses.combo = (now < ses.comboUntil) ? ses.combo+1 : 1;
+    ses.comboUntil = now + 3000 * (1 + ses.stats.comboWin);
     updateComboBadge(true);
-    if ([5,10,15,20,25,30,50].includes(combo)){ addFloat(f.x, f.y-.06, 'COMBO x'+combo, '#ff8a2e', {big:true}); sfx.combo(); }
-    if (STREAKS[combo]) notify(STREAKS[combo], { type:'streak' });
-    if (combo===15) notify('ON FIRE! +15% damage while the combo lives!', { type:'streak' });
+    if ([5,10,15,20,25,30,50].includes(ses.combo)){ addFloat(f.x, f.y-.06, 'COMBO x'+ses.combo, '#ff8a2e', {big:true}); sfx.combo(); }
+    if (STREAKS[ses.combo]) notify(STREAKS[ses.combo], { type:'streak' });
+    if (ses.combo===15) notify('ON FIRE! +15% damage while the combo lives!', { type:'streak' });
     // bounty progress (my kills only, matched by colour or kind)
     if (bounty && ((bounty.type==='color' && f.c===bounty.key) || (bounty.type==='kind' && f.kind===bounty.key))){
       bounty.have++;
       if (bounty.have >= bounty.need){
-        const payout = Math.round(bounty.reward * (1 + S.bounty));   // Bounty Hunter passive
+        const payout = Math.round(bounty.reward * (1 + ses.stats.bounty));   // Bounty Hunter passive
         me.coins += payout; me.sp += 1; saveGame();   // SP + coins: persist on the event
         notify('BOUNTY COMPLETE! +' + payout + ' coins +1 SP', { type:'success' });
         sfx.buy();
@@ -2089,7 +2123,7 @@ function onKillFx(f){
   }
 }
 function gainXp(n){
-  me.xp += Math.round(n * (1 + S.xp));
+  me.xp += Math.round(n * (1 + ses.stats.xp));
   /* LOOP, not if: one grant can span several levels — a scaled Emperor
      pays 1200 x 1.5 x bScale XP (~15.8k at Lv38 vs 3.8k per level), and
      the old single `if` levelled ONCE and parked the rest of the bar until
@@ -2129,14 +2163,14 @@ function bossOrbDmg(){ const b = [...world.slimes.values()].find(s=>s.kind==='bo
    frame() every tick (decay + HP tracking). */
 function updateDmgFlash(now){
   let flash = 0;
-  if (dmgFlashAt){
-    const el = now - dmgFlashAt;
+  if (ses.dmgFlashAt){
+    const el = now - ses.dmgFlashAt;
     flash = el < 350 ? .22 * (1 - el / 350) : 0;
-    if (!flash) dmgFlashAt = 0;
+    if (!flash) ses.dmgFlashAt = 0;
   }
   let low = 0;
   const frac = me.maxHp > 0 ? me.hp / me.maxHp : 1;
-  if (started && frac < .45){
+  if (ses.started && frac < .45){
     low = .30 * (1 - frac / .45);
     if (frac < .20) low += Math.sin(now * (Math.PI * 2 / 1200)) * .05;
   }
@@ -2152,7 +2186,7 @@ function updateDmgFlash(now){
 }
 updateDmgFlash._a = -1;
 function damagePlayer(amount, now){
-  if (!started || paused) return;
+  if (!ses.started || ses.paused) return;
   /* TOWN SAFE ZONE — sanctuaries: no damage while a building panel, the
      Sphere Grid is open, and NO damage anywhere inside
      TOWN_R of the town centre (contact AND boss bullets funnel through
@@ -2166,7 +2200,7 @@ function damagePlayer(amount, now){
   me.hp -= amount;
   me.invulnUntil = now + 800;
   me.lastDmgAt = now;
-  dmgFlashAt = now;
+  ses.dmgFlashAt = now;
   updateDmgFlash(now);   // paint the flat red flash NOW — don't wait for the frame pass
   sfx.hurt();
   if (me.hp <= 0) death();
@@ -2180,11 +2214,11 @@ function death(){
   const sp = me.spawnAt || { x: WORLD/2, y: WORLD/2 + .1 };   // inn-saved respawn, else town centre
   me.x = sp.x; me.y = sp.y; me.px = me.x; me.py = me.y;
   const vw = W/UNIT(), vh = H/UNIT();
-  cam.x = clamp(me.x - vw/2, 0, Math.max(0, WORLD - vw));
-  cam.y = clamp(me.y - vh/2, 0, Math.max(0, WORLD - vh));
-  combo = 0; comboUntil = 0; updateComboBadge(false);
+  ses.cam.x = clamp(me.x - vw/2, 0, Math.max(0, WORLD - vw));
+  ses.cam.y = clamp(me.y - vh/2, 0, Math.max(0, WORLD - vh));
+  ses.combo = 0; ses.comboUntil = 0; updateComboBadge(false);
   me.invulnUntil = now + 3000;
-  me.trailBreak = true; myTrail.length = 0;
+  me.trailBreak = true; ses.myTrail.length = 0;
   notify('YOU DIED!', { type:'death', sub:'The slimes took ' + lost + ' coins — banked coins are safe.' });
   sfx.die();
   refreshHUD();
@@ -2381,14 +2415,14 @@ function buyInn(id){
   }
   sfx.buy();
   beep(660,.1,'sine',.1,330); setTimeout(()=>beep(880,.12,'sine',.09,220), 90);   // pleasant heal chime
-  for (let i=0;i<12;i++) particles.push({ x:me.x, y:me.y, vx:rand(-.06,.06), vy:rand(-.14,-.03), life:1, color:'#57d93d', r:rand(2,5) });
+  for (let i=0;i<12;i++) ses.particles.push({ x:me.x, y:me.y, vx:rand(-.06,.06), vy:rand(-.14,-.03), life:1, color:'#57d93d', r:rand(2,5) });
   capParticles();
   addFloat(me.x, me.y-.06, 'HEALED!', '#57d93d');
   updateHospitalRows(); refreshHUD(); saveGame();
 }
 function updateInteract(){
   const pr = $('#interactPrompt');
-  if (!started){ pr.classList.add('hidden'); nearBuilding = null; updateInteract._pr = null; return; }
+  if (!ses.started){ pr.classList.add('hidden'); ses.nearBuilding = null; updateInteract._pr = null; return; }
   const db = Math.sqrt(dist2(me.x,me.y,BANK_POS.x,BANK_POS.y));
   const ds = Math.sqrt(dist2(me.x,me.y,SHOP_POS.x,SHOP_POS.y));
   const dh = Math.sqrt(dist2(me.x,me.y,HOSPITAL_POS.x,HOSPITAL_POS.y));
@@ -2402,11 +2436,11 @@ function updateInteract(){
      flickered in/out around town and B often opened nothing. Outside town
      the .34 radius rule applies unchanged. */
   const inTown = dist2(me.x, me.y, WORLD/2, WORLD/2) < TOWN_R*TOWN_R;
-  nearBuilding = (inTown || nd < .34) ? nb : null;
+  ses.nearBuilding = (inTown || nd < .34) ? nb : null;
   const panelOpen = !$('#bankPanel').classList.contains('hidden') || !$('#shopPanel').classList.contains('hidden') || !$('#hospitalPanel').classList.contains('hidden');
   // change-only DOM writes: this runs EVERY frame, and re-setting the
   // same textContent replaces the text node (layout work) every time
-  const wantPr = (nearBuilding && !panelOpen) ? (nearBuilding==='bank' ? 'OPEN BANK' : nearBuilding==='shop' ? 'OPEN SHOP' : 'OPEN INN') : null;
+  const wantPr = (ses.nearBuilding && !panelOpen) ? (ses.nearBuilding==='bank' ? 'OPEN BANK' : ses.nearBuilding==='shop' ? 'OPEN SHOP' : 'OPEN INN') : null;
   if (wantPr !== updateInteract._pr){
     updateInteract._pr = wantPr;
     if (wantPr){ pr.textContent = wantPr; pr.classList.remove('hidden'); }
@@ -2423,14 +2457,14 @@ function updateInteract(){
 
 /* ============================================================ items */
 function useItem(id){
-  if (!started || paused) return;
+  if (!ses.started || ses.paused) return;
   const now = performance.now();
   if (id==='potion'){
     if (me.items.potion<=0) return;
     if (me.hp>=me.maxHp){ notify('HP FULL'); beep(160,.09,'square',.07); return; }   // never waste a potion at full HP
     me.items.potion--;
     me.hp = Math.min(me.maxHp, me.hp + 60);
-    for (let i=0;i<10;i++) particles.push({ x:me.x, y:me.y, vx:rand(-.06,.06), vy:rand(-.14,-.03), life:1, color:'#57d93d', r:rand(2,5) });
+    for (let i=0;i<10;i++) ses.particles.push({ x:me.x, y:me.y, vx:rand(-.06,.06), vy:rand(-.14,-.03), life:1, color:'#57d93d', r:rand(2,5) });
     capParticles();
     beep(660,.1,'sine',.1,330);   // heal sparkle sound
     addFloat(me.x, me.y-.06, '+60 HP', '#57d93d');
@@ -2438,7 +2472,7 @@ function useItem(id){
   if (id==='bomb'){
     if (me.items.bomb<=0) return;
     me.items.bomb--;
-    popRings.push({ x:me.x, y:me.y, r:.05, life:1, color:'#ffb52e' });
+    ses.popRings.push({ x:me.x, y:me.y, r:.05, life:1, color:'#ffb52e' });
     spawnHitFx(me.x, me.y, '#ffb52e', 24);
     sfx.pop();
     for (const s of [...world.slimes.values()])
@@ -2465,7 +2499,7 @@ function electHost(){
     if (world.slimes.size===0){ for(let i=0;i<50;i++) spawnSlime(); }
     for (const s of world.slimes.values()){ s.tx=undefined; }
     broadcastWorld();
-    if (started) notify(world.peers.size ? 'You are now the WORLD HOST' : 'Solo world — invite friends!', { ms:1800 });
+    if (ses.started) notify(world.peers.size ? 'You are now the WORLD HOST' : 'Solo world — invite friends!', { ms:1800 });
   }
 }
 /* NO PEERS, NO PAYLOAD. Trystero's send() JSON-stringifies, encodes and
@@ -2531,12 +2565,10 @@ function joinWorld(roomCode){
   setTimeout(refreshPeers, 15500);
 }
 setInterval(()=>{ // sword state @ ~20Hz
-  if (started && world.sendPos && hasPeers()){ const bl = bladeAt(performance.now()); world.sendPos({ x:+me.x.toFixed(3), y:+me.y.toFixed(3), a:+bl.ang.toFixed(2), e:+bl.ext.toFixed(2), w:me.weapon, n:me.name, c:me.color, s: performance.now()<me.whirlUntil, l: me.level }); }
+  if (ses.started && world.sendPos && hasPeers()){ const bl = bladeAt(performance.now()); world.sendPos({ x:+me.x.toFixed(3), y:+me.y.toFixed(3), a:+bl.ang.toFixed(2), e:+bl.ext.toFixed(2), w:me.weapon, n:me.name, c:me.color, s: performance.now()<me.whirlUntil, l: me.level }); }
 }, 50);
 
 /* ============================================================ input */
-let pointerDown=false;
-let lastClient=null, lastMoveT=0;
 // Touch lift: on touch devices the sword would sit hidden under the player's
 // finger, so the effective sword position is lifted ~48px up-screen. The
 // offset is applied ONCE here at input time — hit detection, drawing and
@@ -2544,27 +2576,26 @@ let lastClient=null, lastMoveT=0;
 // below keep using RAW client deltas, which a constant offset never changes.
 const TOUCH_LIFT = 48;
 const ptrY = e => e.clientY - (e.pointerType==='touch' ? TOUCH_LIFT : 0);
-let uiPointer = false;   // a press that started on UI (not the canvas) must never move the sword
 addEventListener('pointermove', e=>{
-  if (uiPointer) return;
-  const x=clamp(cam.x + e.clientX/UNIT(), .02, WORLD-.02), y=clamp(cam.y + ptrY(e)/UNIT(), .02, WORLD-.02);
+  if (ses.uiPointer) return;
+  const x=clamp(ses.cam.x + e.clientX/UNIT(), .02, WORLD-.02), y=clamp(ses.cam.y + ptrY(e)/UNIT(), .02, WORLD-.02);
   const now=performance.now();
   // Direction & speed from RAW CLIENT deltas: immune to camera drift, and
   // speed (px/s) is independent of the pointer's event rate / polling Hz.
   let cdx=0, cdy=0, spd=0;
-  if (lastClient){
-    cdx=e.clientX-lastClient.x; cdy=e.clientY-lastClient.y;
-    const dtm=Math.max(1, now-lastMoveT);
+  if (ses.lastClient){
+    cdx=e.clientX-ses.lastClient.x; cdy=e.clientY-ses.lastClient.y;
+    const dtm=Math.max(1, now-ses.lastMoveT);
     spd=Math.hypot(cdx,cdy)/dtm*1000;
     if (Math.hypot(cdx,cdy)>1.5) me.angle=Math.atan2(cdy,cdx);
-    if (downInfo) downInfo.travel += Math.hypot(cdx,cdy);   // tap-vs-drag tracking for the tap gate
+    if (ses.downInfo) ses.downInfo.travel += Math.hypot(cdx,cdy);   // tap-vs-drag tracking for the tap gate
   }
-  lastClient={x:e.clientX, y:e.clientY}; lastMoveT=now;
+  ses.lastClient={x:e.clientX, y:e.clientY}; ses.lastMoveT=now;
   me.speed = spd;
   me.ptrSpeedPx = Math.max(me.ptrSpeedPx||0, spd);   // decayed per frame in frame(); gates idle-blade hits
   // a fast flick attacks: SWING weapons arc (direction follows the swipe),
   // STAB weapons lunge straight along it
-  if (started && now>=me.whirlUntil){
+  if (ses.started && now>=me.whirlUntil){
     if (myWeapon().motion==='stab'){
       if (spd>950 && now-me.stabT0>170){ me.stabT0=now; me.stabAng=me.angle; }
     } else if (spd>620 && now-me.swingT0>200){
@@ -2574,34 +2605,33 @@ addEventListener('pointermove', e=>{
   }
   me.px=me.x; me.py=me.y; me.x=x; me.y=y;
 });
-let downInfo = null;   // canvas pointerdown record for the tap-vs-drag skill gate
 addEventListener('pointerdown', e=>{
-  uiPointer = e.target !== cv;   // UI presses are for buttons/panels — flag them so pointermove ignores the drag
-  if (!started) return;
+  ses.uiPointer = e.target !== cv;   // UI presses are for buttons/panels — flag them so pointermove ignores the drag
+  if (!ses.started) return;
   if (e.target.closest && e.target.closest('#hud') && !e.target.closest('#game')) { /* UI taps handled by buttons */ }
   if (e.target===cv){
     // snap the sword to the (touch-lifted) tap point so the skill tap lands there
     me.px=me.x; me.py=me.y;
-    me.x=clamp(cam.x + e.clientX/UNIT(), .02, WORLD-.02);
-    me.y=clamp(cam.y + ptrY(e)/UNIT(), .02, WORLD-.02);
+    me.x=clamp(ses.cam.x + e.clientX/UNIT(), .02, WORLD-.02);
+    me.y=clamp(ses.cam.y + ptrY(e)/UNIT(), .02, WORLD-.02);
     me.trailBreak = true;   // sword teleported to the tap point — don't streak the trail across the screen
     // the weapon skill fires on pointerUP, and only for a genuine tap
     // (see pointerup) — releasing a drag must NOT cast
-    downInfo = { t:performance.now(), travel:0 };
+    ses.downInfo = { t:performance.now(), travel:0 };
   }
 });
 addEventListener('pointerup', e=>{
-  if (uiPointer){ uiPointer = false; lastClient = null; return; }   // release of a UI press: no cast, no stale delta
-  if (!downInfo) return;
-  const info = downInfo; downInfo = null;
+  if (ses.uiPointer){ ses.uiPointer = false; ses.lastClient = null; return; }   // release of a UI press: no cast, no stale delta
+  if (!ses.downInfo) return;
+  const info = ses.downInfo; ses.downInfo = null;
   // a genuine tap (quick, barely moved) casts the weapon skill — the exact
   // same code path as the V key and the skill button (lock/MP/cooldown incl.)
   if (performance.now() - info.t < 260 && info.travel < 14) castWeaponSkill();
 });
-addEventListener('pointercancel', ()=>{ downInfo = null; uiPointer = false; });
+addEventListener('pointercancel', ()=>{ ses.downInfo = null; ses.uiPointer = false; });
 addEventListener('touchmove', e=>{ e.preventDefault(); }, {passive:false});
 addEventListener('keydown', e=>{
-  if (!started) return;
+  if (!ses.started) return;
   if (e.key==='Escape' && !$('#menuPanel').classList.contains('hidden')){ closeMenu(); return; }
   if (e.key==='Escape' && !$('#hospitalPanel').classList.contains('hidden')){ $('#hospitalPanel').classList.add('hidden'); return; }
   if (e.key==='Escape' && !$('#bankPanel').classList.contains('hidden')){ $('#bankPanel').classList.add('hidden'); return; }   // Esc closes the bank / shop like the inn and menu (it used to open PAUSE over them)
@@ -2617,7 +2647,7 @@ addEventListener('keydown', e=>{
   if (lk==='e') castActive('meteor');
   if (lk==='r') castActive('frenzy');
   if (lk==='t') castActive('goldrush');
-  if (lk==='b'){ if (nearBuilding==='bank') openBank(); else if (nearBuilding==='shop') openShop(); else if (nearBuilding==='hospital') openHospital(); }
+  if (lk==='b'){ if (ses.nearBuilding==='bank') openBank(); else if (ses.nearBuilding==='shop') openShop(); else if (ses.nearBuilding==='hospital') openHospital(); }
   if (lk==='v') castWeaponSkill();
   if (lk==='k') toggleForge();   // K opens the SPHERE tab — weapon skills live on the grid now
   if (lk==='m') toggleMenu();
@@ -2689,12 +2719,12 @@ function refreshHUD(){
   // RPG menu: refresh the visible tab's values IN PLACE (same nodes —
   // rebuilding mid-tap is what ate inn button clicks in an earlier pass)
   if (!$('#menuPanel').classList.contains('hidden')){
-    if (menuTab === 'inventory') updateMenuInventory();
-    if (menuTab === 'more') updateMenuMore();
+    if (ses.menuTab === 'inventory') updateMenuInventory();
+    if (ses.menuTab === 'more') updateMenuMore();
   }
-  if (selNode && !$('#forge').classList.contains('hidden')) renderNodeCard();
+  if (ses.selNode && !$('#forge').classList.contains('hidden')) renderNodeCard();
   // polish systems tick (refreshHUD runs ~2/s while playing)
-  if (combo>0 && performance.now()>comboUntil){ combo=0; updateComboBadge(false); }
+  if (ses.combo>0 && performance.now()>ses.comboUntil){ ses.combo=0; updateComboBadge(false); }
   scanKings();
   updateHint();
   // HUD-cadence persistence is THROTTLED: refreshHUD runs 2/s plus on
@@ -2703,7 +2733,7 @@ function refreshHUD(){
   // ~4x a second. Event-driven saves (kills, buys, gems, level-ups) call
   // saveGame() directly and stay immediate; this only trims the cadence.
   const _svNow = performance.now();
-  if (_svNow - (refreshHUD._sv||0) > 2500){ refreshHUD._sv = _svNow; saveGame(); }
+  if (_svNow - ses.autoSaveAt > 2500){ ses.autoSaveAt = _svNow; saveGame(); }
 }
 function refreshPeers(){
   const n = world.peers.size;
@@ -2787,14 +2817,13 @@ function equip(i){
    the menu is open on its tab; closeMenu hides ALL sections, so the
    legacy 'is X open?' checks scattered through damage/hints/pause
    stay true. */
-let menuTab = 'inventory';
 const MENU_SECTIONS = { inventory:'#menuTab-inventory', sphere:'#forge', gems:'#gemPanel', more:'#menuTab-more' };
 function openMenu(tab){
   $('#menuPanel').classList.remove('hidden');
-  showMenuTab(tab || menuTab);
+  showMenuTab(tab || ses.menuTab);
 }
 function showMenuTab(tab){
-  menuTab = tab;
+  ses.menuTab = tab;
   for (const [k, sel] of Object.entries(MENU_SECTIONS)) $(sel).classList.toggle('hidden', k !== tab);
   document.querySelectorAll('#menuTabs .mtab').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   if (tab === 'sphere'){ buildSphere(); hintsSeen.sphere = true; }
@@ -2806,14 +2835,14 @@ function showMenuTab(tab){
 function closeMenu(){
   $('#menuPanel').classList.add('hidden');
   for (const sel of Object.values(MENU_SECTIONS)) $(sel).classList.add('hidden');
-  sphereCentered = false;   // the Sphere board re-centres on its next open
-  menuResetArmed = false;
+  ses.sphereCentered = false;   // the Sphere board re-centres on its next open
+  ses.menuResetArmed = false;
   const rb = $('#menuResetBtn'); if (rb) rb.textContent = 'RESET SAVE';
   updateHint();
 }
 function toggleMenu(tab){
   if ($('#menuPanel').classList.contains('hidden')) openMenu(tab);
-  else if (tab && tab !== menuTab) showMenuTab(tab);
+  else if (tab && tab !== ses.menuTab) showMenuTab(tab);
   else closeMenu();
 }
 function toggleForge(){ toggleMenu('sphere'); }
@@ -2921,11 +2950,10 @@ $('#menuSheetClose').onclick = () => closeMenu();
 $('#menuPanel').addEventListener('click', e => { if (e.target.id === 'menuPanel') closeMenu(); });
 document.querySelectorAll('#menuTabs .mtab').forEach(b => b.onclick = ()=>{ showMenuTab(b.dataset.tab); beep(600,.05,'triangle',.06); });
 $('#menuSoundBtn').onclick = ()=>{ setMuted(!muted); saveGame(); };
-let menuResetArmed = false;
 $('#menuResetBtn').onclick = ()=>{
   const b = $('#menuResetBtn');
-  if (!menuResetArmed){ menuResetArmed = true; b.textContent = 'TAP AGAIN TO ERASE EVERYTHING'; return; }
-  menuResetArmed = false; b.textContent = 'RESET SAVE'; closeMenu(); resetRun();
+  if (!ses.menuResetArmed){ ses.menuResetArmed = true; b.textContent = 'TAP AGAIN TO ERASE EVERYTHING'; return; }
+  ses.menuResetArmed = false; b.textContent = 'RESET SAVE'; closeMenu(); resetRun();
 };
 $('#rackTab').onclick = toggleRack;
 if (window.ResizeObserver) new ResizeObserver(()=>syncDockH()).observe($('#rackDock'));
@@ -2971,14 +2999,13 @@ function rollGemRarity(floor){
   for (let i = floor; i < 5; i++){ r -= weights[i]; if (r <= 0) return i; }
   return 4;
 }
-let gemSeq = 1;
 function grantGem(floor, x, y){
   if (me.gemBag.length >= 99){ me.coins += 15; addFloat(x, y - .16, '+15c (BAG FULL)', '#ffd94d'); return; }   // bag cap 99: the drop converts to coins
   const stats = Object.keys(GEM_STATS);
-  const gem = { id:'g' + Date.now().toString(36) + (gemSeq++), stat:stats[Math.floor(Math.random()*stats.length)], rarity:rollGemRarity(floor) };
+  const gem = { id:'g' + Date.now().toString(36) + (ses.gemSeq++), stat:stats[Math.floor(Math.random()*stats.length)], rarity:rollGemRarity(floor) };
   me.gemBag.push(gem);
   addFloat(x, y - .16, '+ SOUL GEM', GEM_RARITY_COL[gem.rarity], { big:true });
-  for (let i=0;i<10;i++) particles.push({ x, y, vx:rand(-.09,.09), vy:rand(-.16,-.02), life:1, color:GEM_RARITY_COL[gem.rarity], r:rand(2,4) });
+  for (let i=0;i<10;i++) ses.particles.push({ x, y, vx:rand(-.09,.09), vy:rand(-.16,-.02), life:1, color:GEM_RARITY_COL[gem.rarity], r:rand(2,4) });
   capParticles();
   sfx.gem();
   saveGame();
@@ -3095,14 +3122,13 @@ const nodePos = n => {
   return { x:x+50, y:y+50, idx };
 };
 const unlocked = new Set();
-let S = null;
 function recalc(){
-  S = { dmg:0, reach:0, cd:0, crit:0, coin:0, xp:0, splash:0, kingBane:0, double:0, arcWide:0, skillCd:0, bounty:0, comboWin:0, exec:0, maxHp:0, regen:0, socket:0, actives:new Set() };
+  ses.stats = { dmg:0, reach:0, cd:0, crit:0, coin:0, xp:0, splash:0, kingBane:0, double:0, arcWide:0, skillCd:0, bounty:0, comboWin:0, exec:0, maxHp:0, regen:0, socket:0, actives:new Set() };
   for (const n of NODES) if (unlocked.has(n.id)){
     const f = n.fx || {};   // weapon-path tiers 1-4 carry no global fx (equipped-only effects live in wHas checks); CROSS nodes do
-    for (const k of ['dmg','reach','cd','crit','coin','xp','kingBane','double','arcWide','skillCd','bounty','comboWin','exec','maxHp','regen','socket']) if (f[k]) S[k]+=f[k];
-    if (f.splash) S.splash = Math.max(S.splash, f.splash);
-    if (f.active) S.actives.add(f.active);
+    for (const k of ['dmg','reach','cd','crit','coin','xp','kingBane','double','arcWide','skillCd','bounty','comboWin','exec','maxHp','regen','socket']) if (f[k]) ses.stats[k]+=f[k];
+    if (f.splash) ses.stats.splash = Math.max(ses.stats.splash, f.splash);
+    if (f.active) ses.stats.actives.add(f.active);
   }
   /* SOUL GEMS: only the EQUIPPED weapon's socketed gems fold into S —
      crit->crit (%), dmg->dmg (flat), reach->reach (%), haste->cd (—, its
@@ -3112,21 +3138,21 @@ function recalc(){
     const gem = me.gemBag.find(g => g.id === gid);
     if (!gem || !GEM_STATS[gem.stat]) continue;
     const v = GEM_STATS[gem.stat].vals[gem.rarity];
-    if (gem.stat==='crit') S.crit += v/100;
-    else if (gem.stat==='dmg') S.dmg += v;
-    else if (gem.stat==='reach') S.reach += v/100;
-    else if (gem.stat==='haste') S.cd -= v/100;
-    else if (gem.stat==='greed') S.coin += v/100;
-    else if (gem.stat==='wisdom') S.xp += v/100;
-    else if (gem.stat==='vitality') S.maxHp += v;
-    else if (gem.stat==='mending') S.regen += v;
+    if (gem.stat==='crit') ses.stats.crit += v/100;
+    else if (gem.stat==='dmg') ses.stats.dmg += v;
+    else if (gem.stat==='reach') ses.stats.reach += v/100;
+    else if (gem.stat==='haste') ses.stats.cd -= v/100;
+    else if (gem.stat==='greed') ses.stats.coin += v/100;
+    else if (gem.stat==='wisdom') ses.stats.xp += v/100;
+    else if (gem.stat==='vitality') ses.stats.maxHp += v;
+    else if (gem.stat==='mending') ses.stats.regen += v;
   }
   /* MAX HP derivation: 100 base + 10 per level past 1 + S.maxHp (Sphere
      vitality — no nodes grant maxHp/regen YET; the hooks are wired so
      they can, defaulting to 0). Growth never heals by itself: gainXp
      adds the level-up delta explicitly. A shrink (RESET SAVE) clamps
      current HP down to the new max. MP is NOT derived — capped at 100. */
-  me.maxHp = 100 + 10*(me.level - 1) + (S.maxHp || 0);
+  me.maxHp = 100 + 10*(me.level - 1) + (ses.stats.maxHp || 0);
   if (me.hp > me.maxHp) me.hp = me.maxHp;
 }
 recalc();
@@ -3139,8 +3165,6 @@ const nodeAvail = n => {
   const { idx } = nodePos(n);
   return idx===0 || unlocked.has(NODES.filter(m=>m.b===n.b)[idx-1].id);
 };
-let selNode = null;
-let sphereCentered = false;   // the scrollable board auto-centres on the branch disc once per menu open (reset in closeMenu)
 function buildSphere(){
   const lines = $('#sphereLines'), wrap = $('#sphereNodes');
   let lh = '<circle cx="100" cy="100" r="50" fill="#1b2450"/><circle cx="100" cy="100" r="2.6" fill="#ffd94d"/>';
@@ -3177,7 +3201,7 @@ function buildSphere(){
     const p = nodePos(n);
     const owned = unlocked.has(n.id), avail = nodeAvail(n);
     const d = document.createElement('button');
-    d.className = 'snode' + (owned?' owned':'') + (avail?' avail':'') + (selNode===n.id?' sel':'');
+    d.className = 'snode' + (owned?' owned':'') + (avail?' avail':'') + (ses.selNode===n.id?' sel':'');
     d.style.left = (p.x/2)+'%'; d.style.top = (p.y/2)+'%';   // board units -> % of the 200-unit inner board
     if (n.x){   // CROSS node: dual-tone ring (two border colours per parent), split-gradient face when owned
       d.style.borderTopColor = n.cols[0]; d.style.borderRightColor = n.cols[0];
@@ -3194,17 +3218,17 @@ function buildSphere(){
     }
     d.innerHTML = n.icon + (n.label ? `<small>${n.label}</small>` : '');
     d.title = n.name;
-    d.onclick = ()=>{ selNode = n.id; buildSphere(); };
+    d.onclick = ()=>{ ses.selNode = n.id; buildSphere(); };
     wrap.appendChild(d);
   }
   renderNodeCard();
   $('#spCount').textContent = me.sp;
   applySphereZoom();   // sizer must match the current zoom before scrollWidth is read for centring
-  if (!sphereCentered){ const b = $('#sphereBoard'); if (b && b.clientWidth){ b.scrollLeft = (b.scrollWidth - b.clientWidth)/2; b.scrollTop = (b.scrollHeight - b.clientHeight)/2; sphereCentered = true; } }
+  if (!ses.sphereCentered){ const b = $('#sphereBoard'); if (b && b.clientWidth){ b.scrollLeft = (b.scrollWidth - b.clientWidth)/2; b.scrollTop = (b.scrollHeight - b.clientHeight)/2; ses.sphereCentered = true; } }
 }
 function renderNodeCard(){
   const card = $('#nodeCard');
-  const n = NODES.find(m=>m.id===selNode);
+  const n = NODES.find(m=>m.id===ses.selNode);
   if (!n){ card.classList.add('hidden'); return; }
   card.classList.remove('hidden');
   if (n.x){ $('#ncType').textContent = 'CROSS NODE'; $('#ncType').style.color = '#b8860b'; }
@@ -3236,28 +3260,27 @@ function renderNodeCard(){
    content. Every zoom re-solves the scroll offsets so the board point
    under the focal point (pinch midpoint / wheel cursor / viewport
    centre for the buttons) stays under it. */
-let sphereZoom = 1;
 const SZ_MIN = 0.5, SZ_MAX = 2, SZ_BASE = 840;
 function applySphereZoom(){
   const sizer = $('#sphereSizer'), inner = $('#sphereInner'), pct = $('#szPct');
-  if (sizer){ const px = Math.round(SZ_BASE * sphereZoom) + 'px'; sizer.style.width = px; sizer.style.height = px; }
-  if (inner) inner.style.transform = 'scale(' + sphereZoom + ')';
-  if (pct) pct.textContent = Math.round(sphereZoom * 100) + '%';
+  if (sizer){ const px = Math.round(SZ_BASE * ses.sphereZoom) + 'px'; sizer.style.width = px; sizer.style.height = px; }
+  if (inner) inner.style.transform = 'scale(' + ses.sphereZoom + ')';
+  if (pct) pct.textContent = Math.round(ses.sphereZoom * 100) + '%';
 }
 function setSphereZoom(nz, fx, fy){
   const b = $('#sphereBoard'); if (!b) return;
   nz = Math.min(SZ_MAX, Math.max(SZ_MIN, nz));
-  const oz = sphereZoom;
+  const oz = ses.sphereZoom;
   if (fx === undefined || fy === undefined){ fx = (b.clientWidth || 0) / 2; fy = (b.clientHeight || 0) / 2; }
   if (nz === oz){ applySphereZoom(); return; }
   const ux = (b.scrollLeft + fx) / oz, uy = (b.scrollTop + fy) / oz;   // board point under the focal, in unscaled inner px
-  sphereZoom = nz; applySphereZoom();
+  ses.sphereZoom = nz; applySphereZoom();
   b.scrollLeft = ux * nz - fx; b.scrollTop = uy * nz - fy;
 }
 (function initSphereZoom(){
   const b = $('#sphereBoard'); if (!b) return;
-  $('#szIn').onclick = () => setSphereZoom(sphereZoom * 1.25);
-  $('#szOut').onclick = () => setSphereZoom(sphereZoom / 1.25);
+  $('#szIn').onclick = () => setSphereZoom(ses.sphereZoom * 1.25);
+  $('#szOut').onclick = () => setSphereZoom(ses.sphereZoom / 1.25);
   $('#szPct').onclick = () => setSphereZoom(1);
   /* Touch/pen gestures live on the board itself (CSS touch-action:none
      hands them to us; mouse keeps native scrollbars + wheel). One
@@ -3274,7 +3297,7 @@ function setSphereZoom(nz, fx, fy){
     if (pts.size === 1){ panRef = { x:e.clientX, y:e.clientY, sl:b.scrollLeft, st:b.scrollTop }; pinchRef = null; gestureMoved = false; }
     else if (pts.size === 2){
       const p = [...pts.values()];
-      pinchRef = { d0: Math.max(1, Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y)), z0: sphereZoom };
+      pinchRef = { d0: Math.max(1, Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y)), z0: ses.sphereZoom };
       panRef = null;
     }
   });
@@ -3313,7 +3336,7 @@ function setSphereZoom(nz, fx, fy){
     if (!e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
     const r = b.getBoundingClientRect();
-    setSphereZoom(sphereZoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12), e.clientX - r.left, e.clientY - r.top);
+    setSphereZoom(ses.sphereZoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12), e.clientX - r.left, e.clientY - r.top);
   }, { passive:false });
   applySphereZoom();
 })();
@@ -3324,11 +3347,11 @@ function setSphereZoom(nz, fx, fy){
 /* ---------- combo ---------- */
 function updateComboBadge(pop){
   const el = $('#comboBadge');
-  if (!started || combo<3){ el.classList.add('hidden'); return; }
+  if (!ses.started || ses.combo<3){ el.classList.add('hidden'); return; }
   el.classList.remove('hidden');
-  const fire = combo>=15 && performance.now()<comboUntil;
+  const fire = ses.combo>=15 && performance.now()<ses.comboUntil;
   el.classList.toggle('fire', fire);
-  el.textContent = 'x'+combo+(fire ? ' ON FIRE' : ' COMBO');
+  el.textContent = 'x'+ses.combo+(fire ? ' ON FIRE' : ' COMBO');
   if (pop){ el.classList.remove('pop2'); void el.offsetWidth; el.classList.add('pop2'); }
 }
 
@@ -3355,20 +3378,20 @@ function updateBountyUI(){
 
 /* ---------- king banner ---------- */
 function scanKings(){
-  if (!started) return;
-  const fresh = performance.now() - startedAt >= 3000;   // never banner in the first 3s after PLAY
+  if (!ses.started) return;
+  const fresh = performance.now() - ses.startedAt >= 3000;   // never banner in the first 3s after PLAY
   for (const s of world.slimes.values()){
-    if (s.kind==='boss' && !seenBosses.has(s.id) && fresh){ seenBosses.add(s.id); notify('THE SLIME EMPEROR HAS AWAKENED!', { type:'king' }); }
+    if (s.kind==='boss' && !ses.seenBosses.has(s.id) && fresh){ ses.seenBosses.add(s.id); notify('THE SLIME EMPEROR HAS AWAKENED!', { type:'king' }); }
   }
-  for (const id of [...seenBosses]) if (!world.slimes.has(id)) seenBosses.delete(id);
+  for (const id of [...ses.seenBosses]) if (!world.slimes.has(id)) ses.seenBosses.delete(id);
 }
 /* zone toast: fires when the PLAYER crosses into a different ring */
 function checkZone(){
-  if (!started) return;
+  if (!ses.started) return;
   const z = zoneOf(me.x, me.y);
-  if (myZone === -1){ myZone = z; return; }   // entering the world sets the zone silently
-  if (z === myZone) return;
-  myZone = z;
+  if (ses.myZone === -1){ ses.myZone = z; return; }   // entering the world sets the zone silently
+  if (z === ses.myZone) return;
+  ses.myZone = z;
   const zn = ZONES[z];
   notify(zn.name, { type:'zone', sub: zn.blurb });
 }
@@ -3376,7 +3399,7 @@ function checkZone(){
 /* ---------- tutorial hints (one at a time, in sequence) ---------- */
 function updateHint(){
   const h = $('#hint');
-  if (!started || paused || nearBuilding || !$('#menuPanel').classList.contains('hidden')){ h.classList.add('hidden'); return; }
+  if (!ses.started || ses.paused || ses.nearBuilding || !$('#menuPanel').classList.contains('hidden')){ h.classList.add('hidden'); return; }
   let txt = '';
   if (!hintsSeen.slash) txt = 'DRAG TO SLASH!';
   else if (!hintsSeen.skill) txt = 'CLICK / TAP — WEAPON SKILL';
@@ -3387,9 +3410,9 @@ function updateHint(){
 
 /* ---------- pause ---------- */
 function togglePause(force){
-  if (!started) return;
-  paused = (force!==undefined) ? !!force : !paused;
-  $('#pauseMenu').classList.toggle('hidden', !paused);
+  if (!ses.started) return;
+  ses.paused = (force!==undefined) ? !!force : !ses.paused;
+  $('#pauseMenu').classList.toggle('hidden', !ses.paused);
   updateHint();
 }
 function setMuted(v){
@@ -3404,7 +3427,7 @@ function resetRun(){
   me.hp=me.maxHp; me.mp=me.maxMp; me.wSkillCdUntil=0; me.banked=0; me.items={ potion:0, bomb:0, shield:0 }; me.purse=false; me.shieldUntil=0; me.spawnAt=null;
   $('#bankPanel').classList.add('hidden'); $('#shopPanel').classList.add('hidden'); $('#hospitalPanel').classList.add('hidden'); closeMenu();
   unlocked.clear(); recalc();   // one shared set: branch, weapon-path and cross nodes all reset
-  combo=0; comboUntil=0; updateComboBadge(false);
+  ses.combo=0; ses.comboUntil=0; updateComboBadge(false);
   if (world.scores[me.id]) world.scores[me.id].kills = 0;
   hintsSeen = { slash:false, skill:false, sphere:false };
   try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
@@ -3416,7 +3439,7 @@ function resetRun(){
 
 /* ---------- persistence ---------- */
 function saveGame(){
-  if (!started) return;
+  if (!ses.started) return;
   try{
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       level:me.level, xp:me.xp, coins:me.coins, kills:me.kills, sp:me.sp, spBuys:me.spBuys,
@@ -3491,14 +3514,14 @@ document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState
 
 /* ============================================================ minimap */
 function drawMinimap(){
-  const c = $('#minimap'); if (!c || !started) return;
+  const c = $('#minimap'); if (!c || !ses.started) return;
   const g = c.getContext('2d'), S2 = c.width / WORLD;
   g.fillStyle = '#79c25f'; g.fillRect(0,0,c.width,c.height);
   // town safe zone: sandy disc at the map centre, under every dot
   g.fillStyle = '#ecd9a2';
   g.beginPath(); g.arc(WORLD/2*S2, WORLD/2*S2, TOWN_R*S2, 0, 7); g.fill();
   g.strokeStyle = 'rgba(255,255,255,.8)'; g.lineWidth = 1.5;
-  g.strokeRect(cam.x*S2, cam.y*S2, (W/UNIT())*S2, (H/UNIT())*S2);
+  g.strokeRect(ses.cam.x*S2, ses.cam.y*S2, (W/UNIT())*S2, (H/UNIT())*S2);
   // building markers: BANK gold, SHOP red, HOSPITAL white with a red centre dot
   g.fillStyle = '#ffd94d'; g.fillRect(BANK_POS.x*S2-2.5, BANK_POS.y*S2-2.5, 5, 5);
   g.fillStyle = '#e5484d'; g.fillRect(SHOP_POS.x*S2-2.5, SHOP_POS.y*S2-2.5, 5, 5);
@@ -3515,7 +3538,6 @@ function drawMinimap(){
 }
 
 /* ============================================================ active skills */
-let waves = [], meteors = [], shots = [];   // shots: thrown-spear projectiles (client-local, pierce)
 const ACTIVES = {
   wave:   { icon:'WAV', label:'WAVE',   key:'Q', cd:9000  },
   meteor: { icon:'MET', label:'METEOR', key:'E', cd:16000 },
@@ -3525,7 +3547,7 @@ const ACTIVES = {
 function buildActives(){
   const wrap = $('#actives'); wrap.querySelectorAll('.abtn').forEach(b=>b.remove());   // #wSkillBtn lives in #actives too — it stays
   for (const [id, a] of Object.entries(ACTIVES)){
-    if (!S.actives.has(id)) continue;
+    if (!ses.stats.actives.has(id)) continue;
     const b = document.createElement('button');
     b.className = 'abtn'; b.id = 'abtn-'+id;
     b.innerHTML = `<span>${a.icon}</span><span class="k">${a.label} · ${a.key}</span><div class="cdov" style="height:0%"></div>`;
@@ -3535,17 +3557,17 @@ function buildActives(){
 }
 function castActive(id){
   const now = performance.now(), a = ACTIVES[id];
-  if (!a || !S.actives.has(id) || now < me.actCd[id] || !started) return;
+  if (!a || !ses.stats.actives.has(id) || now < me.actCd[id] || !ses.started) return;
   me.actCd[id] = now + a.cd;
-  if (id==='wave'){ waves.push({ x:me.x, y:me.y, ang:bladeAt(now).ang, t0:now, hit:new Set() }); beep(300,.18,'sawtooth',.06,900); }
-  if (id==='meteor'){ meteors.push({ x:me.x, y:me.y, at:now+380 }); beep(160,.25,'square',.08,60); }
+  if (id==='wave'){ ses.waves.push({ x:me.x, y:me.y, ang:bladeAt(now).ang, t0:now, hit:new Set() }); beep(300,.18,'sawtooth',.06,900); }
+  if (id==='meteor'){ ses.meteors.push({ x:me.x, y:me.y, at:now+380 }); beep(160,.25,'square',.08,60); }
   if (id==='frenzy'){ me.frenzyUntil = now+5000; bubble('FRENZY!', me.x, me.y, 900); sfx.lvl(); }
   if (id==='goldrush'){ me.goldRushUntil = now+8000; bubble('GOLD RUSH!', me.x, me.y, 900); sfx.lvl(); }
 }
 function tickActives(now, dt){
   // waves fly and cut
-  waves = waves.filter(w => now - w.t0 < (w.life||780));
-  for (const w of waves){
+  ses.waves = ses.waves.filter(w => now - w.t0 < (w.life||780));
+  for (const w of ses.waves){
     w.x += Math.cos(w.ang)*dt*(w.spd||.00042); w.y += Math.sin(w.ang)*dt*(w.spd||.00042);
     for (const s of world.slimes.values()){
       if (w.hit.has(s.id)) continue;
@@ -3559,8 +3581,8 @@ function tickActives(now, dt){
     ctx.restore(); ctx.globalAlpha = 1;
   }
   // meteors: warning ring, then BOOM
-  meteors = meteors.filter(m => now < m.at + 60);
-  for (const m of meteors){
+  ses.meteors = ses.meteors.filter(m => now < m.at + 60);
+  for (const m of ses.meteors){
     const R = SCALE()*.13;
     if (now < m.at){
       const p = 1 - (m.at-now)/380;
@@ -3571,7 +3593,7 @@ function tickActives(now, dt){
       ctx.restore();
     } else if (!m.boomed){
       m.boomed = true; sfx.pop();
-      popRings.push({ x:m.x, y:m.y, r:.02, life:1, color:'#ff8a5e' });
+      ses.popRings.push({ x:m.x, y:m.y, r:.02, life:1, color:'#ff8a5e' });
       spawnHitFx(m.x, m.y, '#ffb52e', 16);
       for (const s of [...world.slimes.values()])
         if (dist2(m.x,m.y,s.x,s.y) < (.13+s.r)**2) doHit(s, 70 + myDamage());
@@ -3595,7 +3617,7 @@ function tickActives(now, dt){
    One active per weapon, granted by the SKILL node of its Sphere path, paid in MP.
    All effects are LOCAL claims through doHit — the host still validates. */
 function castWeaponSkill(){
-  if (!started || paused) return;
+  if (!ses.started || ses.paused) return;
   const now = performance.now();
   const sk = WSKILLS[me.weapon]; if (!sk) return;
   if (!hintsSeen.skill){ hintsSeen.skill = true; updateHint(); }   // casting by tap/SPACE/V retires the skill hint
@@ -3607,7 +3629,7 @@ function castWeaponSkill(){
   if (me.weapon===0){          // DAGGER — SHADOW STAB: dash along the blade, cutting the path
     const x0 = me.x, y0 = me.y;
     const x1 = clamp(me.x + Math.cos(ang)*.45, .05, WORLD-.05), y1 = clamp(me.y + Math.sin(ang)*.45, .05, WORLD-.05);
-    for (let i=0;i<=8;i++) particles.push({ x:x0+(x1-x0)*i/8, y:y0+(y1-y0)*i/8, vx:rand(-.03,.03), vy:rand(-.03,.03), life:1, color:wcol, r:rand(2,5) });
+    for (let i=0;i<=8;i++) ses.particles.push({ x:x0+(x1-x0)*i/8, y:y0+(y1-y0)*i/8, vx:rand(-.03,.03), vy:rand(-.03,.03), life:1, color:wcol, r:rand(2,5) });
     capParticles();
     const dx = x1-x0, dy = y1-y0, L2 = dx*dx + dy*dy || 1e-6;
     for (const s of [...world.slimes.values()]){
@@ -3615,31 +3637,31 @@ function castWeaponSkill(){
       if (dist2(x0+dx*t, y0+dy*t, s.x, s.y) < .13*.13) doHit(s, Math.round(dmg*3));
     }
     me.x = x1; me.y = y1; me.px = x1; me.py = y1;
-    me.trailBreak = true; myTrail.length = 0;
-    popRings.push({ x:me.x, y:me.y, r:.03, life:1, color:wcol });
+    me.trailBreak = true; ses.myTrail.length = 0;
+    ses.popRings.push({ x:me.x, y:me.y, r:.03, life:1, color:wcol });
     beep(200,.15,'sawtooth',.08,600);
   } else if (me.weapon===1){   // SWORD — WHIRLWIND
     const R = myReach()*1.6;
     for (const s of [...world.slimes.values()]) if (dist2(s.x,s.y,me.x,me.y) < R*R) doHit(s, Math.round(dmg*1.6));
-    popRings.push({ x:me.x, y:me.y, r:myReach(), life:1, color:wcol });
+    ses.popRings.push({ x:me.x, y:me.y, r:myReach(), life:1, color:wcol });
     me.whirlUntil = now + 260;   // the sword spins for the WHIRLWIND render (peers see it via the pos s flag)
     sfx.whirl();
   } else if (me.weapon===2){   // KATANA — IAIDO WAVE: faster, longer, harder crescent
-    waves.push({ x:me.x, y:me.y, ang, t0:now, hit:new Set(), dmgMul:2.2, spd:.00065, life:1150, col:'#f8bbd0' });
+    ses.waves.push({ x:me.x, y:me.y, ang, t0:now, hit:new Set(), dmgMul:2.2, spd:.00065, life:1150, col:'#f8bbd0' });
     beep(300,.18,'sawtooth',.06,1200);
   } else if (me.weapon===3){   // SPEAR — THROW SPEAR: piercing projectile along the blade
-    shots.push({ x:me.x, y:me.y, vx:Math.cos(ang)*1.8, vy:Math.sin(ang)*1.8, dmg:Math.round(dmg*2.5), until:now+900, hitSet:new Set(), sparkAt:0 });
+    ses.shots.push({ x:me.x, y:me.y, vx:Math.cos(ang)*1.8, vy:Math.sin(ang)*1.8, dmg:Math.round(dmg*2.5), until:now+900, hitSet:new Set(), sparkAt:0 });
     beep(500,.12,'triangle',.08,300);
   } else if (me.weapon===4){   // GREATSWORD — EARTHSHAKER
     for (const s of [...world.slimes.values()]) if (dist2(s.x,s.y,me.x,me.y) < .30*.30) doHit(s, Math.round(dmg*2.2));
-    popRings.push({ x:me.x, y:me.y, r:.30, life:1, color:wcol });
+    ses.popRings.push({ x:me.x, y:me.y, r:.30, life:1, color:wcol });
     spawnHitFx(me.x, me.y, wcol, 30);
     sfx.pop();
   } else if (me.weapon===5){   // WARHAMMER — THUNDER SMASH at the sword tip
     const bl = bladeAt(now), reach = myReach() * (1 + bl.ext);
     const tx = me.x + Math.cos(bl.ang)*reach, ty = me.y + Math.sin(bl.ang)*reach;
     for (const s of [...world.slimes.values()]) if (dist2(s.x,s.y,tx,ty) < .24*.24) doHit(s, Math.round(dmg*3));
-    popRings.push({ x:tx, y:ty, r:.05, life:1, color:'#ffe082' });
+    ses.popRings.push({ x:tx, y:ty, r:.05, life:1, color:'#ffe082' });
     spawnPopFx(tx, ty, '#ffe082', 18, .02);
     beep(120,.2,'square',.1,40); setTimeout(()=>beep(880,.12,'square',.06,-200), 30);
   } else if (me.weapon===6){   // PICKAXE — GEM RUSH: 8s of rich veins (claims carry the gr flag)
@@ -3661,15 +3683,14 @@ $('#menuShareBtn').onclick = shareInvite;
 $('#pauseBtn').onclick = ()=>togglePause();
 $('#resumeBtn').onclick = ()=>togglePause(false);
 $('#soundBtn').onclick = ()=>{ setMuted(!muted); saveGame(); };
-let resetArmed = false;
 $('#restartBtn').onclick = ()=>{
   const b = $('#restartBtn');
-  if (!resetArmed){ resetArmed = true; b.textContent = 'TAP AGAIN TO ERASE EVERYTHING'; return; }
-  resetArmed = false; b.textContent = 'RESET SAVE'; resetRun();
+  if (!ses.resetArmed){ ses.resetArmed = true; b.textContent = 'TAP AGAIN TO ERASE EVERYTHING'; return; }
+  ses.resetArmed = false; b.textContent = 'RESET SAVE'; resetRun();
 };
 $('#interactPrompt').addEventListener('pointerdown', e=>{
   e.stopPropagation();   // fire on pointerDOWN so sword movement can't steal the click
-  if (nearBuilding==='bank') openBank(); else if (nearBuilding==='shop') openShop(); else if (nearBuilding==='hospital') openHospital();
+  if (ses.nearBuilding==='bank') openBank(); else if (ses.nearBuilding==='shop') openShop(); else if (ses.nearBuilding==='hospital') openHospital();
 });
 $('#depBtn').onclick = ()=>{ me.banked += me.coins; me.coins = 0; sfx.buy(); updateBankPanel(); refreshHUD(); saveGame(); };   // a deposit must be on disk before the next death or tab kill
 $('#wdBtn').onclick = ()=>{ me.coins += me.banked; me.banked = 0; sfx.coin(); updateBankPanel(); refreshHUD(); saveGame(); };
@@ -4001,7 +4022,7 @@ function drawTufts(t){
   if (!imgOk(img)) return;                 // garnish only -- no fallback art
   const u = UNIT(), vw = W/u, vh = H/u, asp = img.naturalHeight/img.naturalWidth;
   for (const g of TUFTS){
-    if (g.x<cam.x-.1 || g.x>cam.x+vw+.1 || g.y<cam.y-.1 || g.y>cam.y+vh+.1) continue;   // view-culled
+    if (g.x<ses.cam.x-.1 || g.x>ses.cam.x+vw+.1 || g.y<ses.cam.y-.1 || g.y>ses.cam.y+vh+.1) continue;   // view-culled
     if (Math.hypot(g.x-WORLD/2, g.y-WORLD/2) < TOWN_R + .02) continue;   // no grass grows on the town plaza
     const w = .055*u*g.s, h = w*asp;
     ctx.save();
@@ -4017,7 +4038,7 @@ function drawPonds(t){
   const u = UNIT(), vw = W/u, vh = H/u;
   for (const d of DECOR){
     if (d.t !== 'pond') continue;   // trees/rocks moved to the y-sorted entity pass
-    if (d.x<cam.x-.4 || d.x>cam.x+vw+.4 || d.y<cam.y-.4 || d.y>cam.y+vh+.4) continue;   // view-culled
+    if (d.x<ses.cam.x-.4 || d.x>ses.cam.x+vw+.4 || d.y<ses.cam.y-.4 || d.y>ses.cam.y+vh+.4) continue;   // view-culled
     const x = NX(d.x), y = NY(d.y);
     const br = 1 + .010*Math.sin(t/1400 + d.x*3);   // water breathe: a slow +/-1% pulse around the centre
     const img = WORLD_IMGS['decor-pond'];
@@ -4164,8 +4185,8 @@ function drawField(t){
   const tile = WORLD_IMGS['tile-grass'];
   if (imgOk(tile)){
     const ts = .55*u;
-    const tx0 = Math.floor(cam.x/.55), ty0 = Math.floor(cam.y/.55);
-    const tx1 = Math.floor((cam.x+vw)/.55), ty1 = Math.floor((cam.y+vh)/.55);
+    const tx0 = Math.floor(ses.cam.x/.55), ty0 = Math.floor(ses.cam.y/.55);
+    const tx1 = Math.floor((ses.cam.x+vw)/.55), ty1 = Math.floor((ses.cam.y+vh)/.55);
     for (let tx=tx0; tx<=tx1; tx++)
       for (let ty=ty0; ty<=ty1; ty++)
         ctx.drawImage(tile, NX(tx*.55), NY(ty*.55), ts+1, ts+1);   // +1px kills seams
@@ -4174,11 +4195,11 @@ function drawField(t){
     ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
     // mowed stripes, one world unit wide
     ctx.fillStyle='rgba(255,255,255,.05)';
-    for (let wx=Math.floor(cam.x); wx<cam.x+vw+1; wx++) if (((wx%2)+2)%2===0) ctx.fillRect(NX(wx),0,u,H);
+    for (let wx=Math.floor(ses.cam.x); wx<ses.cam.x+vw+1; wx++) if (((wx%2)+2)%2===0) ctx.fillRect(NX(wx),0,u,H);
   }
   // flowers (only those in view): tiny pixel squares, not circles
   for (const f of FLOWERS){
-    if (f.x<cam.x-.1 || f.x>cam.x+vw+.1 || f.y<cam.y-.1 || f.y>cam.y+vh+.1) continue;
+    if (f.x<ses.cam.x-.1 || f.x>ses.cam.x+vw+.1 || f.y<ses.cam.y-.1 || f.y>ses.cam.y+vh+.1) continue;
     const fs = f.s*1.5, fx = NX(f.x) + windAt(f.x, f.y, t) * .003 * u, fy = NY(f.y);   // flower heads nod in the wind (half-strength offset, no stem to bend)
     ctx.fillStyle=f.c; ctx.fillRect(fx-fs/2, fy-fs/2, fs, fs);
     ctx.fillStyle='rgba(176,120,20,.9)'; ctx.fillRect(fx-.8, fy-.8, 1.6, 1.6);   // pollen centre pixel
@@ -4204,7 +4225,7 @@ function drawField(t){
     const gy0 = Math.max(0, Math.floor((WORLD/2 - TOWN_R)/cell)), gy1 = Math.min(WORLD/cell, Math.ceil((WORLD/2 + TOWN_R)/cell));
     for (let gx=gx0; gx<gx1; gx++) for (let gy=gy0; gy<gy1; gy++){
       const wx = (gx+.5)*cell, wy = (gy+.5)*cell;
-      if (wx < cam.x-.1 || wx > cam.x+vw+.1 || wy < cam.y-.1 || wy > cam.y+vh+.1) continue;   // view cull
+      if (wx < ses.cam.x-.1 || wx > ses.cam.x+vw+.1 || wy < ses.cam.y-.1 || wy > ses.cam.y+vh+.1) continue;   // view cull
       const hs = Math.sin(gx*127.1 + gy*311.7)*43758.5453, hf = hs - Math.floor(hs);
       if (hf > .85) continue;   // most cells get a speckle, a few stay clean
       const jx = (hf*7.13 - Math.floor(hf*7.13) - .5)*cell*.7, jy = (hf*3.71 - Math.floor(hf*3.71) - .5)*cell*.7;
@@ -4215,7 +4236,7 @@ function drawField(t){
     const nb = Math.round(2*Math.PI*TOWN_R/.085), bs = .045*u;
     for (let i=0; i<nb; i++){
       const a = i/nb*Math.PI*2, bx = WORLD/2 + Math.cos(a)*TOWN_R, by = WORLD/2 + Math.sin(a)*TOWN_R;
-      if (bx < cam.x-.1 || bx > cam.x+vw+.1 || by < cam.y-.1 || by > cam.y+vh+.1) continue;
+      if (bx < ses.cam.x-.1 || bx > ses.cam.x+vw+.1 || by < ses.cam.y-.1 || by > ses.cam.y+vh+.1) continue;
       ctx.fillStyle = i%2 ? '#a89f92' : '#c2bab0';
       ctx.fillRect(NX(bx)-bs/2, NY(by)-bs/2, bs, bs);
     }
@@ -4239,12 +4260,12 @@ function drawField(t){
     const topVis = y0 > -ps && y0 < H + ps, botVis = y1 > -ps && y1 < H + ps;
     const leftVis = x0 > -ps && x0 < W + ps, rightVis = x1 > -ps && x1 < W + ps;
     for (let wx=0; wx<=WORLD+.001; wx+=.09){
-      if (wx < cam.x-.1 || wx > cam.x+vw+.1) continue;
+      if (wx < ses.cam.x-.1 || wx > ses.cam.x+vw+.1) continue;
       if (topVis) ctx.fillRect(NX(wx)-ps/2, y0-ps/2, ps, ps);
       if (botVis) ctx.fillRect(NX(wx)-ps/2, y1-ps/2, ps, ps);
     }
     for (let wy=.09; wy<WORLD; wy+=.09){
-      if (wy < cam.y-.1 || wy > cam.y+vh+.1) continue;
+      if (wy < ses.cam.y-.1 || wy > ses.cam.y+vh+.1) continue;
       if (leftVis) ctx.fillRect(x0-ps/2, NY(wy)-ps/2, ps, ps);
       if (rightVis) ctx.fillRect(x1-ps/2, NY(wy)-ps/2, ps, ps);
     }
@@ -4653,7 +4674,7 @@ function drawEntities(t){
   const ents = [], occluders = [];
   for (const d of DECOR){
     if (d.t === 'pond') continue;                // flat ground decal, drawn in drawField
-    if (d.x<cam.x-.55 || d.x>cam.x+vw+.55 || d.y<cam.y-.55 || d.y>cam.y+vh+.55) continue;   // view-culled
+    if (d.x<ses.cam.x-.55 || d.x>ses.cam.x+vw+.55 || d.y<ses.cam.y-.55 || d.y>ses.cam.y+vh+.55) continue;   // view-culled
     if (d.t === 'tree'){ const b = treeBox(d); ents.push({ baseY:b.baseY, kind:'tree', d }); occluders.push(b); }
     else if (d.t === 'rock'){ const b = rockBox(d); ents.push({ baseY:b.baseY, kind:'rock', d }); occluders.push(b); }
   }
@@ -4673,20 +4694,20 @@ function drawEntities(t){
   const vis = [];
   for (const s of world.slimes.values()){
     const m = s.r*4 + .3;
-    if (s.x < cam.x-m || s.x > cam.x+vw+m || s.y < cam.y-m || s.y > cam.y+vh+m) continue;
+    if (s.x < ses.cam.x-m || s.x > ses.cam.x+vw+m || s.y < ses.cam.y-m || s.y > ses.cam.y+vh+m) continue;
     vis.push(s);
     ents.push({ baseY:s.y + s.r*.8, kind:'slime', s });
   }
   // ore nodes join the same depth order at their base (y + .07)
   for (const n of world.nodes.values()){
-    if (n.x<cam.x-.55 || n.x>cam.x+vw+.55 || n.y<cam.y-.55 || n.y>cam.y+vh+.55) continue;   // view-culled like decor
+    if (n.x<ses.cam.x-.55 || n.x>ses.cam.x+vw+.55 || n.y<ses.cam.y-.55 || n.y>ses.cam.y+vh+.55) continue;   // view-culled like decor
     ents.push({ baseY:n.y + .07, kind:'node', n });
   }
   /* Boss orbs join the SAME y-sort (base = orb centre + its radius), so a
      tree or building in front of an orb occludes it exactly like a slime —
      orbs used to draw after the whole pass and floated over canopies. */
   for (const b of world.bullets){
-    if (b.x<cam.x-.1 || b.x>cam.x+vw+.1 || b.y<cam.y-.1 || b.y>cam.y+vh+.1) continue;   // view-culled
+    if (b.x<ses.cam.x-.1 || b.x>ses.cam.x+vw+.1 || b.y<ses.cam.y-.1 || b.y>ses.cam.y+vh+.1) continue;   // view-culled
     ents.push({ baseY:b.y + .02, kind:'orb', b });
   }
   /* G7 face fade: the face IS drawn inside paintSlimeSprite, so the
@@ -4752,7 +4773,7 @@ function drawGhosts(t, occluders, list){
     const g = slimeSpriteGeom(s, t, baseR);
     if (!g) continue;                            // vector-fallback slimes have no sprite to ghost
     const sb = { l:s.x - s.r*1.5, r:s.x + s.r*1.5, top:s.y - s.r*3.2 - g.liftW, bot:s.y + s.r };
-    if (sb.r < cam.x || sb.l > cam.x + vw || sb.bot < cam.y || sb.top > cam.y + vh) continue;   // off-screen
+    if (sb.r < ses.cam.x || sb.l > ses.cam.x + vw || sb.bot < ses.cam.y || sb.top > ses.cam.y + vh) continue;   // off-screen
     for (const h of ghostHits(s, occluders, g)){
       ctx.save();
       ctx.beginPath();
@@ -4838,7 +4859,6 @@ function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,whirling,ext=0){
 }
 
 /* ============================================================ main loop */
-let lastT=performance.now(), posSendAcc=0;
 /* The living Emperor, looked up once per frame timestamp (the bullet
    emitters below used to spread the whole slime map into an array per
    emitter per frame — during the boss fight, the heaviest moment). */
@@ -4854,12 +4874,12 @@ function bossAt(now){
    It hides the moment the metal is on screen or leaves the world
    (killed / cleared by the next guarantee fire). */
 function drawMetalArrow(now){
-  if (!started) return;
+  if (!ses.started) return;
   let m = null;
   for (const s of world.slimes.values()) if (s.kind==='metal' && s.guaranteed){ m = s; break; }
   if (!m) return;
   const u = UNIT(), vw = W/u, vh = H/u;
-  if (m.x >= cam.x && m.x <= cam.x + vw && m.y >= cam.y && m.y <= cam.y + vh) return;   // on screen: the slime itself is the marker
+  if (m.x >= ses.cam.x && m.x <= ses.cam.x + vw && m.y >= ses.cam.y && m.y <= ses.cam.y + vh) return;   // on screen: the slime itself is the marker
   const sx = NX(m.x), sy = NY(m.y), M = 34;
   const cx = clamp(sx, M, W - M), cy = clamp(sy, M, H - M);
   const a = Math.atan2(sy - H/2, sx - W/2);   // bearing from screen centre toward the metal
@@ -4883,7 +4903,7 @@ function frame(now){
   // monitors get their native rate. Everything simulated is dt-scaled or
   // timestamp-based (see audit in the commit), so refresh rate can never
   // speed the game up.
-  const dt = paused ? 0 : Math.min(50, now-lastT); lastT=now;   // pause freezes local dt only; world/netcode keep running
+  const dt = ses.paused ? 0 : Math.min(50, now-ses.lastT); ses.lastT=now;   // pause freezes local dt only; world/netcode keep running
   me.ptrSpeedPx *= Math.exp(-dt/110);   // pointer-speed memory decays fast — a stopped hand stops cutting within ~a few hundred ms
   ctx.setTransform(DPR,0,0,DPR,0,0);
 
@@ -4894,12 +4914,12 @@ function frame(now){
   for (const s of world.slimes.values()){
     if (!world.isHost && s.tx!==undefined){ s.x += (s.tx-s.x)*interpK; s.y += (s.ty-s.y)*interpK; s.squish=Math.max(0,s.squish-dt/160); s.flash=Math.max(0,s.flash-dt/120); }
   }
-  if (world.isHost && started){ hostTick(now,dt); flushWorld(); }   // at most ONE coalesced world payload per frame (see queueWorld)
-  if (started && !paused) localHitCheck(now);
+  if (world.isHost && ses.started){ hostTick(now,dt); flushWorld(); }   // at most ONE coalesced world payload per frame (see queueWorld)
+  if (ses.started && !ses.paused) localHitCheck(now);
 
   /* ---- survival (ALL local — HP is never networked): slime contact damage,
      boss bullet hits, spiral emitters, out-of-combat regen ---- */
-  if (started && !paused){
+  if (ses.started && !ses.paused){
     if (now > me.invulnUntil){
       for (const s of world.slimes.values()){
         const rr = s.r + .022;
@@ -4962,21 +4982,21 @@ function frame(now){
     for (const s of world.slimes.values()){
       if (s.kind!=='metal' || now < (s._sparkAt||0)) continue;
       s._sparkAt = now + 90;
-      particles.push({ x:s.x+rand(-s.r,s.r), y:s.y+rand(-s.r,s.r), vx:rand(-.02,.02), vy:rand(-.05,-.01), life:1, color:'#eef3f7', r:rand(3,6) });
+      ses.particles.push({ x:s.x+rand(-s.r,s.r), y:s.y+rand(-s.r,s.r), vx:rand(-.02,.02), vy:rand(-.05,-.01), life:1, color:'#eef3f7', r:rand(3,6) });
       if (s.guaranteed && now - (s.bornAt||0) < 1500)
-        particles.push({ x:s.x+rand(-s.r*1.4,s.r*1.4), y:s.y+rand(-s.r,s.r), vx:rand(-.03,.03), vy:rand(-.07,-.02), life:1, color:'#ffffff', r:rand(4,7) });
+        ses.particles.push({ x:s.x+rand(-s.r*1.4,s.r*1.4), y:s.y+rand(-s.r,s.r), vx:rand(-.03,.03), vy:rand(-.07,-.02), life:1, color:'#ffffff', r:rand(4,7) });
       capParticles();
     }
     // thrown spears fly and pierce (client-local projectiles)
-    for (let i=shots.length-1;i>=0;i--){
-      const sh = shots[i];
+    for (let i=ses.shots.length-1;i>=0;i--){
+      const sh = ses.shots[i];
       sh.x += sh.vx*dt/1000; sh.y += sh.vy*dt/1000;
-      if (now > sh.until || sh.x<0 || sh.x>WORLD || sh.y<0 || sh.y>WORLD){ shots.splice(i,1); continue; }
+      if (now > sh.until || sh.x<0 || sh.x>WORLD || sh.y<0 || sh.y>WORLD){ ses.shots.splice(i,1); continue; }
       // sparkle trail: two small sparks every 60ms of flight, so the throw reads in motion AND in stills
       if (now >= (sh.sparkAt||0)){
         sh.sparkAt = now + 60;
-        particles.push({ x:sh.x, y:sh.y, vx:rand(-.04,.04), vy:rand(-.04,.04), life:1, color:'#ffffff', r:rand(2.5,5) });
-        particles.push({ x:sh.x, y:sh.y, vx:rand(-.04,.04), vy:rand(-.04,.04), life:1, color:'#ffd94d', r:rand(2.5,5) });
+        ses.particles.push({ x:sh.x, y:sh.y, vx:rand(-.04,.04), vy:rand(-.04,.04), life:1, color:'#ffffff', r:rand(2.5,5) });
+        ses.particles.push({ x:sh.x, y:sh.y, vx:rand(-.04,.04), vy:rand(-.04,.04), life:1, color:'#ffd94d', r:rand(2.5,5) });
         capParticles();
       }
       for (const s of world.slimes.values()){
@@ -4984,7 +5004,7 @@ function frame(now){
         if (dist2(sh.x,sh.y,s.x,s.y) < .05*.05){ sh.hitSet.add(s.id); doHit(s, sh.dmg); }
       }
     }
-    if (me.hp < me.maxHp && now - me.lastDmgAt > 6000) me.hp = Math.min(me.maxHp, me.hp + (1.6 + (S.regen || 0))*dt/1000);   // base 1.6/s after 6s undamaged + S.regen (hook: no nodes grant it yet); all regen honours the same 6s delay — no node text promises otherwise
+    if (me.hp < me.maxHp && now - me.lastDmgAt > 6000) me.hp = Math.min(me.maxHp, me.hp + (1.6 + (ses.stats.regen || 0))*dt/1000);   // base 1.6/s after 6s undamaged + S.regen (hook: no nodes grant it yet); all regen honours the same 6s delay — no node text promises otherwise
     if (me.mp < me.maxMp) me.mp = Math.min(me.maxMp, me.mp + 7*dt/1000);   // MP regen +7/s
   }
   updateDmgFlash(now);   // flat red damage screen: per-hit flash decay + low-HP tint
@@ -4995,33 +5015,33 @@ function frame(now){
     const tx = clamp(me.x - vw/2, 0, Math.max(0, WORLD - vw));
     const ty = clamp(me.y - vh/2, 0, Math.max(0, WORLD - vh));
     const k = 1 - Math.exp(-dt/240);
-    cam.x += (tx - cam.x) * k; cam.y += (ty - cam.y) * k;
+    ses.cam.x += (tx - ses.cam.x) * k; ses.cam.y += (ty - ses.cam.y) * k;
   }
 
-  if (started) updateInteract();   // every frame — the OPEN prompt and panel auto-close must never lag
+  if (ses.started) updateInteract();   // every frame — the OPEN prompt and panel auto-close must never lag
   drawField(now);
   // y-sorted entity pass: trees, rocks, buildings and slimes by ground
   // anchor, then occlusion ghosts for slimes hidden behind props
   drawEntities(now);
 
-  if (started) tickActives(now, dt);
+  if (ses.started) tickActives(now, dt);
   // minimap at ~20Hz, not every frame: it is a navigation aid (50ms
   // cadence is invisible) and a full redraw is ~120 arc fills — at
   // 120Hz phone refresh that was 14k fills a second for a thumbnail.
-  if (now-(frame._mm||0)>50){ frame._mm=now; drawMinimap(); }
+  if (now-ses.minimapAt>50){ ses.minimapAt=now; drawMinimap(); }
 
   // particles & rings & floats
-  popRings = popRings.filter(r=>r.life>0);
-  for (const r of popRings){ r.r+=dt*.00045; r.life-=dt/380; ctx.strokeStyle=r.color; ctx.globalAlpha=Math.max(0,r.life); ctx.lineWidth=4; ctx.beginPath(); ctx.arc(NX(r.x),NY(r.y),r.r*SCALE(),0,7); ctx.stroke(); ctx.globalAlpha=1; }
-  particles = particles.filter(p=>p.life>0);
+  ses.popRings = ses.popRings.filter(r=>r.life>0);
+  for (const r of ses.popRings){ r.r+=dt*.00045; r.life-=dt/380; ctx.strokeStyle=r.color; ctx.globalAlpha=Math.max(0,r.life); ctx.lineWidth=4; ctx.beginPath(); ctx.arc(NX(r.x),NY(r.y),r.r*SCALE(),0,7); ctx.stroke(); ctx.globalAlpha=1; }
+  ses.particles = ses.particles.filter(p=>p.life>0);
   // particles are PIXEL SQUARES, not arc paths: one fillRect each (no
   // beginPath/arc/fill per spark) — the cheapest canvas op there is, and
   // it matches the game's pixel-art style. At the 420 cap the old arc
   // version cost ~1,300 path calls a frame; this costs 420 rects.
-  for (const p of particles){ p.x+=p.vx*dt/60; p.y+=p.vy*dt/60; p.vy+=.0009*dt/16*(p.grav||1); p.life-=dt/480; ctx.globalAlpha=Math.max(0,p.life); ctx.fillStyle=p.color; const ps = p.r*1.6; ctx.fillRect(NX(p.x)-ps/2, NY(p.y)-ps/2, ps, ps); ctx.globalAlpha=1; }
-  floats = floats.filter(f=>f.life>0);
+  for (const p of ses.particles){ p.x+=p.vx*dt/60; p.y+=p.vy*dt/60; p.vy+=.0009*dt/16*(p.grav||1); p.life-=dt/480; ctx.globalAlpha=Math.max(0,p.life); ctx.fillStyle=p.color; const ps = p.r*1.6; ctx.fillRect(NX(p.x)-ps/2, NY(p.y)-ps/2, ps, ps); ctx.globalAlpha=1; }
+  ses.floats = ses.floats.filter(f=>f.life>0);
   ctx.textAlign='center'; let lastFloatFont = '';   // ctx.font is PARSED on every assignment (costly on Safari) — set it only when the size changes
-  for (const f of floats){ f.y-=dt*.00003; f.life-=dt/(f.big?1750:950); ctx.globalAlpha=Math.max(0,f.life); const fnt = '900 '+(f.size || (f.big?26:17))+'px "Baloo 2",sans-serif'; if (fnt !== lastFloatFont){ lastFloatFont = fnt; ctx.font = fnt; } ctx.lineWidth = (f.big || f.size>=20) ? 6 : 4; ctx.strokeStyle='rgba(60,40,10,.8)'; ctx.strokeText(f.text,NX(f.x),NY(f.y)); ctx.fillStyle=f.color; ctx.fillText(f.text,NX(f.x),NY(f.y)); ctx.globalAlpha=1; }
+  for (const f of ses.floats){ f.y-=dt*.00003; f.life-=dt/(f.big?1750:950); ctx.globalAlpha=Math.max(0,f.life); const fnt = '900 '+(f.size || (f.big?26:17))+'px "Baloo 2",sans-serif'; if (fnt !== lastFloatFont){ lastFloatFont = fnt; ctx.font = fnt; } ctx.lineWidth = (f.big || f.size>=20) ? 6 : 4; ctx.strokeStyle='rgba(60,40,10,.8)'; ctx.strokeText(f.text,NX(f.x),NY(f.y)); ctx.fillStyle=f.color; ctx.fillText(f.text,NX(f.x),NY(f.y)); ctx.globalAlpha=1; }
   drawDmgFloats(now);   // ISW glyph damage numbers, on their own timeline
   drawMetalArrow(now);   // edge locator for the guaranteed metal, while it lives off-screen
 
@@ -5031,7 +5051,7 @@ function frame(now){
   // motion streak from (pos - vel*0.055) to pos, drawn UNDER the sprite.
   // (Render order confirmed: this block runs after drawEntities, so spears
   // draw over slimes, and before the swords.)
-  for (const sh of shots){
+  for (const sh of ses.shots){
     const sx = NX(sh.x), sy = NY(sh.y), sa = Math.atan2(sh.vy, sh.vx), u = UNIT();
     ctx.save(); ctx.translate(sx, sy); ctx.rotate(sa);
     const tail = Math.hypot(sh.vx, sh.vy) * .07;   // streak length = speed * 70ms of travel
@@ -5065,18 +5085,18 @@ function frame(now){
   // quads between consecutive segments (see LIGHTSABER v4 below).
   {
     const bl = bladeAt(now);
-    if (started){
+    if (ses.started){
       const whirlingNow = now < me.whirlUntil;
       const ang = whirlingNow ? (now/38)%(Math.PI*2) : bl.ang;
       const reach = myReach() * (whirlingNow?1.15:1) * (1 + bl.ext);
       const tipX = me.x + Math.cos(ang)*reach, tipY = me.y + Math.sin(ang)*reach;
-      if (me.trailBreak){ myTrail.length = 0; me.trailBreak = false; }
+      if (me.trailBreak){ ses.myTrail.length = 0; me.trailBreak = false; }
       // sample the FULL blade segment (grip + tip), not just the tip —
       // the render sweeps quads between consecutive segments
       const seg = { bx:me.x, by:me.y, tx:tipX, ty:tipY, t:now };
-      const lastP = myTrail[myTrail.length-1];
+      const lastP = ses.myTrail[ses.myTrail.length-1];
       if (!lastP){
-        myTrail.push(seg);
+        ses.myTrail.push(seg);
       } else {
         const movedPx = Math.max(
           Math.hypot((seg.tx-lastP.tx)*UNIT(), (seg.ty-lastP.ty)*UNIT()),
@@ -5087,14 +5107,14 @@ function frame(now){
           const steps = Math.min(10, Math.floor(movedPx/14));
           for (let s2=1; s2<=steps; s2++){
             const f = s2/(steps+1);
-            myTrail.push({ bx:lastP.bx+(seg.bx-lastP.bx)*f, by:lastP.by+(seg.by-lastP.by)*f, tx:lastP.tx+(seg.tx-lastP.tx)*f, ty:lastP.ty+(seg.ty-lastP.ty)*f, t:now });
+            ses.myTrail.push({ bx:lastP.bx+(seg.bx-lastP.bx)*f, by:lastP.by+(seg.by-lastP.by)*f, tx:lastP.tx+(seg.tx-lastP.tx)*f, ty:lastP.ty+(seg.ty-lastP.ty)*f, t:now });
           }
-          myTrail.push(seg);
+          ses.myTrail.push(seg);
         }
       }
-      if (myTrail.length > 34) myTrail.splice(0, myTrail.length-34);
-      myTrail = myTrail.filter(p => now - p.t < 470);
-      if (myTrail.length > 1){
+      if (ses.myTrail.length > 34) ses.myTrail.splice(0, ses.myTrail.length-34);
+      ses.myTrail = ses.myTrail.filter(p => now - p.t < 470);
+      if (ses.myTrail.length > 1){
         /* LIGHTSABER v4 — the SWEPT BLADE (Handler: the effect must render
            the full blade's edge, not just the tip). Each sample stores the
            whole blade segment (grip + tip in screen space); consecutive
@@ -5108,7 +5128,7 @@ function frame(now){
            C leading (tip) edge stroked white, hw*.8 @ .9, plus the
              trailing (grip) edge stroked in colour, 3px @ .3 — both edges
              of the blade read. age here is ageFade: 1 = newest. */
-        const S2 = myTrail.map(p => ({ bx:NX(p.bx), by:NY(p.by), tx:NX(p.tx), ty:NY(p.ty), age: clamp(1-(now-p.t)/470, 0, 1) }));
+        const S2 = ses.myTrail.map(p => ({ bx:NX(p.bx), by:NY(p.by), tx:NX(p.tx), ty:NY(p.ty), age: clamp(1-(now-p.t)/470, 0, 1) }));
         const hw = clamp(myReach() * SCALE() * (1 + bl.ext) * .16, 9, 26);   // saber halfwidth follows weapon reach, as drawSword computes it
         ctx.save(); ctx.lineCap='round'; ctx.lineJoin='round';
         ctx.globalCompositeOperation = 'lighter';   // additive light blending
@@ -5144,7 +5164,7 @@ function frame(now){
         ctx.restore(); ctx.globalAlpha = 1;
       }
     }
-    if (started && now < me.shieldUntil){
+    if (ses.started && now < me.shieldUntil){
       // Aegis shield: a translucent blue bubble around the sword
       const sr = (myReach()+.05)*UNIT();
       ctx.fillStyle = 'rgba(77,171,255,.13)';
@@ -5152,18 +5172,18 @@ function frame(now){
       ctx.strokeStyle = 'rgba(120,200,255,.85)'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(NX(me.x), NY(me.y), sr, 0, 7); ctx.stroke();
     }
-    if (started && now < me.invulnUntil && Math.floor(now/90)%2===0){
+    if (ses.started && now < me.invulnUntil && Math.floor(now/90)%2===0){
       // invulnerability blink ring
       ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 2.5;
       ctx.beginPath(); ctx.arc(NX(me.x), NY(me.y), (myReach()+.045)*UNIT(), 0, 7); ctx.stroke();
     }
-    drawSword(NX(me.x),NY(me.y),bl.ang,me.weapon,me.color, started?me.name:'', true, now, now<me.whirlUntil, bl.ext);
+    drawSword(NX(me.x),NY(me.y),bl.ang,me.weapon,me.color, ses.started?me.name:'', true, now, now<me.whirlUntil, bl.ext);
   }
 
   // pause guarantee: with dt frozen at 0 the trail vanishes and the sword can
   // end up hidden under the centred pause card — redraw my sword explicitly as
   // the LAST canvas op while paused so it always stays visible under the overlay
-  if (paused && started){
+  if (ses.paused && ses.started){
     const bl = bladeAt(now);
     drawSword(NX(me.x),NY(me.y),bl.ang,me.weapon,me.color, me.name, true, now, false, bl.ext);
   }
@@ -5171,12 +5191,12 @@ function frame(now){
   // scoreboard refresh (2/s). refreshPeers() already calls refreshHUD()
   // internally — calling both here ran the full HUD pass (incl. the
   // scoreboard innerHTML rebuild) TWICE per tick for nothing.
-  if (started && now-(frame._b||0)>500){ frame._b=now; refreshPeers(); checkZone(); }
+  if (ses.started && now-ses.slowTickAt>500){ ses.slowTickAt=now; refreshPeers(); checkZone(); }
 }
 requestAnimationFrame(frame);
 // title-screen ambient slimes (solo sim before joining)
 for(let i=0;i<9;i++){ const k=pickKind(); const id='amb'+i; world.slimes.set(id,{id,kind:k.kind,hp:k.hp,max:k.hp,r:k.r,x:rand(.08,.92),y:rand(.15,.9),vx:0,vy:0,dir:rand(0,7),turnAt:performance.now()+rand(800,2000),color:SLIME_COLORS[i%SLIME_COLORS.length],seed:Math.random()*10,squish:0,flash:0}); }
-setInterval(()=>{ if(!started){ // ambient wander on title
+setInterval(()=>{ if(!ses.started){ // ambient wander on title
   const now=performance.now();
   for (const s of world.slimes.values()){ if(now>s.turnAt){s.dir=rand(0,7); s.turnAt=now+rand(900,2400);} s.x+=Math.cos(s.dir)*.0016; s.y+=Math.sin(s.dir)*.0011; s.x=clamp(s.x,.05,.95); s.y=clamp(s.y,.1,.93); }
 }},50);
@@ -5187,10 +5207,9 @@ const WORLD_ID = 'slime-world-1';
 $('#nameIn').value = 'Knight-' + Math.floor(rand(10,99));
 loadGame();
 try{ if (localStorage.getItem(SAVE_KEY)) $('#titleReset').classList.remove('hidden'); }catch(e){}
-let titleResetArmed = false;
 $('#titleReset').onclick = ()=>{
   const b = $('#titleReset');
-  if (!titleResetArmed){ titleResetArmed = true; b.textContent = 'TAP AGAIN — ERASE EVERYTHING?'; return; }
+  if (!ses.titleResetArmed){ ses.titleResetArmed = true; b.textContent = 'TAP AGAIN — ERASE EVERYTHING?'; return; }
   try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
   location.reload();
 };
@@ -5206,7 +5225,7 @@ $('#playBtn').onclick = ()=>{
   world.scores[me.id]={name:me.name,kills:0};
   $('#title').classList.add('hidden');
   $('#hud').classList.remove('hidden');
-  started=true; startedAt = performance.now();
+  ses.started=true; ses.startedAt = performance.now();
   buildRack(); refreshHUD(); refreshPeers();
   if (!bounty) rollBounty();
   updateHint();
@@ -5220,7 +5239,7 @@ $('#playBtn').onclick = ()=>{
   beep(660,.1,'triangle',.1);
 };
 // Enter key starts
-addEventListener('keydown', e=>{ if(!started && e.key==='Enter') $('#playBtn').click(); });
+addEventListener('keydown', e=>{ if(!ses.started && e.key==='Enter') $('#playBtn').click(); });
 </script>
 </body>
 </html>
