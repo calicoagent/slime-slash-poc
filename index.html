@@ -25,6 +25,9 @@
   #lvlBadge { top:74px; left:14px; font-size:16px; padding:5px 14px 5px 10px; flex-direction:column; align-items:stretch; gap:3px; border-radius:22px; }
   #xpTrack { width:130px; height:12px; background:#e4d3ac; border:2px solid #5b3a1e; border-radius:99px; overflow:hidden; }
   #xpFill { height:100%; width:0%; background:linear-gradient(90deg,#ffb52e,#ff8a2e); transition:width .3s; }
+  #hpText { font-size:12px; font-weight:800; color:#c0392b; line-height:1.1; }
+  #hpTrack { width:130px; height:12px; background:#e8c9c9; border:2px solid #5b3a1e; border-radius:99px; overflow:hidden; }
+  #hpFill { height:100%; width:100%; background:linear-gradient(90deg,#ff5f6d,#e5484d); transition:width .25s; }
   #boardBadge { top:74px; right:14px; font-size:14px; padding:8px 14px; border-radius:22px; flex-direction:column; align-items:flex-start; gap:2px; max-width:210px; }
   #boardBadge b { font-size:15px; }
   #boardBadge .row { display:flex; gap:6px; white-space:nowrap; }
@@ -97,7 +100,7 @@
 
   /* ---------- polish pass: bounty / combo / hint / king banner / pause ---------- */
   #bountyBadge {
-    position:fixed; z-index:20; top:142px; left:14px; max-width:232px;
+    position:fixed; z-index:20; top:178px; left:14px; max-width:232px;
     background:#fff8e7; border:4px solid #5b3a1e; border-radius:22px; padding:8px 14px;
     color:#5b3a1e; box-shadow:0 5px 0 #5b3a1e;
   }
@@ -143,7 +146,7 @@
   #zoneBanner small { display:block; font-size:12.5px; font-weight:800; color:#97754a; }
   @keyframes kingIn { 0% { opacity:0; transform:translateX(-50%) scale(.6); } 12% { opacity:1; transform:translateX(-50%) scale(1.08); } 20% { transform:translateX(-50%) scale(1); } 80% { opacity:1; } 100% { opacity:0; transform:translateX(-50%) scale(1); } }
   #pauseBtn {
-    position:fixed; z-index:21; left:14px; bottom:224px; width:46px; height:46px; border-radius:50%;
+    position:fixed; z-index:21; left:14px; bottom:400px; width:46px; height:46px; border-radius:50%;
     background:#fff8e7; border:3.5px solid #5b3a1e; color:#5b3a1e; cursor:pointer;
     font-family:inherit; font-weight:900; font-size:14px; box-shadow:0 4px 0 #5b3a1e;
   }
@@ -176,7 +179,13 @@
     #lvlBadge { top:50px; left:8px; font-size:12.5px; padding:4px 10px; border-width:3px; border-radius:16px; box-shadow:0 3px 0 #5b3a1e; }
     #xpTrack { width:84px; height:9px; }
     #peerBadge { top:max(8px, env(safe-area-inset-top)); right:8px; font-size:12.5px; padding:4px 10px; border-width:3px; box-shadow:0 3px 0 #5b3a1e; }
-    #bountyBadge { top:102px; left:8px; max-width:158px; padding:5px 9px; border-width:3px; border-radius:16px; box-shadow:0 3px 0 #5b3a1e; pointer-events:none; }
+    #bountyBadge { top:120px; left:8px; max-width:158px; padding:5px 9px; border-width:3px; border-radius:16px; box-shadow:0 3px 0 #5b3a1e; pointer-events:none; }
+    #hpTrack { width:84px; height:9px; }
+    #hpText { font-size:10.5px; }
+    #items { left:8px; bottom:158px; gap:8px; }
+    .ibtn { width:44px; height:44px; }
+    #interactPrompt { bottom:158px; font-size:14px; padding:8px 18px; }
+    #bossBar { width:min(72vw,520px); }
     #bountyBadge b { font-size:9.5px; letter-spacing:1px; }
     #bountyText { font-size:11.5px; line-height:1.2; }
     #bountyProg { font-size:10px; margin-top:1px; }
@@ -186,11 +195,74 @@
     #forgeBtn { bottom:78px; right:8px; font-size:13px; padding:8px 12px; border-width:3px; border-radius:16px; box-shadow:0 4px 0 #5b3a1e; }
     #actives { bottom:134px; right:8px; gap:8px; }
     .abtn { width:48px; height:48px; font-size:10px; border-width:3px; }
-    #comboBadge { right:auto; left:8px; bottom:160px; font-size:15px; padding:5px 12px; border-width:3px; box-shadow:0 3px 0 #5b3a1e; }
+    #comboBadge { right:auto; left:8px; bottom:326px; font-size:15px; padding:5px 12px; border-width:3px; box-shadow:0 3px 0 #5b3a1e; }
     #hint { bottom:160px; font-size:13px; max-width:72vw; white-space:normal; text-align:center; padding:6px 12px; }
     #toast { top:auto; bottom:208px; font-size:14px; padding:7px 16px; border-width:3px; }
     #zoneBanner { font-size:15px; padding:6px 14px; max-width:94vw; }
   }
+
+  /* ---------- survival pass: HP flash / boss bar / death / items / bank & shop ---------- */
+  #dmgFlash {
+    position:fixed; inset:0; z-index:38; pointer-events:none; opacity:0;
+    background:radial-gradient(ellipse at center, transparent 52%, rgba(229,72,77,.55) 100%);
+  }
+  #bossBar {
+    position:fixed; z-index:24; top:12px; left:50%; transform:translateX(-50%);
+    width:min(46vw,520px); background:#40121d; border:4px solid #ffd94d; border-radius:18px;
+    padding:6px 14px 9px; box-shadow:0 5px 0 rgba(0,0,0,.5); text-align:center; pointer-events:none;
+  }
+  #bossBar b { color:#ffd94d; font-size:15px; letter-spacing:2px; display:block; margin-bottom:4px; }
+  #bossTrack { height:13px; background:#2a0a12; border:2px solid #ffd94d; border-radius:99px; overflow:hidden; }
+  #bossFill { height:100%; width:100%; background:linear-gradient(90deg,#ff7847,#e5484d); transition:width .25s; }
+  #deathBanner {
+    position:fixed; z-index:46; top:38%; left:50%; transform:translate(-50%,-50%);
+    background:#40121d; color:#ffd9d9; border:5px solid #e5484d; border-radius:24px;
+    padding:20px 30px; font-weight:900; font-size:22px; text-align:center; max-width:88vw;
+    box-shadow:0 10px 0 rgba(0,0,0,.45), 0 24px 40px rgba(0,0,0,.5); pointer-events:none;
+    animation:pop .18s cubic-bezier(.2,2.2,.4,1);
+  }
+  #interactPrompt {
+    position:fixed; z-index:23; bottom:118px; left:50%; transform:translateX(-50%);
+    font-family:inherit; font-weight:900; font-size:17px; cursor:pointer;
+    background:#ffd94d; color:#5b3a1e; border:4px solid #5b3a1e; border-radius:999px;
+    padding:10px 26px; box-shadow:0 5px 0 #5b3a1e;
+  }
+  #interactPrompt:active { transform:translateX(-50%) translateY(3px); box-shadow:0 2px 0 #5b3a1e; }
+  #items { position:fixed; left:14px; bottom:222px; z-index:21; display:flex; flex-direction:column; gap:10px; }
+  .ibtn {
+    position:relative; width:48px; height:48px; border-radius:50%; cursor:pointer;
+    border:3.5px solid #5b3a1e; background:#fff8e7; box-shadow:0 4px 0 #5b3a1e;
+    display:flex; align-items:center; justify-content:center; padding:0;
+  }
+  .ibtn svg { width:27px; height:27px; }
+  .ibtn:active { transform:translateY(3px); box-shadow:0 1px 0 #5b3a1e; }
+  .ibtn .cnt {
+    position:absolute; top:-7px; right:-7px; min-width:20px; height:20px; padding:0 5px;
+    background:#5b3a1e; color:#ffd94d; border-radius:99px; font-family:inherit;
+    font-size:12px; font-weight:900; display:flex; align-items:center; justify-content:center;
+  }
+  .ibtn.empty { filter:grayscale(.9); opacity:.55; }
+  .panelWrap {
+    position:fixed; inset:0; z-index:44; background:rgba(20,40,15,.45);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .bankLine { font-weight:800; color:#5b3a1e; font-size:16px; }
+  .bankLine b { color:#b8860b; }
+  .shopRow {
+    display:flex; align-items:center; gap:10px; background:#fff; border:3px solid #5b3a1e;
+    border-radius:16px; padding:8px 10px; margin-bottom:8px; text-align:left;
+  }
+  .shopRow .info { flex:1; }
+  .shopRow .info b { color:#5b3a1e; font-size:15px; display:block; }
+  .shopRow .info span { color:#97754a; font-size:12px; font-weight:700; }
+  .shopRow .own { font-weight:900; color:#b8860b; font-size:14px; min-width:36px; text-align:center; }
+  .shopRow button {
+    font-family:inherit; font-weight:800; font-size:14px; cursor:pointer; white-space:nowrap;
+    background:#ffd94d; border:3px solid #5b3a1e; border-radius:12px; padding:7px 12px; color:#5b3a1e;
+    box-shadow:0 3px 0 #5b3a1e;
+  }
+  .shopRow button:active { transform:translateY(2px); box-shadow:0 1px 0 #5b3a1e; }
+  .shopRow button:disabled { filter:grayscale(1); opacity:.5; cursor:default; }
 
   /* ---------- sphere grid ---------- */
   #forge { width:min(94vw,472px); }
@@ -306,6 +378,8 @@
   <div class="badge" id="lvlBadge">
     <div>LV <span id="lvl">1</span> &nbsp;<span id="kills" style="color:#97754a;font-size:13px;">0 kills</span></div>
     <div id="xpTrack"><div id="xpFill"></div></div>
+    <div id="hpText">HP 100</div>
+    <div id="hpTrack"><div id="hpFill"></div></div>
   </div>
   <div class="badge" id="peerBadge"><span class="dot"></span><span id="peers">Solo</span></div>
   <div class="badge" id="boardBadge"><b>TOP SLAYERS</b><div id="board"></div></div>
@@ -317,6 +391,13 @@
 
   <div id="rack"></div>
   <canvas id="minimap" width="124" height="124"></canvas>
+  <div id="items">
+    <button class="ibtn empty" id="itemPotion" title="Potion (Z) — heal 60 HP"><svg viewBox="0 0 40 40"><rect x="16.5" y="7" width="7" height="26" rx="2.5" fill="#e5484d"/><rect x="7" y="16.5" width="26" height="7" rx="2.5" fill="#e5484d"/></svg><span class="cnt">0</span></button>
+    <button class="ibtn empty" id="itemBomb" title="Bomb (X) — blast every slime near your sword"><svg viewBox="0 0 40 40"><circle cx="19" cy="25" r="12" fill="#263238"/><rect x="23" y="9" width="6" height="8" rx="2" fill="#5b3a1e"/><path d="M27 9 q7-5 9 1" stroke="#ffb52e" stroke-width="2.5" fill="none" stroke-linecap="round"/><circle cx="15" cy="20" r="3.5" fill="#90a4ae"/></svg><span class="cnt">0</span></button>
+    <button class="ibtn empty" id="itemShield" title="Aegis Charm (C) — shield: 6s invulnerable"><svg viewBox="0 0 40 40"><path d="M20 3 L34 8.5 V19 C34 28.5 27.5 33.5 20 37.5 C12.5 33.5 6 28.5 6 19 V8.5 Z" fill="#4dabff" stroke="#22577a" stroke-width="2.5"/><path d="M20 8 L29 11.5 V19 C29 25.5 25 29.5 20 32.5 C15 29.5 11 25.5 11 19 V11.5 Z" fill="#bfe3ff"/></svg><span class="cnt">0</span></button>
+  </div>
+  <button id="interactPrompt" class="hidden">OPEN BANK</button>
+  <div id="bossBar" class="hidden"><b>SLIME EMPEROR</b><div id="bossTrack"><div id="bossFill"></div></div></div>
   <div id="actives"></div>
   <button id="shareBtn">INVITE LINK</button>
   <button id="forgeBtn">SPHERE</button>
@@ -337,6 +418,8 @@
   </div>
 </div>
 
+<div id="dmgFlash"></div>
+<div id="deathBanner" class="hidden"></div>
 <div id="toast" class="hidden"></div>
 <div id="bubble" class="hidden"></div>
 <div id="kingBanner" class="hidden">THE SLIME KING HAS APPEARED!</div>
@@ -349,7 +432,26 @@
     <button class="pbtn main" id="resumeBtn">RESUME</button>
     <button class="pbtn" id="soundBtn">SOUND: ON</button>
     <button class="pbtn" id="restartBtn">RESTART RUN</button>
-    <div class="pcontrols">Drag to slash · Click / Tap or SPACE = Spin Slash · Keys 1-6 = weapons · F = Sphere Grid · Q / E / R = skills · Esc = pause</div>
+    <div class="pcontrols">Drag to slash · Click / Tap or SPACE = Spin Slash · Keys 1-6 = weapons · F = Sphere Grid · Q / E / R / T = skills · Z / X / C = items · B = bank / shop · Esc = pause</div>
+  </div>
+</div>
+<div id="bankPanel" class="hidden panelWrap">
+  <div class="pauseCard">
+    <h2>THE SLIME BANK</h2>
+    <div class="bankLine">Carried: <b id="bankCarried">0</b> coins</div>
+    <div class="bankLine">Banked: <b id="bankBanked">0</b> coins</div>
+    <div class="pcontrols">Banked coins are NEVER lost when you die. Death takes half of what you carry (only a quarter with a Coin Purse).</div>
+    <button class="pbtn main" id="depBtn">DEPOSIT ALL</button>
+    <button class="pbtn" id="wdBtn">WITHDRAW ALL</button>
+    <button class="pbtn" id="bankCloseBtn">CLOSE</button>
+  </div>
+</div>
+<div id="shopPanel" class="hidden panelWrap">
+  <div class="pauseCard" style="width:min(94vw,410px)">
+    <h2>SLIME SHOP</h2>
+    <div class="bankLine">Carried: <b id="shopCoins">0</b> coins</div>
+    <div id="shopRows"></div>
+    <button class="pbtn" id="shopCloseBtn">CLOSE</button>
   </div>
 </div>
 
@@ -399,6 +501,8 @@ const sfx = {
   spin: ()=>beep(300,.16,'sawtooth',.045,700),
   sting: ()=>{ beep(196,.32,'sawtooth',.09,-30); setTimeout(()=>beep(392,.3,'triangle',.1,140),60); setTimeout(()=>beep(587,.38,'triangle',.09,80),130); },
   combo: ()=>beep(880,.09,'square',.07,320),
+  hurt: ()=>beep(140,.18,'square',.14,-60),
+  die:  ()=>{ [392,330,262,196].forEach((f,i)=>setTimeout(()=>beep(f,.22,'triangle',.12,-40), i*130)); },
 };
 Object.defineProperty(sfx, 'muted', { get:()=>muted, set:v=>{ muted = !!v; } });
 
@@ -451,6 +555,9 @@ const me = {
   x:.5, y:.6, px:.5, py:.6, angle:-Math.PI/4, speed:0,
   weapon:1, coins:0, xp:0, level:1, kills:0,
   sp:0, actCd:{ wave:0, meteor:0, frenzy:0, goldrush:0 }, frenzyUntil:0, goldRushUntil:0,
+  // survival + economy (HP is LOCAL only — never networked)
+  hp:100, maxHp:100, invulnUntil:0, lastDmgAt:0, shieldUntil:0,
+  banked:0, items:{ potion:0, bomb:0, shield:0 }, purse:false,
   stabT0:0, stabAng:0,
   ptrSpeedPx:0,   // latest pointer speed (px/s, max of recent events, decayed per frame) — an idle blade must not cut
   lastHitAt:new Map(), spinUntil:0, spinCdUntil:0, trail:[],
@@ -484,7 +591,19 @@ me.x = WORLD/2; me.y = WORLD/2 + .1;   // start at world centre
 const peers = new Map();       // id -> {x,y,tx,ty,angle,name,color,weapon,trail,lastSeen}
 let slimes = new Map();        // id -> slime (local mirror; host owns truth)
 let particles = [], floats = [], popRings = [];
-let started=false, room=null, sendPos=null, sendHit=null, sendWorld=null, sendKillFx=null;
+let started=false, room=null, sendPos=null, sendHit=null, sendWorld=null, sendKillFx=null, sendBoss=null;
+/* ---- survival pass state ---- */
+const CONTACT_DMG = { baby:4, dart:4, mid:6, gold:2, splitter:7, big:9, tank:13, king:16, boss:20 };
+const BANK_POS = { x: WORLD/2 - .42, y: WORLD/2 - .34 };
+const SHOP_POS = { x: WORLD/2 + .42, y: WORLD/2 - .34 };
+let bullets = [];               // boss bullet-hell orbs (client-local sim, never networked)
+let spiralEmitters = [];        // active spiral bullet emitters (client-local)
+let bossSpawnAt = Infinity;     // host: next SLIME EMPEROR spawn time
+let bossFireAt = 0;             // host: next bullet-pattern volley
+let bossPatternIdx = 0;         // host: pattern rotation ring -> fan -> spiral
+let dmgFlashAt = 0;             // last time the player took damage (red vignette decay)
+let nearBuilding = null;        // 'bank' | 'shop' | null — drives the interact prompt
+const seenBosses = new Set();   // boss ids already announced by the banner
 let isHost=false, hostId=null, lastWorldAt=0, scores = {}; // id -> {name,kills}
 const hitClaimsAt = new Map(); // host-side rate limiting
 
@@ -509,6 +628,7 @@ const SLIME_KINDS = [
   { kind:'tank',  hp:190, r:.062, coins:34, xp:60, speed:.005, weight:8  },
   { kind:'splitter', hp:46, r:.040, coins:14, xp:24, speed:.010, weight:12 },
   { kind:'gold',  hp:10,  r:.022, coins:60, xp:30, speed:.026, weight:3  },
+  { kind:'boss',  hp:1500,r:.14,  coins:800,xp:600,speed:.007, weight:0  },   // SLIME EMPEROR — timed host spawn only, never random
 ];
 const SLIME_COLORS = ['#7ee787','#6fd3ff','#ffb3d9','#ffe066','#c39bff','#8affd1','#ffab7a'];
 /* ---- zones: rings around the world centre — richer & deadlier outward ---- */
@@ -553,13 +673,13 @@ function spawnSlime(opts={}){
   const zi = zoneOf(sx, sy), zone = ZONES[zi];
   const k = opts.kind ? (SLIME_KINDS.find(m=>m.kind===opts.kind) || SLIME_KINDS[0]) : pickKind(zi);
   const id = (hostId||me.id).slice(0,4)+'-'+(slimeSeq++);
-  const hp = Math.round(k.hp * zone.hp);
+  const hp = k.kind==='boss' ? k.hp : Math.round(k.hp * zone.hp);   // the Emperor keeps his true 1500 HP — no zone scaling
   const s = { id, kind:k.kind, hp, max:hp, r:k.r,
     x:sx, y:sy, vx:0, vy:0, dir:rand(0,Math.PI*2), turnAt:performance.now()+rand(800,2600),
     color: k.kind==='gold' ? '#ffe066' : SLIME_COLORS[Math.floor(Math.random()*SLIME_COLORS.length)],
-    seed:Math.random()*10, squish:0, flash:0, mul:zone.mul, elite:false };
-  // ELITES: rare, tougher, much richer
-  if (k.kind !== 'king' && Math.random() < .08){
+    seed:Math.random()*10, squish:0, flash:0, mul: k.kind==='boss' ? 1.5 : zone.mul, elite:false };
+  // ELITES: rare, tougher, much richer (never kings, never the Emperor)
+  if (k.kind !== 'king' && k.kind !== 'boss' && Math.random() < .08){
     s.elite = true;
     s.hp = s.max = Math.round(s.hp * 3);
     s.r = k.r * 1.35;
@@ -605,6 +725,39 @@ function hostTick(now,dt){
     if (Math.random()<.55) spawnSlime();
     if (slimes.size < target-4 && Math.random()<.55) spawnSlime();   // refill in pairs while well under target
   }
+  /* ---- SLIME EMPEROR: timed spawn + bullet-hell volleys (host decides,
+     every client sims the bullets locally from the 'boss' events) ---- */
+  if (bossSpawnAt===Infinity) bossSpawnAt = now + 75000;   // first awakening 75s into this host's reign
+  let boss = [...slimes.values()].find(s=>s.kind==='boss');
+  if (now >= bossSpawnAt){
+    bossSpawnAt = now + 150000;
+    if (!boss){
+      let bx=WORLD/2, by=.3;
+      for (let i=0;i<40;i++){ const x=rand(.15,WORLD-.15), y=rand(.15,WORLD-.15); if (Math.hypot(x-WORLD/2, y-WORLD/2) > 2.3){ bx=x; by=y; break; } }
+      boss = spawnSlime({ kind:'boss', x:bx, y:by });
+    }
+  }
+  if (boss && sendBoss){
+    if (!bossFireAt) bossFireAt = now + 1600;
+    if (now >= bossFireAt){
+      bossFireAt = now + 2400;
+      const p = ['ring','fan','spiral'][bossPatternIdx++ % 3];
+      let payload;
+      if (p==='ring') payload = { p:'ring', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now, n:26, spd:.34 };
+      else if (p==='fan'){
+        let bx=me.x, by=me.y, bd=dist2(boss.x,boss.y,me.x,me.y);
+        for (const pp of peers.values()){
+          const px=(pp.tx!==undefined?pp.tx:pp.x), py=(pp.ty!==undefined?pp.ty:pp.y);
+          const d=dist2(boss.x,boss.y,px,py);
+          if (d<bd){ bd=d; bx=px; by=py; }
+        }
+        payload = { p:'fan', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now, aim:+Math.atan2(by-boss.y, bx-boss.x).toFixed(3) };
+      }
+      else payload = { p:'spiral', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now };
+      sendBoss(payload);
+      bossEvent(payload);   // Trystero does not echo to the sender — the host's own client sims it too
+    }
+  } else if (!boss) bossFireAt = 0;
 }
 function worldPayload(){
   return { s:[...slimes.values()].map(s=>[s.id, +s.x.toFixed(3), +s.y.toFixed(3), Math.ceil(s.hp), s.max, s.kind, s.color, +s.dir.toFixed(2), Math.round((s.mul||1)*100)/100, s.elite?1:0]),
@@ -646,6 +799,28 @@ function addFloat(x,y,text,color,opts={}){
 function toast(msg,ms=2200){ const t=$('#toast'); t.textContent=msg; t.classList.remove('hidden'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.add('hidden'),ms); }
 let bubbleTimer=null;
 function bubble(text,x,y,ms=1600){ const b=$('#bubble'); b.textContent=text; b.style.left=NX(x)+'px'; b.style.top=NY(y)+'px'; b.classList.remove('hidden'); clearTimeout(bubbleTimer); bubbleTimer=setTimeout(()=>b.classList.add('hidden'),ms); }
+
+/* ============================================================ boss bullets (client-local sim)
+   The host broadcasts PATTERN EVENTS on the 'boss' action; every client
+   (including the host's own) turns them into glowing orbs simulated locally.
+   Bullets are never added to the world payload. */
+function spawnBullet(x,y,vx,vy,now){
+  bullets.push({ x, y, vx, vy, born:now, life:4200 });
+  if (bullets.length > 600) bullets.splice(0, bullets.length-600);
+}
+function bossEvent(d){
+  if (!d || typeof d.x!=='number' || typeof d.y!=='number') return;
+  const now = performance.now();
+  if (d.p==='ring'){
+    const n = d.n || 26, spd = d.spd || .34;
+    for (let i=0;i<n;i++){ const a = (i/n)*Math.PI*2; spawnBullet(d.x, d.y, Math.cos(a)*spd, Math.sin(a)*spd, now); }
+  } else if (d.p==='fan'){
+    const aim = +d.aim || 0;
+    for (let i=0;i<7;i++){ const a = aim + (i-3)*(0.9/6); spawnBullet(d.x, d.y, Math.cos(a)*.4, Math.sin(a)*.4, now); }
+  } else if (d.p==='spiral'){
+    spiralEmitters.push({ until: now+1800, nextAt: now, ang: rand(0, Math.PI*2) });
+  }
+}
 
 /* ============================================================ combat */
 function myWeapon(){ return WEAPONS[me.weapon]; }
@@ -758,11 +933,12 @@ function hostKill(s, byId){
 }
 const STREAKS = { 10:'RAMPAGE!', 20:'SLIME STORM!', 30:'UNSTOPPABLE!', 50:'SLIME APOCALYPSE!' };
 function onKillFx(f){
-  // death bursts scale with the prize: king 46, elite 34, normal 22; ring starts at the slime's radius
-  spawnPopFx(f.x, f.y, f.c, f.kind==='king' ? 46 : f.elite ? 34 : 22, f.r || .01);
+  // death bursts scale with the prize: boss 60, king 46, elite 34, normal 22; ring starts at the slime's radius
+  spawnPopFx(f.x, f.y, f.c, f.kind==='boss' ? 60 : f.kind==='king' ? 46 : f.elite ? 34 : 22, f.r || .01);
   sfx.pop();
   if (f.elite) addFloat(f.x, f.y-.09, 'ELITE DOWN!', '#ffd94d', {big:true});
   if (f.kind==='king') toast('THE SLIME KING HAS FALLEN!');
+  if (f.kind==='boss') toast('THE EMPEROR HAS FALLEN!');
   if (f.by===me.id){
     const now = performance.now();
     let cg = Math.round(f.coins * (1 + S.coin));
@@ -771,6 +947,7 @@ function onKillFx(f){
     gainXp(f.xp); sfx.coin();
     addFloat(f.x, f.y-.04, '+'+cg+' coins', '#ffd94d');
     if (f.kind==='king'){ me.sp++; bubble('KING SLAYER! +1 SP', me.x, me.y); setTimeout(()=>toast('KING BONUS: +1 Sphere Point!'), 600); }
+    if (f.kind==='boss'){ me.sp += 2; bubble('EMPEROR SLAYER! +2 SP', me.x, me.y); setTimeout(()=>toast('EMPEROR BONUS: +2 Sphere Points!'), 600); }
     // combo chain: kills within the window of each other keep it alive (Combo Charm stretches it)
     combo = (now < comboUntil) ? combo+1 : 1;
     comboUntil = now + 2500 * (1 + S.comboWin);
@@ -808,6 +985,127 @@ function gainXp(n){
     buildRack();
   }
   refreshHUD();
+}
+
+/* ============================================================ survival: HP, damage, death
+   HP is LOCAL to each player — it is never sent over the network. Contact
+   and bullet damage are computed in frame() and funnel through here. */
+function damagePlayer(amount, now){
+  if (!started || paused) return;
+  if (now < me.shieldUntil) return;        // Aegis Charm blocks ALL damage
+  if (now <= me.invulnUntil) return;
+  me.hp -= amount;
+  me.invulnUntil = now + 800;
+  me.lastDmgAt = now;
+  dmgFlashAt = now;
+  sfx.hurt();
+  if (me.hp <= 0) death();
+  refreshHUD();
+}
+function death(){
+  const now = performance.now();
+  const lost = me.purse ? Math.floor(me.coins*.25) : Math.floor(me.coins/2);   // Coin Purse softens the blow; banked coins are NEVER touched
+  me.coins -= lost;
+  me.hp = me.maxHp;
+  me.x = WORLD/2; me.y = WORLD/2 + .1; me.px = me.x; me.py = me.y;
+  const vw = W/UNIT(), vh = H/UNIT();
+  cam.x = clamp(me.x - vw/2, 0, Math.max(0, WORLD - vw));
+  cam.y = clamp(me.y - vh/2, 0, Math.max(0, WORLD - vh));
+  combo = 0; comboUntil = 0; updateComboBadge(false);
+  me.invulnUntil = now + 3000;
+  me.trailBreak = true; myTrail.length = 0;
+  const b = $('#deathBanner');
+  b.textContent = 'YOU DIED! The slimes took ' + lost + ' coins — banked coins are safe.';
+  b.classList.remove('hidden');
+  clearTimeout(b._h); b._h = setTimeout(()=>b.classList.add('hidden'), 2800);
+  sfx.die();
+  refreshHUD();
+}
+
+/* ============================================================ bank & shop */
+function openBank(){ $('#bankPanel').classList.remove('hidden'); updateBankPanel(); }
+function openShop(){ $('#shopPanel').classList.remove('hidden'); buildShopRows(); }
+function updateBankPanel(){
+  $('#bankCarried').textContent = me.coins;
+  $('#bankBanked').textContent = me.banked;
+}
+const SHOP_ITEMS = [
+  { id:'potion', name:'Potion',      price:50,  desc:'Heal 60 HP' },
+  { id:'bomb',   name:'Bomb',        price:80,  desc:'Blast every slime near your sword' },
+  { id:'shield', name:'Aegis Charm', price:100, desc:'Shield: 6s invulnerable' },
+  { id:'purse',  name:'Coin Purse',  price:500, desc:'PERMANENT: death takes only 25% of carried coins' },
+];
+function buildShopRows(){
+  $('#shopCoins').textContent = me.coins;
+  const wrap = $('#shopRows'); wrap.innerHTML = '';
+  for (const it of SHOP_ITEMS){
+    const row = document.createElement('div'); row.className = 'shopRow';
+    const owned = it.id==='purse' ? (me.purse ? 'OWNED' : '') : ('x' + me.items[it.id]);
+    row.innerHTML = `<div class="info"><b>${it.name} — ${it.price}c</b><span>${it.desc}</span></div><div class="own">${owned}</div>`;
+    const btn = document.createElement('button');
+    const ownedPurse = it.id==='purse' && me.purse;
+    btn.textContent = ownedPurse ? 'OWNED' : 'BUY';
+    btn.disabled = ownedPurse || me.coins < it.price;   // carried coins only
+    btn.onclick = ()=>buyItem(it.id);
+    row.appendChild(btn);
+    wrap.appendChild(row);
+  }
+}
+function buyItem(id){
+  const it = SHOP_ITEMS.find(i=>i.id===id); if (!it) return;
+  if (me.coins < it.price) return;
+  if (id==='purse'){ if (me.purse) return; me.purse = true; }
+  else me.items[id]++;
+  me.coins -= it.price;
+  sfx.buy();
+  buildShopRows(); refreshHUD(); saveGame();
+}
+function updateInteract(){
+  const pr = $('#interactPrompt');
+  if (!started){ pr.classList.add('hidden'); nearBuilding = null; return; }
+  const db = Math.sqrt(dist2(me.x,me.y,BANK_POS.x,BANK_POS.y));
+  const ds = Math.sqrt(dist2(me.x,me.y,SHOP_POS.x,SHOP_POS.y));
+  nearBuilding = db < .17 ? 'bank' : ds < .17 ? 'shop' : null;
+  const panelOpen = !$('#bankPanel').classList.contains('hidden') || !$('#shopPanel').classList.contains('hidden');
+  if (nearBuilding && !panelOpen){
+    pr.textContent = nearBuilding==='bank' ? 'OPEN BANK' : 'OPEN SHOP';
+    pr.classList.remove('hidden');
+  } else pr.classList.add('hidden');
+  // walk away (> .3 units) and the panel closes itself
+  if (!$('#bankPanel').classList.contains('hidden') && db > .3) $('#bankPanel').classList.add('hidden');
+  if (!$('#shopPanel').classList.contains('hidden') && ds > .3) $('#shopPanel').classList.add('hidden');
+}
+
+/* ============================================================ items */
+function useItem(id){
+  if (!started || paused) return;
+  const now = performance.now();
+  if (id==='potion'){
+    if (me.items.potion<=0 || me.hp>=me.maxHp) return;
+    me.items.potion--;
+    me.hp = Math.min(me.maxHp, me.hp + 60);
+    for (let i=0;i<10;i++) particles.push({ x:me.x, y:me.y, vx:rand(-.06,.06), vy:rand(-.14,-.03), life:1, color:'#57d93d', r:rand(2,5) });
+    capParticles();
+    beep(660,.1,'sine',.1,330);   // heal sparkle sound
+    addFloat(me.x, me.y-.06, '+60 HP', '#57d93d');
+  }
+  if (id==='bomb'){
+    if (me.items.bomb<=0) return;
+    me.items.bomb--;
+    popRings.push({ x:me.x, y:me.y, r:.05, life:1, color:'#ffb52e' });
+    spawnHitFx(me.x, me.y, '#ffb52e', 24);
+    sfx.pop();
+    for (const s of [...slimes.values()])
+      if (dist2(s.x,s.y,me.x,me.y) < .38*.38) doHit(s, 150);   // normal claim flow — host still validates/caps
+  }
+  if (id==='shield'){
+    if (me.items.shield<=0) return;
+    me.items.shield--;
+    me.shieldUntil = now + 6000;
+    bubble('AEGIS!', me.x, me.y, 900);
+    beep(520,.15,'sine',.09,260);
+  }
+  refreshHUD(); saveGame();
 }
 
 /* ============================================================ networking */
@@ -861,6 +1159,8 @@ function joinWorld(roomCode){
   onW((d,id)=>{ if (id===hostId || !hostId) applyWorld(d); else if (!isHost) applyWorld(d); });
   const [sendK, onK] = room.makeAction('kill'); sendKillFx = sendK;
   onK(f=>{ if (f && typeof f.x==='number') onKillFx(f); });
+  const [sendB, onB] = room.makeAction('boss'); sendBoss = sendB;
+  onB(d=>{ if (d) bossEvent(d); });
 
   joinedAt = performance.now();
   electHost(); startBroadcastLoop();
@@ -942,6 +1242,10 @@ addEventListener('keydown', e=>{
   if (lk==='e') castActive('meteor');
   if (lk==='r') castActive('frenzy');
   if (lk==='t') castActive('goldrush');
+  if (lk==='b'){ if (nearBuilding==='bank') openBank(); else if (nearBuilding==='shop') openShop(); }
+  if (lk==='z') useItem('potion');
+  if (lk==='x') useItem('bomb');
+  if (lk==='c') useItem('shield');
 });
 function trySpin(){
   const now=performance.now();
@@ -958,6 +1262,20 @@ function refreshHUD(){
   $('#lvl').textContent = me.level;
   $('#kills').textContent = me.kills+' kills';
   $('#xpFill').style.width = clamp(me.xp/(me.level*100)*100,0,100)+'%';
+  // player HP (local only)
+  $('#hpFill').style.width = clamp(me.hp/me.maxHp*100,0,100)+'%';
+  $('#hpText').textContent = 'HP ' + Math.max(0, Math.ceil(me.hp));
+  // SLIME EMPEROR boss bar — visible while a boss lives anywhere in the world
+  const bossS = [...slimes.values()].find(s=>s.kind==='boss');
+  if (bossS){ $('#bossBar').classList.remove('hidden'); $('#bossFill').style.width = clamp(bossS.hp/bossS.max*100,0,100)+'%'; }
+  else $('#bossBar').classList.add('hidden');
+  // item buttons: counts + greyed when empty
+  for (const [id, sel] of [['potion','#itemPotion'],['bomb','#itemBomb'],['shield','#itemShield']]){
+    const b = $(sel); if (!b) continue;
+    b.querySelector('.cnt').textContent = me.items[id];
+    b.classList.toggle('empty', me.items[id]<=0);
+  }
+  if (!$('#bankPanel').classList.contains('hidden')) updateBankPanel();
   // scoreboard — my own row always shows LIVE me.kills/me.name (local kills are
   // credited in a path that does not write into scores, so the table lagged)
   const sEntries = Object.entries(scores);
@@ -1167,12 +1485,17 @@ function updateBountyUI(){
 function scanKings(){
   if (!started) return;
   const fresh = performance.now() - startedAt >= 3000;   // never banner in the first 3s after PLAY
-  for (const s of slimes.values())
+  for (const s of slimes.values()){
     if (s.kind==='king' && !seenKings.has(s.id) && fresh){ seenKings.add(s.id); showKingBanner(); }
+    if (s.kind==='boss' && !seenBosses.has(s.id) && fresh){ seenBosses.add(s.id); showKingBanner('THE SLIME EMPEROR HAS AWAKENED!'); }
+  }
   for (const id of [...seenKings]) if (!slimes.has(id)) seenKings.delete(id);
+  for (const id of [...seenBosses]) if (!slimes.has(id)) seenBosses.delete(id);
 }
-function showKingBanner(){
+let kingBannerText = 'THE SLIME KING HAS APPEARED!';
+function showKingBanner(text){
   // queued: the banner never overlaps a toast — it waits until the toast hides
+  kingBannerText = text || 'THE SLIME KING HAS APPEARED!';
   kingBannerPending = true;
   tryKingBanner();
 }
@@ -1181,6 +1504,7 @@ function tryKingBanner(){
   if (!$('#toast').classList.contains('hidden')){ setTimeout(tryKingBanner, 300); return; }
   kingBannerPending = false;
   const b = $('#kingBanner');
+  b.textContent = kingBannerText;
   b.classList.remove('hidden'); b.classList.remove('show'); void b.offsetWidth; b.classList.add('show');
   sfx.sting();
   clearTimeout(b._h); b._h = setTimeout(()=>b.classList.add('hidden'), 2600);
@@ -1207,7 +1531,7 @@ function checkZone(){
 /* ---------- tutorial hints (one at a time, in sequence) ---------- */
 function updateHint(){
   const h = $('#hint');
-  if (!started || paused || !$('#forge').classList.contains('hidden')){ h.classList.add('hidden'); return; }
+  if (!started || paused || nearBuilding || !$('#forge').classList.contains('hidden')){ h.classList.add('hidden'); return; }
   let txt = '';
   if (!hintsSeen.slash) txt = 'DRAG TO SLASH!';
   else if (!hintsSeen.spin) txt = 'CLICK / TAP — SPIN SLASH';
@@ -1229,6 +1553,8 @@ function setMuted(v){
 }
 function resetRun(){
   me.level=1; me.xp=0; me.coins=0; me.kills=0; me.sp=0; me.weapon=1;
+  me.hp=me.maxHp; me.banked=0; me.items={ potion:0, bomb:0, shield:0 }; me.purse=false; me.shieldUntil=0;
+  $('#bankPanel').classList.add('hidden'); $('#shopPanel').classList.add('hidden');
   unlocked.clear(); recalc();
   combo=0; comboUntil=0; updateComboBadge(false);
   if (scores[me.id]) scores[me.id].kills = 0;
@@ -1247,6 +1573,7 @@ function saveGame(){
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       level:me.level, xp:me.xp, coins:me.coins, kills:me.kills, sp:me.sp,
       unlocked:[...unlocked], weapon:me.weapon, name:me.name, muted, hintsSeen,
+      banked:me.banked, items:me.items, purse:me.purse,
       bounty: bounty ? { type:bounty.type, key:bounty.key, label:bounty.label, need:bounty.need, have:bounty.have, reward:bounty.reward } : null
     }));
   }catch(e){}
@@ -1266,6 +1593,10 @@ function loadGame(){
     for (let i=WEAPONS.length-1; i>=0; i--) if (me.level >= WEAPONS[i].unlock){ wi = i; break; }
   }
   me.weapon = wi;
+  // economy persists; HP deliberately does NOT — you always load in at full health
+  me.banked = Math.max(0, d.banked|0);
+  if (d.items) me.items = { potion:Math.max(0, d.items.potion|0), bomb:Math.max(0, d.items.bomb|0), shield:Math.max(0, d.items.shield|0) };
+  me.purse = !!d.purse;
   if (d.name){ me.name = cleanName(d.name); $('#nameIn').value = me.name; }
   if (d.hintsSeen) hintsSeen = { slash:!!d.hintsSeen.slash, spin:!!d.hintsSeen.spin, sphere:!!d.hintsSeen.sphere };
   if (d.bounty && d.bounty.key && (d.bounty.type==='color' || d.bounty.type==='kind')){
@@ -1284,8 +1615,8 @@ function drawMinimap(){
   g.strokeStyle = 'rgba(255,255,255,.8)'; g.lineWidth = 1.5;
   g.strokeRect(cam.x*S2, cam.y*S2, (W/UNIT())*S2, (H/UNIT())*S2);
   for (const s of slimes.values()){
-    g.fillStyle = s.kind==='king' ? '#ffd94d' : 'rgba(30,90,20,.55)';
-    g.beginPath(); g.arc(s.x*S2, s.y*S2, s.kind==='king'?4.5:2, 0, 7); g.fill();
+    g.fillStyle = (s.kind==='king' || s.kind==='boss') ? '#ffd94d' : 'rgba(30,90,20,.55)';
+    g.beginPath(); g.arc(s.x*S2, s.y*S2, s.kind==='boss'?6 : s.kind==='king'?4.5:2, 0, 7); g.fill();
   }
   for (const p of peers.values()){ g.fillStyle = '#4dabff'; g.beginPath(); g.arc(p.x*S2, p.y*S2, 3, 0, 7); g.fill(); }
   g.fillStyle = '#fff'; g.strokeStyle = '#5b3a1e'; g.lineWidth = 2;
@@ -1376,6 +1707,16 @@ $('#pauseBtn').onclick = ()=>togglePause();
 $('#resumeBtn').onclick = ()=>togglePause(false);
 $('#soundBtn').onclick = ()=>{ setMuted(!muted); saveGame(); };
 $('#restartBtn').onclick = ()=>resetRun();
+$('#interactPrompt').onclick = ()=>{ if (nearBuilding==='bank') openBank(); else if (nearBuilding==='shop') openShop(); };
+$('#depBtn').onclick = ()=>{ me.banked += me.coins; me.coins = 0; sfx.buy(); updateBankPanel(); refreshHUD(); };
+$('#wdBtn').onclick = ()=>{ me.coins += me.banked; me.banked = 0; sfx.coin(); updateBankPanel(); refreshHUD(); };
+$('#bankCloseBtn').onclick = ()=>$('#bankPanel').classList.add('hidden');
+$('#shopCloseBtn').onclick = ()=>$('#shopPanel').classList.add('hidden');
+$('#bankPanel').addEventListener('click', e=>{ if (e.target.id==='bankPanel') e.target.classList.add('hidden'); });
+$('#shopPanel').addEventListener('click', e=>{ if (e.target.id==='shopPanel') e.target.classList.add('hidden'); });
+$('#itemPotion').onclick = ()=>useItem('potion');
+$('#itemBomb').onclick = ()=>useItem('bomb');
+$('#itemShield').onclick = ()=>useItem('shield');
 
 /* ============================================================ SVG slimes (hand-drawn vector sprites) */
 const SLIME_IMGS = {};
@@ -1387,7 +1728,7 @@ const COLOR2IMG = {
   '#ffb3d9':'pink', '#ffab7a':'orange', '#c39bff':'purple',
 };
 function drawVideoSlime(s,t,baseR){
-  const img = s.kind==='king' ? SLIME_IMGS.king : SLIME_IMGS[COLOR2IMG[s.color]||'pink'];
+  const img = (s.kind==='king' || s.kind==='boss') ? SLIME_IMGS.king : SLIME_IMGS[COLOR2IMG[s.color]||'pink'];
   if (!img || !img.complete || !img.naturalWidth) return false;
   const wob = Math.sin(t/280 + s.seed*7)*0.055;
   const sq = 1 + wob - s.squish*.30;
@@ -1411,7 +1752,9 @@ const DECOR = (()=>{
   const place = minC => {
     for (let i=0;i<40;i++){
       const x = .12 + rng()*(WORLD-.24), y = .14 + rng()*(WORLD-.24);
-      if (Math.hypot(x-cx, y-cy) > minC) return { x, y };
+      if (Math.hypot(x-cx, y-cy) > minC &&
+          Math.hypot(x-BANK_POS.x, y-BANK_POS.y) > .27 &&
+          Math.hypot(x-SHOP_POS.x, y-SHOP_POS.y) > .27) return { x, y };
     }
     return { x:.2, y:.2 };
   };
@@ -1472,6 +1815,76 @@ function drawField(t){
   ctx.strokeStyle='#a06a35'; ctx.lineWidth=5;
   ctx.strokeRect(NX(0), NY(0), WORLD*u, WORLD*u);
 }
+/* Bank & shop buildings in the Meadow near spawn — chunky canvas landmarks
+   (~.3 units wide) with ground pads, drawn after decor, before slimes. */
+function drawBuildings(){
+  const u = UNIT();
+  const pad = (bx, by)=>{
+    ctx.fillStyle = '#e8d9ae';
+    ctx.beginPath(); ctx.ellipse(NX(bx), NY(by)+.14*u, .25*u, .105*u, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,.10)';
+    ctx.beginPath(); ctx.ellipse(NX(bx), NY(by)+.155*u, .21*u, .075*u, 0, 0, 7); ctx.fill();
+  };
+  const sign = (x, y, text, bg, fg)=>{
+    ctx.font = '900 ' + Math.round(.030*u) + 'px "Baloo 2",sans-serif';
+    const tw = Math.max(ctx.measureText(text).width + .05*u, .13*u), th = .048*u;
+    ctx.fillStyle = bg; roundRect(x-tw/2, y-th/2, tw, th, 7); ctx.fill();
+    ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 3; roundRect(x-tw/2, y-th/2, tw, th, 7); ctx.stroke();
+    ctx.fillStyle = fg; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(text, x, y + 1);
+    ctx.textBaseline = 'alphabetic';
+  };
+  // ---- BANK: cream walls, brown roof, gold coin sign ----
+  {
+    const x = NX(BANK_POS.x), y = NY(BANK_POS.y), w = .30*u, h = .19*u;
+    pad(BANK_POS.x, BANK_POS.y);
+    ctx.fillStyle = '#fff3d0'; roundRect(x-w/2, y-h/2, w, h, 6); ctx.fill();
+    ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 3; roundRect(x-w/2, y-h/2, w, h, 6); ctx.stroke();
+    ctx.fillStyle = '#8a5a12';
+    ctx.beginPath(); ctx.moveTo(x-w/2-.02*u, y-h/2); ctx.lineTo(x, y-h/2-.075*u); ctx.lineTo(x+w/2+.02*u, y-h/2); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 2.5; ctx.stroke();
+    // windows
+    ctx.fillStyle = '#ffe9a8';
+    roundRect(x-w/2+.024*u, y-h/2+.030*u, .048*u, .044*u, 3); ctx.fill();
+    roundRect(x+w/2-.072*u, y-h/2+.030*u, .048*u, .044*u, 3); ctx.fill();
+    // gold coin emblem on the wall
+    ctx.fillStyle = '#ffd94d'; ctx.beginPath(); ctx.arc(x, y-h/2+.052*u, .026*u, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#b8860b'; ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y-h/2+.052*u, .015*u, 0, 7); ctx.stroke();
+    // door
+    ctx.fillStyle = '#7a4d16'; roundRect(x-.028*u, y+.012*u, .056*u, h/2-.012*u, 4); ctx.fill();
+    ctx.fillStyle = '#ffd94d'; ctx.beginPath(); ctx.arc(x+.016*u, y+.055*u, .005*u, 0, 7); ctx.fill();
+    sign(x, y-h/2-.052*u, 'BANK', '#5b3a1e', '#ffd94d');
+  }
+  // ---- SHOP: wooden stall, red/white striped awning ----
+  {
+    const x = NX(SHOP_POS.x), y = NY(SHOP_POS.y), w = .30*u;
+    pad(SHOP_POS.x, SHOP_POS.y);
+    // posts
+    ctx.fillStyle = '#7a4d16';
+    ctx.fillRect(x-w/2+.012*u, y-.02*u, .018*u, .12*u);
+    ctx.fillRect(x+w/2-.030*u, y-.02*u, .018*u, .12*u);
+    // counter with plank lines
+    ctx.fillStyle = '#a06a35'; roundRect(x-w/2, y+.015*u, w, .085*u, 4); ctx.fill();
+    ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 3; roundRect(x-w/2, y+.015*u, w, .085*u, 4); ctx.stroke();
+    ctx.strokeStyle = 'rgba(91,58,30,.55)'; ctx.lineWidth = 2;
+    for (const fx of [-.075, 0, .075]){ ctx.beginPath(); ctx.moveTo(x+fx*u, y+.018*u); ctx.lineTo(x+fx*u, y+.097*u); ctx.stroke(); }
+    // goods on the counter: potion bottle, bomb, charm
+    ctx.fillStyle = '#e5484d'; roundRect(x-.10*u, y-.008*u, .026*u, .026*u, 4); ctx.fill();
+    ctx.fillStyle = '#263238'; ctx.beginPath(); ctx.arc(x-.045*u, y+.006*u, .015*u, 0, 7); ctx.fill();
+    ctx.fillStyle = '#4dabff'; ctx.beginPath(); ctx.arc(x+.005*u, y+.004*u, .013*u, 0, 7); ctx.fill();
+    ctx.fillStyle = '#ffd94d'; ctx.beginPath(); ctx.arc(x+.055*u, y+.004*u, .012*u, 0, 7); ctx.fill();
+    // striped awning
+    const aw = .36*u, ax = x-aw/2, ay = y-.105*u, ah = .055*u;
+    ctx.save();
+    roundRect(ax, ay, aw, ah, 5); ctx.clip();
+    for (let i=0;i<8;i++){ ctx.fillStyle = i%2 ? '#fff8e7' : '#e5484d'; ctx.fillRect(ax + i*aw/8, ay, aw/8+1, ah); }
+    ctx.fillStyle = 'rgba(0,0,0,.08)'; ctx.fillRect(ax, ay+ah*.7, aw, ah*.3);
+    ctx.restore();
+    ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 3; roundRect(ax, ay, aw, ah, 5); ctx.stroke();
+    sign(x, y-.155*u, 'SHOP', '#c0392b', '#ffffff');
+  }
+}
 function drawEliteRing(x, y, baseR){
   ctx.save();
   ctx.strokeStyle = '#ffd94d'; ctx.lineWidth = 3;
@@ -1480,6 +1893,12 @@ function drawEliteRing(x, y, baseR){
 }
 function drawSlime(s,t){
   const x=NX(s.x), y=NY(s.y), baseR=s.r*SCALE();
+  if (s.kind==='boss'){
+    // the Emperor radiates a dark red aura
+    const ag = ctx.createRadialGradient(x, y, baseR*.4, x, y, baseR*1.8);
+    ag.addColorStop(0, 'rgba(120,10,20,.50)'); ag.addColorStop(1, 'rgba(120,10,20,0)');
+    ctx.fillStyle = ag; ctx.beginPath(); ctx.arc(x, y, baseR*1.8, 0, 7); ctx.fill();
+  }
   if (drawVideoSlime(s,t,baseR)){
     if (s.elite) drawEliteRing(x, y - baseR*.4, baseR);   // gold ring marks elites (sprite sits bottom-anchored, so ring rides a bit high)
     if (s.hp < s.max){
@@ -1527,8 +1946,8 @@ function drawSlime(s,t){
   if (hurt) ctx.arc(0, rY*.34, rX*.13, Math.PI*1.15, Math.PI*1.85);
   else ctx.arc(0, rY*.08, rX*.14, Math.PI*.2, Math.PI*.8);
   ctx.stroke();
-  // crown for king
-  if (s.kind==='king'){
+  // crown for king (and the Emperor — bigger in spirit, same gold)
+  if (s.kind==='king' || s.kind==='boss'){
     ctx.fillStyle='#ffd94d'; ctx.strokeStyle='#b8860b'; ctx.lineWidth=2;
     const cw=rX*.8, ch=rY*.5, cy=-rY*.92;
     ctx.beginPath(); ctx.moveTo(-cw/2,cy); ctx.lineTo(-cw/2,cy-ch*.5); ctx.lineTo(-cw/4,cy-ch*.15); ctx.lineTo(0,cy-ch); ctx.lineTo(cw/4,cy-ch*.15); ctx.lineTo(cw/2,cy-ch*.5); ctx.lineTo(cw/2,cy); ctx.closePath(); ctx.fill(); ctx.stroke();
@@ -1566,9 +1985,11 @@ function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,spinning,ext=0){
       ctx.closePath(); ctx.fill(); ctx.restore(); ctx.globalAlpha = 1;
     }
   }
-  // trail
+  // trail — additive so the blade carries a lightsaber-ish glow of its own
+  ctx.save(); ctx.globalCompositeOperation='lighter';
   ctx.strokeStyle = color; ctx.globalAlpha=.28; ctx.lineWidth = weaponIdx>=3?13:9; ctx.lineCap='round';
-  ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(tipX,tipY); ctx.stroke(); ctx.globalAlpha=1;
+  ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(tipX,tipY); ctx.stroke();
+  ctx.restore(); ctx.globalAlpha=1;
   ctx.save(); ctx.translate(x,y); ctx.rotate(a);
   const L=reachPx;
   // generated weapon sprite (grip at hand, blade along +X)
@@ -1577,7 +1998,9 @@ function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,spinning,ext=0){
     const iw = L*1.18, ih = iw * (wimg.naturalHeight/wimg.naturalWidth);
     ctx.fillStyle=color; ctx.beginPath(); ctx.arc(0,0,7,0,7); ctx.fill();
     ctx.strokeStyle='#fff'; ctx.lineWidth=2.5; ctx.stroke();
+    ctx.save(); ctx.shadowColor=color; ctx.shadowBlur=10;   // subtle saber glow hugging the sprite silhouette
     ctx.drawImage(wimg, -L*.17, -ih/2, iw, ih);
+    ctx.restore();
     ctx.restore();
     if (name){
       ctx.font='800 13px "Baloo 2",sans-serif'; ctx.textAlign='center';
@@ -1632,6 +2055,44 @@ function frame(now){
   if (isHost && started) hostTick(now,dt);
   if (started && !paused) localHitCheck(now);
 
+  /* ---- survival (ALL local — HP is never networked): slime contact damage,
+     boss bullet hits, spiral emitters, out-of-combat regen ---- */
+  if (started && !paused){
+    if (now > me.invulnUntil){
+      for (const s of slimes.values()){
+        const rr = s.r + .022;
+        if (dist2(me.x,me.y,s.x,s.y) < rr*rr){ damagePlayer(CONTACT_DMG[s.kind]||6, now); break; }
+      }
+    }
+    for (let i=bullets.length-1;i>=0;i--){
+      const b = bullets[i];
+      b.x += b.vx*dt/1000; b.y += b.vy*dt/1000;
+      if (now-b.born > b.life || b.x<-.1 || b.y<-.1 || b.x>WORLD+.1 || b.y>WORLD+.1){ bullets.splice(i,1); continue; }
+      if (now > me.invulnUntil && dist2(b.x,b.y,me.x,me.y) < .032*.032){ bullets.splice(i,1); damagePlayer(10, now); }
+    }
+    for (let i=spiralEmitters.length-1;i>=0;i--){
+      const em = spiralEmitters[i];
+      if (now >= em.until){ spiralEmitters.splice(i,1); continue; }
+      if (em.nextAt < now-450) em.nextAt = now;   // never burst-spawn a backlog after a stall
+      const bossS = [...slimes.values()].find(s=>s.kind==='boss');
+      while (em.nextAt <= now){
+        em.nextAt += 90;
+        if (bossS){
+          spawnBullet(bossS.x, bossS.y, Math.cos(em.ang)*.3, Math.sin(em.ang)*.3, now);
+          spawnBullet(bossS.x, bossS.y, Math.cos(em.ang+Math.PI)*.3, Math.sin(em.ang+Math.PI)*.3, now);
+          em.ang += .42;
+        }
+      }
+    }
+    if (me.hp < me.maxHp && now - me.lastDmgAt > 6000) me.hp = Math.min(me.maxHp, me.hp + 1.6*dt/1000);
+  }
+  // red damage vignette decay
+  if (dmgFlashAt){
+    const a = clamp(1-(now-dmgFlashAt)/420, 0, 1);
+    $('#dmgFlash').style.opacity = (a*.85).toFixed(3);
+    if (a<=0){ dmgFlashAt = 0; $('#dmgFlash').style.opacity = 0; }
+  }
+
   // camera eases after the sword — push toward an edge to travel the world
   {
     const vw = W/UNIT(), vh = H/UNIT();
@@ -1642,6 +2103,7 @@ function frame(now){
   }
 
   drawField(now);
+  drawBuildings();
   // slimes sorted by y for fake depth
   [...slimes.values()].sort((a,b)=>a.y-b.y).forEach(s=>drawSlime(s,now));
 
@@ -1656,6 +2118,14 @@ function frame(now){
   floats = floats.filter(f=>f.life>0);
   ctx.textAlign='center';
   for (const f of floats){ f.y-=dt*.00003; f.life-=dt/(f.big?1750:950); ctx.globalAlpha=Math.max(0,f.life); ctx.font = '900 '+(f.size || (f.big?26:17))+'px "Baloo 2",sans-serif'; ctx.lineWidth = (f.big || f.size>=20) ? 6 : 4; ctx.strokeStyle='rgba(60,40,10,.8)'; ctx.strokeText(f.text,NX(f.x),NY(f.y)); ctx.fillStyle=f.color; ctx.fillText(f.text,NX(f.x),NY(f.y)); ctx.globalAlpha=1; }
+
+  // boss bullets: glowing bullet-hell orbs (outer halo / hot body / white core)
+  for (const b of bullets){
+    const bx=NX(b.x), by=NY(b.y), u=UNIT();
+    ctx.fillStyle='rgba(255,90,60,.35)'; ctx.beginPath(); ctx.arc(bx,by,.018*u,0,7); ctx.fill();
+    ctx.fillStyle='#ff7847'; ctx.beginPath(); ctx.arc(bx,by,.011*u,0,7); ctx.fill();
+    ctx.fillStyle='#ffffff'; ctx.beginPath(); ctx.arc(bx,by,.005*u,0,7); ctx.fill();
+  }
 
   // other players' swords
   for (const [id,p] of peers){
@@ -1713,26 +2183,36 @@ function frame(now){
           }
         }
         pts.push({ ...raw[raw.length-1] });
-        const edge = pts.map((p,i)=>{
+        // LIGHTSABER streak: additive-blended layers over the same tapered
+        // edge geometry — wide faint glow, coloured blade body, white-hot
+        // core — in the player's own saber colour, melting to a point.
+        const edgeFor = f => pts.map((p,i)=>{
           const a = pts[Math.max(0,i-1)], b = pts[Math.min(pts.length-1,i+1)];
           let dx = b.x-a.x, dy = b.y-a.y; const L = Math.hypot(dx,dy)||1; dx/=L; dy/=L;
-          const hw = .8 + 14*Math.pow(p.age, 1.6);   // smooth melt: ~15px at the blade, <1px at the tail tip
+          const hw = (.8 + 14*Math.pow(p.age, 1.6)) * f;   // smooth melt: ~15px*f at the blade, <1px at the tail tip
           return { lx:p.x-dy*hw, ly:p.y+dx*hw, rx:p.x+dy*hw, ry:p.y-dx*hw };
         });
         ctx.save(); ctx.lineCap='round'; ctx.lineJoin='round';
-        // coloured ribbon body in the player's colour, alpha eased along age
-        ctx.fillStyle = me.color;
-        for (let i=1; i<pts.length; i++){
-          ctx.globalAlpha = .72 * Math.pow(pts[i].age, 1.15);
-          ctx.beginPath();
-          ctx.moveTo(edge[i-1].lx, edge[i-1].ly);
-          ctx.lineTo(edge[i].lx, edge[i].ly);
-          ctx.lineTo(edge[i].rx, edge[i].ry);
-          ctx.lineTo(edge[i-1].rx, edge[i-1].ry);
-          ctx.closePath(); ctx.fill();
-        }
-        // white core: one smoothed path (quadratic through midpoints)
-        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3; ctx.globalAlpha = .85;
+        ctx.globalCompositeOperation = 'lighter';   // additive light blending
+        const saberLayer = (f, style, alpha)=>{
+          const e = edgeFor(f);
+          ctx.fillStyle = style;
+          for (let i=1; i<pts.length; i++){
+            ctx.globalAlpha = alpha * Math.pow(pts[i].age, 1.15);
+            ctx.beginPath();
+            ctx.moveTo(e[i-1].lx, e[i-1].ly);
+            ctx.lineTo(e[i].lx, e[i].ly);
+            ctx.lineTo(e[i].rx, e[i].ry);
+            ctx.lineTo(e[i-1].rx, e[i-1].ry);
+            ctx.closePath(); ctx.fill();
+          }
+        };
+        saberLayer(2.3, me.color, .16);    // (1) OUTER GLOW
+        saberLayer(1.0, me.color, .5);     // (2) BLADE BODY
+        saberLayer(.38, '#ffffff', .95);   // (3) WHITE-HOT CORE
+        // bloomed centre line — shadow on this ONE stroke only, for perf
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.globalAlpha = .9;
+        ctx.shadowColor = me.color; ctx.shadowBlur = 14;
         ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
         for (let i=1; i<pts.length-1; i++){
           const mx = (pts[i].x + pts[i+1].x)/2, my = (pts[i].y + pts[i+1].y)/2;
@@ -1741,6 +2221,19 @@ function frame(now){
         ctx.lineTo(pts[pts.length-1].x, pts[pts.length-1].y); ctx.stroke();
         ctx.restore(); ctx.globalAlpha = 1;
       }
+    }
+    if (started && now < me.shieldUntil){
+      // Aegis shield: a translucent blue bubble around the sword
+      const sr = (myReach()+.05)*UNIT();
+      ctx.fillStyle = 'rgba(77,171,255,.13)';
+      ctx.beginPath(); ctx.arc(NX(me.x), NY(me.y), sr, 0, 7); ctx.fill();
+      ctx.strokeStyle = 'rgba(120,200,255,.85)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(NX(me.x), NY(me.y), sr, 0, 7); ctx.stroke();
+    }
+    if (started && now < me.invulnUntil && Math.floor(now/90)%2===0){
+      // invulnerability blink ring
+      ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(NX(me.x), NY(me.y), (myReach()+.045)*UNIT(), 0, 7); ctx.stroke();
     }
     drawSword(NX(me.x),NY(me.y),bl.ang,me.weapon,me.color, started?me.name:'', true, now, now<me.spinUntil, bl.ext);
   }
@@ -1754,7 +2247,7 @@ function frame(now){
   }
 
   // scoreboard refresh (cheap, 2/s)
-  if (started && now-(frame._b||0)>500){ frame._b=now; refreshHUD(); refreshPeers(); checkZone(); }
+  if (started && now-(frame._b||0)>500){ frame._b=now; refreshHUD(); refreshPeers(); checkZone(); updateInteract(); }
 }
 requestAnimationFrame(frame);
 // title-screen ambient slimes (solo sim before joining)
