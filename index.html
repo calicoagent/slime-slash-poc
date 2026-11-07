@@ -131,6 +131,12 @@
   #nodeCard button:active { transform:translateY(2px); box-shadow:0 1px 0 #5b3a1e; }
   #nodeCard button:disabled { filter:grayscale(1); opacity:.55; cursor:default; }
 
+  #minimap {
+    position:fixed; left:14px; bottom:86px; z-index:19; width:124px; height:124px;
+    border:3.5px solid #5b3a1e; border-radius:18px; background:#79c25f;
+    box-shadow:0 4px 0 rgba(91,58,30,.7);
+  }
+
   /* ---------- active skill buttons ---------- */
   #actives { position:fixed; right:14px; bottom:92px; z-index:21; display:flex; flex-direction:column; gap:10px; }
   .abtn {
@@ -203,6 +209,7 @@
   <div class="badge" id="boardBadge"><b>TOP SLAYERS</b><div id="board"></div></div>
 
   <div id="rack"></div>
+  <canvas id="minimap" width="124" height="124"></canvas>
   <div id="actives"></div>
   <button id="shareBtn">INVITE LINK</button>
   <button id="forgeBtn">SPHERE</button>
@@ -270,12 +277,16 @@ const sfx = {
 };
 
 /* ============================================================ weapons */
+// Combat identities: SWING weapons sweep arcs and hit crowds (AoE).
+// STAB weapons (knives, polearms) thrust in a line — balanced by CRIT:
+// much higher crit chance and crit damage. Base crit: 5% x1.75.
 const WEAPONS = [
-  { id:'dagger', name:'Dagger',     dmg:6,  reach:.085, cd:110, unlock:1, color:'#cfd8dc', desc:'fast & nippy' },
-  { id:'sword',  name:'Sword',      dmg:11, reach:.125, cd:170, unlock:1, color:'#ffe082', desc:'the classic' },
-  { id:'katana', name:'Katana',     dmg:16, reach:.165, cd:150, unlock:2, color:'#f8bbd0', desc:'long & swift' },
-  { id:'great',  name:'Greatsword', dmg:30, reach:.205, cd:300, unlock:3, color:'#b0bec5', desc:'huge chops' },
-  { id:'hammer', name:'Warhammer', dmg:42, reach:.150, cd:380, unlock:4, color:'#ffcc80', desc:'splash smash', splash:.07 },
+  { id:'dagger', name:'Dagger',     dmg:6,  reach:.085, cd:110, unlock:1, color:'#cfd8dc', motion:'stab',  crit:.25, critDmg:2.2, desc:'STAB · crit monster, fast thrusts' },
+  { id:'sword',  name:'Sword',      dmg:11, reach:.125, cd:170, unlock:1, color:'#ffe082', motion:'swing', crit:.05, critDmg:1.75, desc:'SWING · balanced arcs' },
+  { id:'katana', name:'Katana',     dmg:16, reach:.165, cd:150, unlock:2, color:'#f8bbd0', motion:'swing', crit:.08, critDmg:1.75, desc:'SWING · long swift arcs' },
+  { id:'spear',  name:'Spear',      dmg:19, reach:.215, cd:210, unlock:2, color:'#a5d6a7', motion:'stab',  crit:.20, critDmg:2.2, desc:'STAB · longest reach, big crits' },
+  { id:'great',  name:'Greatsword', dmg:30, reach:.205, cd:300, unlock:3, color:'#b0bec5', motion:'swing', crit:.05, critDmg:1.75, splash:.05, desc:'SWING · AoE chops with splash' },
+  { id:'hammer', name:'Warhammer', dmg:42, reach:.150, cd:380, unlock:4, color:'#ffcc80', motion:'swing', crit:.05, critDmg:1.75, splash:.07, desc:'SWING · splash smash' },
 ];
 const WEAPON_IMGS = {};
 for (const w of WEAPONS){ const im=new Image(); im.src='assets/weapons/'+w.id+'.png'; WEAPON_IMGS[w.id]=im; }
@@ -301,14 +312,21 @@ const cv = $('#game'), ctx = cv.getContext('2d');
 let W=0,H=0,DPR=1;
 function resize(){ DPR=Math.min(2,devicePixelRatio||1); W=innerWidth; H=innerHeight; cv.width=W*DPR; cv.height=H*DPR; cv.style.width=W+'px'; cv.style.height=H+'px'; }
 addEventListener('resize',resize); resize();
-const NX = x => x*W, NY = y => y*H;                 // world is normalized 0..1 x 0..1
-const SCALE = () => Math.min(W,H);
+/* The world is WORLD x WORLD units — much bigger than one screen.
+   1 unit ≈ one screenful. The camera (cam = top-left, world coords) follows your sword. */
+const WORLD = 3.4;
+const cam = { x: WORLD/2 - .5, y: WORLD/2 - .5 };
+const UNIT = () => Math.min(W,H);                   // px per world unit
+const NX = x => (x - cam.x) * UNIT(), NY = y => (y - cam.y) * UNIT();
+me.x = WORLD/2; me.y = WORLD/2 + .1;
+const SCALE = () => UNIT();
 
 const me = {
   id: selfId, name:'Knight', color:`hsl(${hashHue(selfId)} 80% 55%)`,
   x:.5, y:.6, px:.5, py:.6, angle:-Math.PI/4, speed:0,
   weapon:1, coins:0, xp:0, level:1, kills:0,
   sp:0, actCd:{ wave:0, meteor:0, frenzy:0 }, frenzyUntil:0,
+  stabT0:0, stabAng:0,
   lastHitAt:new Map(), spinUntil:0, spinCdUntil:0, trail:[],
   swingT0:0, swingDir:1,
 };
@@ -322,6 +340,19 @@ function swordAngleAt(now){
     return me.angle + me.swingDir * (-2.05 + 2.65*e);
   }
   return me.angle;
+}
+// Unified blade pose: SWING weapons arc; STAB weapons (knife, polearm)
+// lunge straight along the flick direction and snap back.
+function bladeAt(now){
+  if (myWeapon().motion === 'stab'){
+    const el = now - me.stabT0;
+    if (me.stabT0 && el < 150){
+      const p = el/150;
+      return { ang: me.stabAng, ext: Math.sin(p*Math.PI)*.55 };
+    }
+    return { ang: me.angle, ext: 0 };
+  }
+  return { ang: swordAngleAt(now), ext: 0 };
 }
 const peers = new Map();       // id -> {x,y,tx,ty,angle,name,color,weapon,trail,lastSeen}
 let slimes = new Map();        // id -> slime (local mirror; host owns truth)
@@ -347,7 +378,7 @@ function spawnSlime(){
   const k = pickKind();
   const id = (hostId||me.id).slice(0,4)+'-'+(slimeSeq++);
   const s = { id, kind:k.kind, hp:k.hp, max:k.hp, r:k.r,
-    x:rand(.06,.94), y:rand(.12,.9), vx:0, vy:0, dir:rand(0,Math.PI*2), turnAt:performance.now()+rand(800,2600),
+    x:rand(.06,WORLD-.06), y:rand(.1,WORLD-.06), vx:0, vy:0, dir:rand(0,Math.PI*2), turnAt:performance.now()+rand(800,2600),
     color:SLIME_COLORS[Math.floor(Math.random()*SLIME_COLORS.length)], seed:Math.random()*10, squish:0, flash:0 };
   slimes.set(id,s); return s;
 }
@@ -358,11 +389,11 @@ function hostTick(now,dt){
     const k = SLIME_KINDS.find(k=>k.kind===s.kind);
     const sp = k.speed*dt*60/1000;
     s.x += Math.cos(s.dir)*sp; s.y += Math.sin(s.dir)*sp*.7;
-    if (s.x<s.r+ .01){s.x=s.r+.01; s.dir=Math.PI-s.dir;} if (s.x>1-s.r-.01){s.x=1-s.r-.01; s.dir=Math.PI-s.dir;}
-    if (s.y<s.r+.08){s.y=s.r+.08; s.dir=-s.dir;} if (s.y>0.97-s.r){s.y=0.97-s.r; s.dir=-s.dir;}
+    if (s.x<s.r+ .01){s.x=s.r+.01; s.dir=Math.PI-s.dir;} if (s.x>WORLD-s.r-.01){s.x=WORLD-s.r-.01; s.dir=Math.PI-s.dir;}
+    if (s.y<s.r+.02){s.y=s.r+.02; s.dir=-s.dir;} if (s.y>WORLD-s.r-.03){s.y=WORLD-s.r-.03; s.dir=-s.dir;}
     s.squish = Math.max(0, s.squish - dt/160); s.flash = Math.max(0, s.flash - dt/120);
   }
-  const target = 10 + Math.min(6, peers.size*2);
+  const target = 34 + Math.min(10, peers.size*3);
   if (slimes.size < target && Math.random()<.25) spawnSlime();
 }
 function worldPayload(){
@@ -406,8 +437,9 @@ function localHitCheck(now){
   // blade = segment from hand (pointer) to tip along the sword's CURRENT
   // angle — mid-swing that's somewhere along the arc; spin = full circle
   const spinning = now < me.spinUntil;
-  const sa = swordAngleAt(now);
-  const reach = myReach() * (spinning?1.15:1);
+  const blade = bladeAt(now);
+  const sa = blade.ang;
+  const reach = myReach() * (spinning?1.15:1) * (1 + blade.ext);
   const tipX = me.x + Math.cos(sa)*reach, tipY = me.y + Math.sin(sa)*reach*(H/W>0?1:1);
   for (const s of slimes.values()){
     const last = me.lastHitAt.get(s.id)||0;
@@ -415,12 +447,13 @@ function localHitCheck(now){
     let hit=false;
     if (spinning){ hit = dist2(me.x,me.y,s.x,s.y) < (reach + s.r)*(reach + s.r); }
     else {
-      // distance from slime centre to blade segment (in x-normalized space, y corrected by aspect)
-      const ax=me.x, ay=me.y*(H/W), bx=tipX, by=tipY*(H/W);
-      const cx=s.x, cy=s.y*(H/W);
+      // distance from slime centre to blade segment (uniform world scale)
+      const ax=me.x, ay=me.y, bx=tipX, by=tipY;
+      const cx=s.x, cy=s.y;
       const dx=bx-ax, dy=by-ay, L2=dx*dx+dy*dy||1e-6;
       const t=clamp(((cx-ax)*dx+(cy-ay)*dy)/L2,0,1);
-      hit = dist2(ax+dx*t, ay+dy*t, cx, cy) < (s.r*(H/W)+.012+S.arcWide)**2;
+      const thick = myWeapon().motion==='stab' ? .006 : .012 + S.arcWide;   // stab = thin line, swing = wide arc
+      hit = dist2(ax+dx*t, ay+dy*t, cx, cy) < (s.r+thick)**2;
     }
     if (hit){
       me.lastHitAt.set(s.id, now);
@@ -428,7 +461,7 @@ function localHitCheck(now){
       if (now < me.frenzyUntil) dmg *= 1.5;
       if (s.kind==='king') dmg *= (1 + S.kingBane);
       let crit = false;
-      if (Math.random() < S.crit){ dmg *= 2; crit = true; }
+      if (Math.random() < myWeapon().crit + S.crit){ dmg *= myWeapon().critDmg; crit = true; }
       doHit(s, Math.round(dmg), { crit });
     }
   }
@@ -439,9 +472,10 @@ function doHit(s, dmg, opts={}){
   addFloat(s.x+rand(-.01,.01), s.y-s.r-.015, (opts.crit?'CRIT ':'')+'-'+dmg, opts.crit?'#ffd94d':'#fff');
   if (isHost) hostApplyHit(s.id, dmg, me.id);
   else if (sendHit) sendHit({ id:s.id, d:dmg });
-  if (!opts.noSplash && S.splash>0){
+  const spR = Math.max(S.splash, myWeapon().splash||0);   // swing weapons splash natively; passive adds more
+  if (!opts.noSplash && spR>0){
     for (const o of slimes.values())
-      if (o!==s && dist2(o.x,o.y,s.x,s.y) < S.splash*S.splash)
+      if (o!==s && dist2(o.x,o.y,s.x,s.y) < spR*spR)
         setTimeout(()=>{ if (slimes.get(o.id)===o) doHit(o, Math.max(1,Math.ceil(dmg*.5)), {noSplash:true}); }, 40);
   }
   if (!opts.noDouble && S.double>0 && Math.random()<S.double){
@@ -505,7 +539,7 @@ function electHost(){
   hostId = newHost; isHost = (newHost===me.id);
   if (isHost && !wasHost){
     // adopt current world (host migration) or start fresh
-    if (slimes.size===0){ for(let i=0;i<11;i++) spawnSlime(); }
+    if (slimes.size===0){ for(let i=0;i<30;i++) spawnSlime(); }
     for (const s of slimes.values()){ s.tx=undefined; }
     broadcastWorld();
     if (started) toast(peers.size? 'You are now the WORLD HOST' : 'Solo world — invite friends!', 1800);
@@ -537,7 +571,7 @@ function joinWorld(roomCode){
   const [sendP, onP] = room.makeAction('pos');  sendPos = sendP;
   onP((d,id)=>{ const p=peers.get(id); if(!p||!d) return;
     if (typeof d.x!=='number'||typeof d.y!=='number') return;
-    p.tx=clamp(d.x,0,1); p.ty=clamp(d.y,0,1); p.angle=+d.a||0; p.weapon=clamp(d.w|0,0,WEAPONS.length-1); p.weaponId=WEAPONS[p.weapon].id;
+    p.tx=clamp(d.x,0,WORLD); p.ty=clamp(d.y,0,WORLD); p.angle=+d.a||0; p.ext=+d.e||0; p.weapon=clamp(d.w|0,0,WEAPONS.length-1); p.weaponId=WEAPONS[p.weapon].id;
     if (d.n) p.name=cleanName(d.n); if (d.c) p.color=String(d.c).slice(0,32);
     p.spinning = !!d.s; p.lastSeen=performance.now();
     if (scores[id]) scores[id].name=p.name;
@@ -554,22 +588,27 @@ function joinWorld(roomCode){
   setTimeout(refreshPeers, 15500);
 }
 setInterval(()=>{ // sword state @ ~20Hz
-  if (started && sendPos) sendPos({ x:+me.x.toFixed(3), y:+me.y.toFixed(3), a:+swordAngleAt(performance.now()).toFixed(2), w:me.weapon, n:me.name, c:me.color, s: performance.now()<me.spinUntil });
+  if (started && sendPos){ const bl = bladeAt(performance.now()); sendPos({ x:+me.x.toFixed(3), y:+me.y.toFixed(3), a:+bl.ang.toFixed(2), e:+bl.ext.toFixed(2), w:me.weapon, n:me.name, c:me.color, s: performance.now()<me.spinUntil }); }
 }, 50);
 
 /* ============================================================ input */
 let pointerDown=false;
 addEventListener('pointermove', e=>{
-  const x=e.clientX/W, y=e.clientY/H;
+  const x=clamp(cam.x + e.clientX/UNIT(), .02, WORLD-.02), y=clamp(cam.y + e.clientY/UNIT(), .02, WORLD-.02);
   const dx=x-me.x, dy=y-me.y;
   const d=Math.hypot(dx,dy);
   me.speed = d;
   if (d>.0015) me.angle = Math.atan2(dy,dx);
-  // a fast flick starts a swing; arc direction follows the swipe direction
+  // a flick attacks: SWING weapons arc (direction follows the swipe),
+  // STAB weapons lunge straight along it
   const now=performance.now();
-  if (started && d>.013 && now-me.swingT0>200 && now>=me.spinUntil){
-    me.swingT0=now;
-    me.swingDir = Math.abs(dx)>=Math.abs(dy) ? (dx>=0?1:-1) : (dy>=0?1:-1);
+  if (started && now>=me.spinUntil){
+    if (myWeapon().motion==='stab'){
+      if (d>.011 && now-me.stabT0>170){ me.stabT0=now; me.stabAng=me.angle; }
+    } else if (d>.007 && now-me.swingT0>200){
+      me.swingT0=now;
+      me.swingDir = Math.abs(dx)>=Math.abs(dy) ? (dx>=0?1:-1) : (dy>=0?1:-1);
+    }
   }
   me.px=me.x; me.py=me.y; me.x=x; me.y=y;
 });
@@ -740,6 +779,22 @@ function buildSphere(){
   $('#spCount').textContent = me.sp;
 }
 
+/* ============================================================ minimap */
+function drawMinimap(){
+  const c = $('#minimap'); if (!c || !started) return;
+  const g = c.getContext('2d'), S2 = c.width / WORLD;
+  g.fillStyle = '#79c25f'; g.fillRect(0,0,c.width,c.height);
+  g.strokeStyle = 'rgba(255,255,255,.8)'; g.lineWidth = 1.5;
+  g.strokeRect(cam.x*S2, cam.y*S2, (W/UNIT())*S2, (H/UNIT())*S2);
+  for (const s of slimes.values()){
+    g.fillStyle = s.kind==='king' ? '#ffd94d' : 'rgba(30,90,20,.55)';
+    g.beginPath(); g.arc(s.x*S2, s.y*S2, s.kind==='king'?4.5:2, 0, 7); g.fill();
+  }
+  for (const p of peers.values()){ g.fillStyle = '#4dabff'; g.beginPath(); g.arc(p.x*S2, p.y*S2, 3, 0, 7); g.fill(); }
+  g.fillStyle = '#fff'; g.strokeStyle = '#5b3a1e'; g.lineWidth = 2;
+  g.beginPath(); g.arc(me.x*S2, me.y*S2, 4, 0, 7); g.fill(); g.stroke();
+}
+
 /* ============================================================ active skills */
 let waves = [], meteors = [];
 const ACTIVES = {
@@ -762,7 +817,7 @@ function castActive(id){
   const now = performance.now(), a = ACTIVES[id];
   if (!a || !S.actives.has(id) || now < me.actCd[id] || !started) return;
   me.actCd[id] = now + a.cd;
-  if (id==='wave'){ waves.push({ x:me.x, y:me.y, ang:swordAngleAt(now), t0:now, hit:new Set() }); beep(300,.18,'sawtooth',.06,900); }
+  if (id==='wave'){ waves.push({ x:me.x, y:me.y, ang:bladeAt(now).ang, t0:now, hit:new Set() }); beep(300,.18,'sawtooth',.06,900); }
   if (id==='meteor'){ meteors.push({ x:me.x, y:me.y, at:now+380 }); beep(160,.25,'square',.08,60); }
   if (id==='frenzy'){ me.frenzyUntil = now+5000; bubble('FRENZY!', me.x, me.y, 900); sfx.lvl(); }
 }
@@ -840,13 +895,24 @@ function drawVideoSlime(s,t,baseR){
 }
 
 /* ============================================================ drawing */
-const FLOWERS = Array.from({length:70},(_,i)=>({x:(Math.sin(i*127.1)*.5+.5), y:(Math.cos(i*311.7)*.5+.5), c:['#fff','#ffd1e8','#fff3a0'][i%3], s:2+(i%3)}));
+const FLOWERS = Array.from({length:460},(_,i)=>({x:(Math.sin(i*127.1)*.5+.5)*WORLD, y:(Math.cos(i*311.7)*.5+.5)*WORLD, c:['#fff','#ffd1e8','#fff3a0'][i%3], s:2+(i%3)}));
 function drawField(t){
   const g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#8fd06e'); g.addColorStop(1,'#69b84e');
   ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  const u=UNIT(), vw=W/u, vh=H/u;
+  // mowed stripes, one world unit wide
   ctx.fillStyle='rgba(255,255,255,.05)';
-  const stripe=90; for(let i=0;i<W/stripe;i+=2) ctx.fillRect(i*stripe,0,stripe,H);
-  for (const f of FLOWERS){ ctx.fillStyle=f.c; ctx.beginPath(); ctx.arc(f.x*W, f.y*H, f.s, 0, 7); ctx.fill(); }
+  for (let wx=Math.floor(cam.x); wx<cam.x+vw+1; wx++) if (((wx%2)+2)%2===0) ctx.fillRect(NX(wx),0,u,H);
+  // flowers (only those in view)
+  for (const f of FLOWERS){
+    if (f.x<cam.x-.1 || f.x>cam.x+vw+.1 || f.y<cam.y-.1 || f.y>cam.y+vh+.1) continue;
+    ctx.fillStyle=f.c; ctx.beginPath(); ctx.arc(NX(f.x), NY(f.y), f.s, 0, 7); ctx.fill();
+  }
+  // world border fence
+  ctx.strokeStyle='#7a4d16'; ctx.lineWidth=12;
+  ctx.strokeRect(NX(0), NY(0), WORLD*u, WORLD*u);
+  ctx.strokeStyle='#a06a35'; ctx.lineWidth=5;
+  ctx.strokeRect(NX(0), NY(0), WORLD*u, WORLD*u);
 }
 function drawSlime(s,t){
   const x=NX(s.x), y=NY(s.y), baseR=s.r*SCALE();
@@ -917,9 +983,9 @@ function shade(hex,amt){
   return `rgb(${r},${g},${b})`;
 }
 function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.roundRect(x,y,w,h,r); }
-function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,spinning){
+function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,spinning,ext=0){
   const w=WEAPONS[weaponIdx];
-  const reachPx = (isMe?myReach():(w.reach)) * W;
+  const reachPx = (isMe?myReach():(w.reach)) * SCALE() * (1+ext);
   const spinA = spinning ? (t/38)%(Math.PI*2) : 0;
   const a = spinning ? spinA : angle;
   const tipX = x+Math.cos(a)*reachPx, tipY = y+Math.sin(a)*reachPx;
@@ -996,11 +1062,21 @@ function frame(now){
   if (isHost && started) hostTick(now,dt);
   if (started) localHitCheck(now);
 
+  // camera eases after the sword — push toward an edge to travel the world
+  {
+    const vw = W/UNIT(), vh = H/UNIT();
+    const tx = clamp(me.x - vw/2, 0, Math.max(0, WORLD - vw));
+    const ty = clamp(me.y - vh/2, 0, Math.max(0, WORLD - vh));
+    const k = 1 - Math.exp(-dt/240);
+    cam.x += (tx - cam.x) * k; cam.y += (ty - cam.y) * k;
+  }
+
   drawField(now);
   // slimes sorted by y for fake depth
   [...slimes.values()].sort((a,b)=>a.y-b.y).forEach(s=>drawSlime(s,now));
 
   if (started) tickActives(now, dt);
+  drawMinimap();
 
   // particles & rings & floats
   popRings = popRings.filter(r=>r.life>0);
@@ -1015,10 +1091,10 @@ function frame(now){
   for (const [id,p] of peers){
     if (now-p.lastSeen>6000) continue;
     p.x += (p.tx-p.x)*.4; p.y += (p.ty-p.y)*.4;
-    drawSword(NX(p.x),NY(p.y),p.angle,p.weapon,p.color,p.name,false,now,p.spinning);
+    drawSword(NX(p.x),NY(p.y),p.angle,p.weapon,p.color,p.name,false,now,p.spinning,p.ext||0);
   }
   // my sword on top
-  if (started || true) drawSword(NX(me.x),NY(me.y),swordAngleAt(now),me.weapon,me.color, started?me.name:'', true, now, now<me.spinUntil);
+  if (started || true){ const bl = bladeAt(now); drawSword(NX(me.x),NY(me.y),bl.ang,me.weapon,me.color, started?me.name:'', true, now, now<me.spinUntil, bl.ext); }
   if (now<me.spinUntil && started) localHitCheck(now);
 
   // scoreboard refresh (cheap, 2/s)
@@ -1044,7 +1120,7 @@ $('#playBtn').onclick = ()=>{
   started=true;
   buildRack(); refreshHUD(); refreshPeers();
   try { joinWorld(WORLD_ID); }
-  catch(e){ toast('Multiplayer failed to start — playing solo. ('+e.message+')', 4000); isHost=true; hostId=me.id; if(slimes.size===0) for(let i=0;i<11;i++) spawnSlime(); }
+  catch(e){ toast('Multiplayer failed to start — playing solo. ('+e.message+')', 4000); isHost=true; hostId=me.id; if(slimes.size===0) for(let i=0;i<30;i++) spawnSlime(); }
   toast('Slash the slimes! One world — everyone with the link is in it.', 2600);
   beep(660,.1,'triangle',.1);
 };
