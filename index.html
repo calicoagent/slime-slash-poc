@@ -2919,6 +2919,80 @@ function whiteTintOf(img){
   WHITE_TINTS.set(img, c);
   return c;
 }
+/* ---- RANDOM FACES: bodies ship FACELESS; the face is a runtime layer
+   drawn here so it inherits squash/stretch/ghost/flinch transforms for
+   free and needs ZERO sync (everything derives from the slime's seed,
+   which derives from its id). Anchors measured on the 256x255 faceless
+   master: eye centres (62,166) and (162,166) — face midpoint x=112, left
+   of sprite centre — mouth centre (109,196), smile width 37, eye oval
+   ~15x21. Converted to fractions of the draw box paintSlimeSprite paints
+   into (origin: bottom-centre; x right, y up-negative). King and Boss
+   keep their baked faces and are skipped. ---- */
+const FACE_COL = '#33262e';
+const F_EXL = 62/256 - .5, F_EXR = 162/256 - .5, F_EY = 166/255 - 1;
+const F_MX = 109/256 - .5, F_MY = 196/255 - 1;
+const F_EW = 15/256, F_EH = 21/255, F_MW = 37/256;
+function hash01(n){ const x = Math.sin(n) * 43758.5453; return x - Math.floor(x); }
+function wpick(h, weights){
+  let acc = 0; const tot = weights.reduce((a,b)=>a+b, 0);
+  for (let i=0;i<weights.length;i++){ acc += weights[i]/tot; if (h < acc) return i; }
+  return weights.length - 1;
+}
+function drawSlimeFace(s, t, g){
+  const dw = g.dw, dh = g.dh;
+  const eyeStyle = wpick(hash01(s.seed * 12.9898), [30,20,15,15,10,10]);
+  const mouthStyle = wpick(hash01(s.seed * 7.13 * 269.5), [30,20,15,15,10,10]);   // mouth pick runs on seed*7.13 — independent of the eyes
+  const simple = dw < 26;   // tiny on screen: skip highlights, keep shapes
+  // BLINK: cycle 3.4 + seed*1.8 s, seeded phase, 130ms window — pure
+  // function of (seed, t), no state, no sync
+  const cyc = (3.4 + hash01(s.seed * 5.77) * 1.8) * 1000;
+  const blinking = ((t + hash01(s.seed * 9.31) * 10000) % cyc) < 130;
+  const ey = F_EY * dh, ew = F_EW * dw, eh = F_EH * dh;
+  const lw = Math.max(1.3, dw * .013);
+  ctx.fillStyle = FACE_COL; ctx.strokeStyle = FACE_COL; ctx.lineWidth = lw; ctx.lineCap = 'round';
+  const oval = (cx, cy, w, h) => { ctx.beginPath(); ctx.ellipse(cx, cy, w/2, h/2, 0, 0, 7); ctx.fill(); };
+  const hl = (cx, cy, r) => { if (simple) return; ctx.save(); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fill(); ctx.restore(); };
+  const happyArc = (cx, cy) => { ctx.beginPath(); ctx.arc(cx, cy + eh*.12, ew*.55, Math.PI*1.12, Math.PI*1.88); ctx.stroke(); };
+  const drawEye = (cx, isLeft) => {
+    let st = eyeStyle;
+    if (blinking && st !== 2) st = -1;              // blink: open styles snap to a closed arc (style 2 is already closed)
+    if (st === -1){ happyArc(cx, ey); return; }
+    if (st === 0){                                   // DROOPY OPEN — the approved look: oval + slanted lid chord (outer side lower) + highlight
+      oval(cx, ey, ew, eh);
+      ctx.beginPath();
+      if (isLeft){ ctx.moveTo(cx + ew*.55, ey - eh*.30); ctx.lineTo(cx - ew*.55, ey - eh*.02); }
+      else       { ctx.moveTo(cx - ew*.55, ey - eh*.30); ctx.lineTo(cx + ew*.55, ey - eh*.02); }
+      ctx.lineWidth = lw * 1.5; ctx.stroke(); ctx.lineWidth = lw;
+      hl(cx - ew*.14, ey - eh*.14, ew*.15);
+    }
+    else if (st === 1){ oval(cx, ey, ew*1.15, eh*1.1); hl(cx - ew*.15, ey - eh*.15, ew*.16); }   // ROUND OPEN
+    else if (st === 2){ happyArc(cx, ey); }          // HAPPY CLOSED
+    else if (st === 3){                              // HEAVY SLEEPY: bottom-half oval + lid chord across the middle + low highlight
+      ctx.beginPath(); ctx.ellipse(cx, ey, ew/2, eh/2, 0, 0, Math.PI); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(cx - ew*.5, ey); ctx.lineTo(cx + ew*.5, ey); ctx.lineWidth = lw * 1.4; ctx.stroke(); ctx.lineWidth = lw;
+      hl(cx, ey + eh*.24, ew*.12);
+    }
+    else if (st === 4){                              // WINK: one droopy eye, one happy arc (side by seed); blink closes the open eye only
+      const winkLeft = hash01(s.seed * 3.3) < .5;
+      if (isLeft === winkLeft) happyArc(cx, ey);
+      else { oval(cx, ey, ew, eh); hl(cx - ew*.14, ey - eh*.14, ew*.15); }
+    }
+    else {                                           // SPARKLE: oval + two highlights
+      oval(cx, ey, ew, eh);
+      hl(cx - ew*.15, ey - eh*.16, ew*.17); hl(cx + ew*.16, ey + eh*.14, ew*.09);
+    }
+  };
+  drawEye(F_EXL * dw, true);
+  drawEye(F_EXR * dw, false);
+  // MOUTH (centre (109,196) master, width 37)
+  const mx = F_MX * dw, my = F_MY * dh, mw = F_MW * dw;
+  if (mouthStyle === 0){ ctx.beginPath(); ctx.arc(mx, my - mw*.16, mw*.5, Math.PI*.18, Math.PI*.82); ctx.stroke(); }   // SMILE
+  else if (mouthStyle === 1){ ctx.beginPath(); ctx.ellipse(mx, my, mw*.42, mw*.34, 0, 0, Math.PI); ctx.closePath(); ctx.fill(); }   // OPEN GRIN
+  else if (mouthStyle === 2){ ctx.beginPath(); ctx.arc(mx - mw*.24, my - mw*.05, mw*.24, Math.PI*.15, Math.PI*.95); ctx.stroke(); ctx.beginPath(); ctx.arc(mx + mw*.24, my - mw*.05, mw*.24, Math.PI*.05, Math.PI*.85); ctx.stroke(); }   // CAT (omega)
+  else if (mouthStyle === 3){ ctx.beginPath(); ctx.arc(mx, my, mw*.16, 0, 7); ctx.fill(); }   // TINY O
+  else if (mouthStyle === 4){ ctx.beginPath(); ctx.moveTo(mx - mw*.4, my - mw*.10); ctx.lineTo(mx - mw*.30, my); ctx.lineTo(mx + mw*.30, my); ctx.lineTo(mx + mw*.4, my - mw*.10); ctx.stroke(); }   // CONTENT: straight line, tiny UPturned ends
+  else { ctx.beginPath(); ctx.moveTo(mx - mw*.5, my + mw*.04); ctx.quadraticCurveTo(mx, my + mw*.36, mx + mw*.5, my - mw*.12); ctx.stroke(); }   // SMUG: one end higher
+}
 function paintSlimeSprite(s, t, baseR, g){
   g = g || slimeSpriteGeom(s, t, baseR);
   if (!g) return false;
@@ -2944,6 +3018,9 @@ function paintSlimeSprite(s, t, baseR, g){
     ctx.drawImage(redTintOf(g.img), -g.dw/2, -g.dh, g.dw, g.dh);
     ctx.globalAlpha = prevA;
   }
+  // the face goes on AFTER body + tint: flinch reddens the body only, the
+  // eyes stay readable. King/Boss keep their baked faces — skipped.
+  if (s.kind !== 'king' && s.kind !== 'boss') drawSlimeFace(s, t, g);
   ctx.restore();
   return true;
 }
