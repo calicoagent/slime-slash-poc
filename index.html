@@ -845,10 +845,10 @@ const cleanName = s => (s||'').replace(/[<>&"'`]/g,'').trim().slice(0,12) || 'Kn
 const esc = s => s.replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 /* ============================================================ audio */
-let AC=null, muted=false;
+let AC=null;   // audio context handle (mute state lives in progress.muted)
 function beep(freq,dur,type='sine',gain=.12,slide=0){
   try{
-    if(muted) return;
+    if(prog().muted) return;
     if(!AC) AC=new (window.AudioContext||window.webkitAudioContext)();
     if(AC.state==='suspended') AC.resume();
     const o=AC.createOscillator(), g=AC.createGain(), t=AC.currentTime;
@@ -872,7 +872,7 @@ const sfx = {
   hurt: ()=>beep(140,.18,'square',.14,-60),
   die:  ()=>{ [392,330,262,196].forEach((f,i)=>setTimeout(()=>beep(f,.22,'triangle',.12,-40), i*130)); },
 };
-Object.defineProperty(sfx, 'muted', { get:()=>muted, set:v=>{ muted = !!v; } });
+Object.defineProperty(sfx, 'muted', { get:()=>prog().muted, set:v=>{ act.patchProgress({ muted: !!v }); } });
 
 /* ---- Isekai Slime World combat FX (ported from bon5co/isekai-slime-world,
    client-phaser combatFx/actors): sampled hit sounds, glyph damage numbers,
@@ -883,7 +883,7 @@ function makeAudioPool(src, vol){
   for (let i=0;i<4;i++){ const a = new Audio(src); a.preload = 'auto'; a.volume = vol; els.push(a); }
   return { els, i:0, last:0, vol,
     play(v){
-      if (muted) return;
+      if (prog().muted) return;
       const now = performance.now();
       if (now - this.last < 45) return;          // per-pool min interval: mass hits stay punchy, not noisy
       this.last = now;
@@ -964,16 +964,19 @@ const BREAKTHROUGH_COSTS = {
 };
 function isGate(lv){ return GATE_LEVELS.includes(lv); }
 function xpNeed(lv){ return 60 * lv; }   // weapon XP to fill the bar at any level
-function wxpOf(i){ if (!me.wxp[i]) me.wxp[i] = { lv:1, xp:0 }; return me.wxp[i]; }
+/* A weapon's {lv,xp} record. A weapon with no record gets one written on
+   first read (as it always has — so saves list it), through the store. */
+function wxpOf(i){ const w = prog().wxp[i]; if (w) return w; act.setWxp(i, { lv:1, xp:0 }); return prog().wxp[i]; }
 function gainWxp(i, n){
-  const w = wxpOf(i); if (w.lv >= WLV_MAX) return;
-  w.xp += n;
+  const w0 = wxpOf(i); if (w0.lv >= WLV_MAX) return;
+  const w = { lv:w0.lv, xp:w0.xp + n };   // working copy — progress is immutable; committed once below
   let leveled = false;
   while (w.lv < WLV_MAX && !isGate(w.lv) && w.xp >= xpNeed(w.lv)){
     w.xp -= xpNeed(w.lv); w.lv++; leveled = true;
     addFloat(me.x, me.y - .14, WEAPONS[i].name.toUpperCase() + ' LV ' + w.lv + '!', WEAPONS[i].color, { big:true });
   }
   if (isGate(w.lv)) w.xp = Math.min(w.xp, xpNeed(w.lv));   // at a gate: bar full, NO overflow — it waits for the breakthrough
+  act.setWxp(i, w);
   if (leveled){ sfx.pop(); saveGame(); buildRack(); }
   else updateRackXp(i);   // every kill / mined chunk lands here: patch ONE bar, don't rebuild 7 cards (+ imgs + a forced layout in syncRackUI) per kill
 }
@@ -1007,7 +1010,7 @@ const WSKILLS = [   // per weapon index: the weapon-skill active (tap / SPACE / 
   { name:'GEM RUSH',      mp:25, cd:14000, node:'w63' },
 ];
 // tree bonus helper: true only while the matching weapon is equipped
-const wHas = (wi, nid) => me.weapon===wi && unlocked.has(nid);
+const wHas = (wi, nid) => prog().weapon===wi && prog().unlocked.has(nid);
 // effective weapon-skill cooldown: Sphere node a4 'Swift Skills' (fx
 // skillCd — formerly the Spin Slash recharge stat) multiplies it
 const wSkillCd = sk => Math.round(sk.cd * Math.max(.5, 1 + ses.stats.skillCd));
@@ -1044,7 +1047,16 @@ const SCALE = () => UNIT();
 
 /* ============================================================ STATE STORE
    ONE central zustand (vanilla) store holds the game's state, split by
-   who owns a fact and whether it outlives the tab:
+   who owns a fact and whether it outlives the tab — three slices:
+
+     world     shared, ephemeral, host-authoritative   (`world`)
+     session   local, ephemeral                         (`ses`, `me` = ses.player)
+     progress  local, PERSISTED — the save              (`prog()`, written via `act.*`)
+
+   Each slice is described where it is defined below. No module-level
+   `let` holds game state any more; what stays outside the store is
+   handles and caches (canvas size, audio context, images/tint caches,
+   DOM updater lists, DOM write-memos like setText's el._t).
 
    world    SHARED + EPHEMERAL, host-authoritative. Slimes, the Emperor's
             host clocks/latches, boss orbs, ore nodes, peers, hostId, the
@@ -1100,20 +1112,17 @@ const freshWorld = () => ({
             ses.player (the local player's live body). */
 const freshSession = () => ({
   player: {
-  id: selfId, name:'Knight', color:`hsl(${hashHue(selfId)} 80% 55%)`,
-  x: WORLD/2, y: WORLD/2 + .1, px:.5, py:.6, angle:-Math.PI/4, speed:0,   // spawn at world centre (loadGame moves it to a saved respawn)
-  weapon:1, coins:0, xp:0, level:1, kills:0,
-  sp:0, spBuys:0, actCd:{ wave:0, meteor:0, frenzy:0, goldrush:0 }, frenzyUntil:0, goldRushUntil:0,
-  // survival + economy (HP is LOCAL only — never networked)
-  hp:100, maxHp:100, spawnAt:null, invulnUntil:0, lastDmgAt:0, shieldUntil:0,
-  mp:100, maxMp:100, wSkillCdUntil:0,   // MP is LOCAL only too — never networked, never persisted (loads full, like HP)
-  banked:0, items:{ potion:0, bomb:0, shield:0 }, purse:false, owned:new Set([0,6]),
-  gems: freshGems(), wxp:{}, gemRushUntil:0,   // mining state: gem pouch + per-weapon {lv,xp} (persisted)
-  gemBag: [], sockets: {},   // SOUL GEMS: every gem owned + per-weapon socketed gem ids (persisted)
-  stabT0:0, stabAng:0,
-  ptrSpeedPx:0,   // latest pointer speed (px/s, max of recent events, decayed per frame) — an idle blade must not cut
-  lastHitAt:new Map(), whirlUntil:0, trail:[],   // whirlUntil: WHIRLWIND skill render state only — the tap Spin Slash is gone
-  swingT0:0, swingDir:1,
+    id: selfId, color:`hsl(${hashHue(selfId)} 80% 55%)`,
+    x: WORLD/2, y: WORLD/2 + .1, px:.5, py:.6, angle:-Math.PI/4, speed:0,   // spawn at world centre (loadGame moves it to a saved respawn)
+    actCd:{ wave:0, meteor:0, frenzy:0, goldrush:0 }, frenzyUntil:0, goldRushUntil:0,
+    // survival (HP is LOCAL only — never networked, never persisted: a loaded character starts full)
+    hp:100, maxHp:100, invulnUntil:0, lastDmgAt:0, shieldUntil:0,
+    mp:100, maxMp:100, wSkillCdUntil:0,   // MP is LOCAL only too — never networked, never persisted (loads full, like HP)
+    gemRushUntil:0,
+    stabT0:0, stabAng:0,
+    ptrSpeedPx:0,   // latest pointer speed (px/s, max of recent events, decayed per frame) — an idle blade must not cut
+    lastHitAt:new Map(), whirlUntil:0, trail:[],   // whirlUntil: WHIRLWIND skill render state only — the tap Spin Slash is gone
+    swingT0:0, swingDir:1,
   },
   stats: null,               // derived stat totals (Sphere nodes + equipped weapon's soul gems) — rebuilt by recalc(), never a source of truth
   // run lifecycle
@@ -1155,13 +1164,151 @@ const freshSession = () => ({
   minimapAt: 0, slowTickAt: 0,   // minimap redraw (50ms) / peers+zone (500ms) throttles (were frame._mm / frame._b)
   autoSaveAt: 0,             // HUD-cadence save throttle, 2.5s (was refreshHUD._sv)
 });
-const store = createStore(() => ({
-  world: freshWorld(),
-  session: freshSession(),
-}));
+/* progress  PLAYER PROGRESS — LOCAL + PERSISTED. Everything the save has
+            always held: level/xp/kills, coins/banked, SP/spBuys, Sphere
+            unlocks, owned weapons + weapon XP, mining gems, the soul-gem
+            bag + sockets, items/purse, bounty, respawn point, name, and
+            the player's settings (muted, hintsSeen, rackCollapsed).
+
+   IMMUTABLE. Every write goes through one of the actions below, which
+   set() a NEW progress object (nested objects / arrays / Sets copied on
+   write). Never mutate prog() or anything reachable from it, and read it
+   fresh with prog() — a reference held across a write is stale.
+
+   PERSIST BOUNDARY: this is the only slice that touches localStorage —
+   persistProgress / loadProgress / clearSave / hasSave, key SAVE_KEY,
+   save shape unchanged (an old save loads losslessly; a new save
+   round-trips identically). HP/MP live in session and are never written.
+   Saves stay event-driven + the 2.5s HUD throttle + pagehide/hidden —
+   zustand's persist middleware would write on every set(), i.e. on
+   every kill, so it is deliberately not used. */
+const SAVE_KEY = 'slimeslash-save-v1';
+const freshProgress = () => ({
+  level:1, xp:0, kills:0,
+  coins:0, banked:0,
+  sp:0, spBuys:0,                       // spBuys: lifetime Bank SP purchases (escalating price)
+  unlocked: new Set(),                  // Sphere nodes: branch + weapon-path + cross ids, one shared set
+  weapon:1, owned: new Set([0,6]),      // equipped weapon + crafted weapons (the Pickaxe is a free starter)
+  wxp: {},                              // per-weapon {lv,xp}
+  gems: freshGems(),                    // mining gem pouch
+  gemBag: [], sockets: {},              // SOUL GEMS: every gem owned + per-weapon socketed gem ids
+  items: { potion:0, bomb:0, shield:0 }, purse:false,
+  bounty: null,                         // current bounty objective {type,key,label,need,have,reward}
+  spawnAt: null,                        // respawn point bought at the inn
+  name: 'Knight',
+  // settings
+  muted: false,
+  hintsSeen: { slash:false, skill:false, sphere:false },
+  rackCollapsed: window.innerWidth <= 640,   // phones start collapsed; a save overrides
+});
+const store = createStore((set, get) => {
+  const patchProgress = patch => set(s => ({ progress: { ...s.progress, ...(typeof patch === 'function' ? patch(s.progress) : patch) } }));
+  return {
+    world: freshWorld(),
+    session: freshSession(),
+    progress: freshProgress(),
+
+    /* ---- progress actions (the only writers of progress) ---- */
+    patchProgress,                                           // shallow merge: scalars, or whole replacement values
+    addCoins: n => patchProgress(p => ({ coins: p.coins + n })),
+    setWxp: (i, rec) => patchProgress(p => ({ wxp: { ...p.wxp, [i]: rec } })),
+    addGem: (g, n) => patchProgress(p => ({ gems: { ...p.gems, [g]: p.gems[g] + n } })),
+    payCost: cost => patchProgress(p => {
+      const gems = { ...p.gems };
+      for (const [g, n] of Object.entries(cost.gems || {})) gems[g] -= n;
+      return { coins: p.coins - cost.coins, gems };
+    }),
+    addItem: (id, n) => patchProgress(p => ({ items: { ...p.items, [id]: p.items[id] + n } })),
+    ownWeapon: i => patchProgress(p => ({ owned: new Set(p.owned).add(i) })),
+    unlockNode: (id, cost) => patchProgress(p => ({ sp: p.sp - cost, unlocked: new Set(p.unlocked).add(id) })),
+    addToGemBag: gem => patchProgress(p => ({ gemBag: [...p.gemBag, gem] })),
+    markHint: key => patchProgress(p => ({ hintsSeen: { ...p.hintsSeen, [key]: true } })),
+    bountyStep: () => patchProgress(p => ({ bounty: { ...p.bounty, have: p.bounty.have + 1 } })),
+    /* RESET SAVE: a fresh character. Name and the device settings (sound,
+       rack fold) survive, exactly as before; the bounty is re-rolled by
+       the caller. Starts on weapon 0 (not freshProgress's 1) as before. */
+    resetProgress: () => patchProgress(p => ({ ...freshProgress(), weapon:0, name:p.name, muted:p.muted, rackCollapsed:p.rackCollapsed, bounty:p.bounty })),
+
+    /* ---- persistence (the ONLY localStorage access for the save) ---- */
+    persistProgress(){
+      if (!get().session.started) return;
+      const p = get().progress, b = p.bounty;
+      try{
+        localStorage.setItem(SAVE_KEY, JSON.stringify({
+          level:p.level, xp:p.xp, coins:p.coins, kills:p.kills, sp:p.sp, spBuys:p.spBuys,
+          unlocked:[...p.unlocked], weapon:p.weapon, name:p.name, muted:p.muted, hintsSeen:p.hintsSeen,
+          banked:p.banked, items:p.items, purse:p.purse, owned:[...p.owned],
+          gems:p.gems, wxp:p.wxp, rackCollapsed:p.rackCollapsed, spawnAt: p.spawnAt || null,
+          gemBag: p.gemBag, sockets: p.sockets,
+          bounty: b ? { type:b.type, key:b.key, label:b.label, need:b.need, have:b.have, reward:b.reward } : null
+        }));
+      }catch(e){}
+    },
+    /* Reads + validates the save onto the current progress (fields a save
+       lacks keep their current value) and commits it in ONE set().
+       Returns the raw save (null if none) so the caller can apply the
+       session side of a load (HP to full, spawn position, UI). */
+    loadProgress(){
+      let d = null;
+      try{ d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); }catch(e){}
+      if (!d) return null;
+      const cur = get().progress;
+      const level = Math.max(1, d.level|0 || 1);
+      const unlocked = new Set(cur.unlocked);
+      if (Array.isArray(d.unlocked)) for (const id of d.unlocked) if (NODES.some(n=>n.id===id)) unlocked.add(id);   // one table: branch + weapon-path + cross ids all live in NODES, so old tree unlocks (w<idx>1..3) validate identically
+      // SOUL GEMS. Validated: known stat, rarity 0-4, string id; socket lists
+      // keep only ids that reference a real bag gem. Old saves (no
+      // gemBag/sockets fields) migrate to empty.
+      const gemBag = Array.isArray(d.gemBag) ? d.gemBag.filter(g => g && typeof g.id === 'string' && GEM_STATS[g.stat] && (g.rarity|0) >= 0 && (g.rarity|0) <= 4).map(g => ({ id:g.id, stat:g.stat, rarity:g.rarity|0 })) : [];
+      const sockets = {};
+      if (d.sockets && typeof d.sockets === 'object') for (const [wi, ids] of Object.entries(d.sockets)){
+        if (WEAPONS[wi|0] && Array.isArray(ids)) sockets[wi|0] = ids.filter(id => gemBag.some(g => g.id === id));
+      }
+      let owned;
+      if (Array.isArray(d.owned)) owned = new Set(d.owned.filter(i=>WEAPONS[i|0]).map(i=>i|0));
+      else { // legacy save (pre-shop): keep every weapon your level had unlocked
+        owned = new Set([0]);
+        WEAPONS.forEach((w,i)=>{ if (level >= w.unlock) owned.add(i); });
+      }
+      if (!owned.size) owned.add(0);
+      owned.add(6);   // migration: the Pickaxe is a free starter — every existing save gains it, nothing is lost
+      const gems = { ...cur.gems };
+      if (d.gems) for (const g of Object.keys(GEMS)) gems[g] = Math.max(0, d.gems[g]|0);
+      const wxp = { ...cur.wxp };
+      if (d.wxp) for (const [k,v] of Object.entries(d.wxp)){
+        const i = k|0;
+        if (WEAPONS[i] && v) wxp[i] = { lv:clamp(v.lv|0 || 1, 1, WLV_MAX), xp:Math.max(0, v.xp|0) };   // cap is WLV_MAX (50) — the old 1..5 clamp would have confiscated post-gates levels on load
+      }
+      let weapon = d.weapon|0;
+      if (!WEAPONS[weapon] || !owned.has(weapon)) weapon = Math.max(...owned);
+      const next = {
+        level, xp: Math.max(0, d.xp|0), coins: Math.max(0, d.coins|0), kills: Math.max(0, d.kills|0), sp: Math.max(0, d.sp|0),
+        spBuys: Math.max(0, d.spBuys|0),   // old saves default to 0
+        unlocked, gemBag, sockets, owned, gems, wxp, weapon,
+        banked: Math.max(0, d.banked|0),   // economy persists; HP deliberately does NOT
+        purse: !!d.purse,
+        muted: !!d.muted,
+      };
+      if (d.items) next.items = { potion:Math.max(0, d.items.potion|0), bomb:Math.max(0, d.items.bomb|0), shield:Math.max(0, d.items.shield|0) };
+      if (d.name) next.name = cleanName(d.name);
+      if (d.hintsSeen) next.hintsSeen = { slash:!!d.hintsSeen.slash, skill:!!(d.hintsSeen.skill || d.hintsSeen.spin), sphere:!!d.hintsSeen.sphere };   // old saves carry the retired 'spin' hint key — it maps onto 'skill'
+      if (typeof d.rackCollapsed === 'boolean') next.rackCollapsed = d.rackCollapsed;
+      if (d.spawnAt && isFinite(d.spawnAt.x) && isFinite(d.spawnAt.y)) next.spawnAt = { x:+d.spawnAt.x, y:+d.spawnAt.y };
+      if (d.bounty && d.bounty.key && (d.bounty.type==='color' || d.bounty.type==='kind'))
+        next.bounty = { type:d.bounty.type, key:d.bounty.key, label:String(d.bounty.label||'').slice(0,16) || 'SLIME',
+                        need:Math.max(1, d.bounty.need|0 || 8), have:Math.max(0, d.bounty.have|0), reward:Math.max(0, d.bounty.reward|0 || 40) };
+      patchProgress(next);
+      return d;
+    },
+    hasSave(){ try{ return !!localStorage.getItem(SAVE_KEY); }catch(e){ return false; } },
+    clearSave(){ try{ localStorage.removeItem(SAVE_KEY); }catch(e){} },
+  };
+});
 const world = store.getState().world;
 const ses = store.getState().session;
 const me = ses.player;
+const prog = () => store.getState().progress;   // ALWAYS read progress fresh: it is replaced on every write
+const act = Object.fromEntries(Object.entries(store.getState()).filter(([, v]) => typeof v === 'function'));   // the store actions (stable functions only — no state)
 // The sword sweeps an ARC when you flick: it cocks back, then whips past
 // your heading — direction follows the swipe (right swipe = clockwise arc…).
 function swordAngleAt(now){
@@ -1195,10 +1342,6 @@ const TOWN_R = 1.30;   // safe-zone radius around the town centre — 1.30 ≈ .
 const KING_BAR_RANGE = 1.0;   // a Slime King's floating HP bar renders only when the LOCAL player is within this many world units (Handler)
 
 /* ---- polish pass state ---- */
-let bounty=null;                           // current bounty objective (session scope)
-let hintsSeen = { slash:false, skill:false, sphere:false };
-const SAVE_KEY = 'slimeslash-save-v1';
-
 /* ============================================================ slimes */
 const SLIME_KINDS = [
   { kind:'baby',  hp:12,  r:.020, coins:4,  xp:8,  speed:.014, weight:45, hopCycle:640,  hopDist:.030 },
@@ -1480,7 +1623,7 @@ function hostTick(now,dt){
       /* EMPEROR SCALING: the flat 4000 melts under a geared high-level
          player, so the Emperor scales to the STRONGEST player present
          (peer levels ride the pos payload). Lv<=12: x1.0. Lv34: x7.6. */
-      let topLevel = me.level;
+      let topLevel = prog().level;
       for (const p of world.peers.values()) if (p.level && p.level > topLevel) topLevel = p.level;
       boss.bScale = 1 + 0.30 * Math.max(0, topLevel - 12);
       boss.max = boss.hp = Math.round(4000 * boss.bScale);
@@ -1626,7 +1769,7 @@ function minedFx(d){
   const n = world.nodes.get(d.n); if (n) n.shakeT = performance.now();
   if (d.to !== me.id) return;
   if (d.g && GEMS[d.g]){
-    me.gems[d.g]++;
+    act.addGem(d.g, 1);
     const rare = d.g==='ruby' || d.g==='amethyst' || d.g==='diamond';
     addFloat(d.x, d.y-.1, '+1 ' + GEMS[d.g].name.toUpperCase(), GEMS[d.g].col, rare ? { big:true } : {});
     sfx.gem();
@@ -1887,15 +2030,15 @@ function bossEvent(d){
 }
 
 /* ============================================================ combat */
-function myWeapon(){ return WEAPONS[me.weapon]; }
+function myWeapon(){ return WEAPONS[prog().weapon]; }
 function myDamage(){
-  let base = myWeapon().dmg + ses.stats.dmg + (me.level-1);
+  let base = myWeapon().dmg + ses.stats.dmg + (prog().level-1);
   if (wHas(1,'w11')) base += 3;   // Sword tree: Heavy Blade
   if (wHas(4,'w42')) base += 6;   // Greatsword tree: Heavy Blade
   if (wHas(5,'w51')) base += 8;   // Warhammer tree: Heavy Head
   if (wHas(6,'w61')) base += 3;   // Pickaxe tree: Strong Arms
-  base *= 1 + .15 * (Math.min(wxpOf(me.weapon).lv, 10) - 1) + .08 * Math.max(0, wxpOf(me.weapon).lv - 10);   // weapon-level damage taper: +15%/lv through Lv10, +8%/lv after (Lv10 x2.35, Lv20 x3.15, Lv50 x5.55)
-  if (wHas(me.weapon, 'w'+me.weapon+'4')) base *= 1.2;   // Sphere MASTERY node (path tier 4): +20% damage with this weapon only
+  base *= 1 + .15 * (Math.min(wxpOf(prog().weapon).lv, 10) - 1) + .08 * Math.max(0, wxpOf(prog().weapon).lv - 10);   // weapon-level damage taper: +15%/lv through Lv10, +8%/lv after (Lv10 x2.35, Lv20 x3.15, Lv50 x5.55)
+  if (wHas(prog().weapon, 'w'+prog().weapon+'4')) base *= 1.2;   // Sphere MASTERY node (path tier 4): +20% damage with this weapon only
   return (ses.combo>=15 && performance.now()<ses.comboUntil) ? base*1.15 : base;   // ON FIRE combo bonus
 }
 function myReach(){
@@ -1981,10 +2124,10 @@ function localHitCheck(now){
     if (!hit) continue;
     me.lastHitAt.set(nk, now);
     n.shakeT = now;   // prediction: the rock shakes on my screen right away
-    if (me.weapon === 6){
+    if (prog().weapon === 6){
       mineChips(n.x, n.y, 5);   // every connecting pickaxe swing sheds chips locally — mining reads as work, not just bookkeeping
       sfx.hit();
-      const claim = { n:n.id, lv:wxpOf(6).lv, gf: unlocked.has('w62') ? 1 : 0, gr: now < me.gemRushUntil ? 1 : 0 };
+      const claim = { n:n.id, lv:wxpOf(6).lv, gf: prog().unlocked.has('w62') ? 1 : 0, gr: now < me.gemRushUntil ? 1 : 0 };
       if (world.isHost) hostMine(n.id, claim, me.id);
       else if (world.sendMine) world.sendMine(claim);
     } else {
@@ -2056,7 +2199,7 @@ function hostKill(s, byId){
   const k = SLIME_KINDS.find(k=>k.kind===s.kind);
   let coins = Math.round(k.coins * (s.mul||1)), xp = Math.round(k.xp * (s.mul||1));   // zone/elite reward scaling
   if (s.kind==='boss'){ const bs = s.bScale || 1; coins = Math.round(coins * bs); xp = Math.round(xp * bs); }   // a scaled Emperor pays scaled
-  world.scores[byId] = world.scores[byId] || { name: byId===me.id?me.name:(world.peers.get(byId)?.name||'Knight'), kills:0 };
+  world.scores[byId] = world.scores[byId] || { name: byId===me.id?prog().name:(world.peers.get(byId)?.name||'Knight'), kills:0 };
   world.scores[byId].kills++;
   const fx = { id:s.id, x:s.x, y:s.y, c:s.color, by:byId, coins, xp, kind:s.kind, elite:!!s.elite, r:s.r };
   if (world.sendKillFx && hasPeers()) world.sendKillFx(fx);
@@ -2079,14 +2222,14 @@ function onKillFx(f){
     const now = performance.now();
     let cg = Math.round(f.coins * (1 + ses.stats.coin));
     if (now < me.goldRushUntil) cg *= 2;   // GOLD RUSH: double coins
-    me.coins += cg; me.kills++;
+    act.patchProgress(p => ({ coins: p.coins + cg, kills: p.kills + 1 }));
     me.mp = Math.min(me.maxMp, me.mp + 2);   // +2 MP per kill (own kills only)
-    gainWxp(me.weapon, 10);   // +10 XP to the EQUIPPED weapon (all weapons level this way)
+    gainWxp(prog().weapon, 10);   // +10 XP to the EQUIPPED weapon (all weapons level this way)
     /* SPHERE POINTS from the big kills (Handler: 'Sphere point gained from
        farming emperor') — the Emperor pays +3 SP, a Slime King +1 SP,
        awarded HERE, the same single place soul gems drop. */
-    if (f.kind==='boss'){ me.sp += 3; notify('SPHERE POINT +3', { type:'success' }); saveGame(); }
-    else if (f.kind==='king'){ me.sp += 1; notify('SPHERE POINT +1', { type:'success' }); saveGame(); }
+    if (f.kind==='boss'){ act.patchProgress(p => ({ sp: p.sp + 3 })); notify('SPHERE POINT +3', { type:'success' }); saveGame(); }
+    else if (f.kind==='king'){ act.patchProgress(p => ({ sp: p.sp + 1 })); notify('SPHERE POINT +1', { type:'success' }); saveGame(); }
     /* SOUL GEM drops — rolled HERE, the single place local kill rewards
        are granted (remote kills and host/client overlap can't double-fire:
        this block runs once, for my kills only) */
@@ -2107,37 +2250,37 @@ function onKillFx(f){
     if (STREAKS[ses.combo]) notify(STREAKS[ses.combo], { type:'streak' });
     if (ses.combo===15) notify('ON FIRE! +15% damage while the combo lives!', { type:'streak' });
     // bounty progress (my kills only, matched by colour or kind)
-    if (bounty && ((bounty.type==='color' && f.c===bounty.key) || (bounty.type==='kind' && f.kind===bounty.key))){
-      bounty.have++;
-      if (bounty.have >= bounty.need){
-        const payout = Math.round(bounty.reward * (1 + ses.stats.bounty));   // Bounty Hunter passive
-        me.coins += payout; me.sp += 1; saveGame();   // SP + coins: persist on the event
+    if (prog().bounty && ((prog().bounty.type==='color' && f.c===prog().bounty.key) || (prog().bounty.type==='kind' && f.kind===prog().bounty.key))){
+      act.bountyStep();
+      if (prog().bounty.have >= prog().bounty.need){
+        const payout = Math.round(prog().bounty.reward * (1 + ses.stats.bounty));   // Bounty Hunter passive
+        act.patchProgress(p => ({ coins: p.coins + payout, sp: p.sp + 1 })); saveGame();   // SP + coins: persist on the event
         notify('BOUNTY COMPLETE! +' + payout + ' coins +1 SP', { type:'success' });
         sfx.buy();
         rollBounty();
       }
       updateBountyUI();
     }
-    if (!hintsSeen.slash){ hintsSeen.slash = true; updateHint(); }
+    if (!prog().hintsSeen.slash){ act.markHint('slash'); updateHint(); }
     refreshHUD();
   }
 }
 function gainXp(n){
-  me.xp += Math.round(n * (1 + ses.stats.xp));
+  act.patchProgress(p => ({ xp: p.xp + Math.round(n * (1 + ses.stats.xp)) }));
   /* LOOP, not if: one grant can span several levels — a scaled Emperor
      pays 1200 x 1.5 x bScale XP (~15.8k at Lv38 vs 3.8k per level), and
      the old single `if` levelled ONCE and parked the rest of the bar until
      later kills drained it one level at a time. Every level still pays
      its own SP (+1, +2 on every 3rd) and its +10 max HP top-up. */
   let leveled = false;
-  while (me.xp >= me.level*100){
+  while (prog().xp >= prog().level*100){
     const maxBefore = me.maxHp;
-    me.xp -= me.level*100; me.level++; me.sp++; leveled = true;
+    act.patchProgress(p => ({ xp: p.xp - p.level*100, level: p.level + 1, sp: p.sp + 1 })); leveled = true;
     recalc();   // re-derive maxHp at the new level
     me.hp += me.maxHp - maxBefore;   // top up by the capacity gained (+10/level) — never a free full heal
     let spMsg = '+1 Sphere Point';
-    if (me.level % 3 === 0){ me.sp++; spMsg = '+2 Sphere Points (every-3rd-level bonus!)'; }
-    notify('LEVEL ' + me.level + '! ' + spMsg + ' — press F', { type:'success' });
+    if (prog().level % 3 === 0){ act.patchProgress(p => ({ sp: p.sp + 1 })); spMsg = '+2 Sphere Points (every-3rd-level bonus!)'; }
+    notify('LEVEL ' + prog().level + '! ' + spMsg + ' — press F', { type:'success' });
     // (the old 'UNLOCKED: <weapon> — check the rack!' toast at Lv 2/3/4 is
     // gone: weapons are CRAFTED at the Forge now, level unlocks nothing,
     // and the toast sent new players to a rack card that was still locked)
@@ -2208,10 +2351,10 @@ function damagePlayer(amount, now){
 }
 function death(){
   const now = performance.now();
-  const lost = me.purse ? Math.floor(me.coins*.25) : Math.floor(me.coins/2);   // Coin Purse softens the blow; banked coins are NEVER touched
-  me.coins -= lost;
+  const lost = prog().purse ? Math.floor(prog().coins*.25) : Math.floor(prog().coins/2);   // Coin Purse softens the blow; banked coins are NEVER touched
+  act.addCoins(-lost);
   me.hp = me.maxHp;
-  const sp = me.spawnAt || { x: WORLD/2, y: WORLD/2 + .1 };   // inn-saved respawn, else town centre
+  const sp = prog().spawnAt || { x: WORLD/2, y: WORLD/2 + .1 };   // inn-saved respawn, else town centre
   me.x = sp.x; me.y = sp.y; me.px = me.x; me.py = me.y;
   const vw = W/UNIT(), vh = H/UNIT();
   ses.cam.x = clamp(me.x - vw/2, 0, Math.max(0, WORLD - vw));
@@ -2232,20 +2375,19 @@ function openShop(){ $('#shopPanel').classList.remove('hidden'); buildShopRows()
    costs round(300 * 1.5^N). spBuys persists in the save. Kings grant +1 SP
    and the Emperor +3 SP on kill (onKillFx) — the farm is the real source;
    the Bank is the expensive shortcut. */
-function spPrice(){ return Math.round(300 * Math.pow(1.5, me.spBuys || 0)); }
+function spPrice(){ return Math.round(300 * Math.pow(1.5, prog().spBuys || 0)); }
 function updateBankPanel(){
-  $('#bankCarried').textContent = me.coins;
-  $('#bankBanked').textContent = me.banked;
-  $('#bankSp').textContent = me.sp;
+  $('#bankCarried').textContent = prog().coins;
+  $('#bankBanked').textContent = prog().banked;
+  $('#bankSp').textContent = prog().sp;
   $('#buySpBtn').textContent = 'BUY 1 SP — ' + spPrice() + 'c';
-  $('#buySpBtn').disabled = (me.banked + me.coins) < spPrice();
+  $('#buySpBtn').disabled = (prog().banked + prog().coins) < spPrice();
 }
 function buySpherePoint(){
   const price = spPrice();
-  if (me.banked + me.coins < price) return;
-  const fromBank = Math.min(me.banked, price);   // banked coins are spent first, carried covers the rest
-  me.banked -= fromBank; me.coins -= (price - fromBank);
-  me.sp++; me.spBuys++; sfx.buy(); notify('SPHERE POINT BOUGHT!', { type:'success' });
+  if (prog().banked + prog().coins < price) return;
+  const fromBank = Math.min(prog().banked, price);   // banked coins are spent first, carried covers the rest
+  act.patchProgress(p => ({ banked: p.banked - fromBank, coins: p.coins - (price - fromBank), sp: p.sp + 1, spBuys: p.spBuys + 1 })); sfx.buy(); notify('SPHERE POINT BOUGHT!', { type:'success' });
   updateBankPanel(); refreshHUD(); saveGame();
 }
 const SHOP_ITEMS = [
@@ -2261,11 +2403,11 @@ const SHOP_ITEMS = [
    button silently died (the inn SLEEP & SAVE report). */
 let shopUpdaters = [], hospUpdaters = [];
 function updateShopPanel(){
-  $('#shopCoins').textContent = me.coins;
+  $('#shopCoins').textContent = prog().coins;
   for (const u of shopUpdaters) u();
 }
 function buildShopRows(){
-  $('#shopCoins').textContent = me.coins;
+  $('#shopCoins').textContent = prog().coins;
   shopUpdaters = [];
   const wrap = $('#shopRows'); wrap.innerHTML = '';
   for (const it of SHOP_ITEMS){
@@ -2277,10 +2419,10 @@ function buildShopRows(){
     row.appendChild(btn);
     wrap.appendChild(row);
     shopUpdaters.push(()=>{
-      ownEl.textContent = it.id==='purse' ? (me.purse ? 'OWNED' : '') : ('x' + me.items[it.id]);
-      const ownedPurse = it.id==='purse' && me.purse;
+      ownEl.textContent = it.id==='purse' ? (prog().purse ? 'OWNED' : '') : ('x' + prog().items[it.id]);
+      const ownedPurse = it.id==='purse' && prog().purse;
       btn.textContent = ownedPurse ? 'OWNED' : 'BUY';
-      btn.disabled = ownedPurse || me.coins < it.price;   // carried coins only
+      btn.disabled = ownedPurse || prog().coins < it.price;   // carried coins only
     });
   }
   buildWeaponRows(wrap);
@@ -2290,31 +2432,31 @@ function buildShopRows(){
    rocks). Levelling is free-flow from XP; the Forge's other job is the
    BREAKTHROUGH at gate levels 10/20/30/40 — coins + gems, carried coins
    only, like the shop. ---- */
-function canAfford(cost){ return !!cost && me.coins >= cost.coins && Object.entries(cost.gems||{}).every(([g,n]) => (me.gems[g]||0) >= n); }
-function payCost(cost){ me.coins -= cost.coins; for (const [g,n] of Object.entries(cost.gems||{})) me.gems[g] -= n; }
+function canAfford(cost){ return !!cost && prog().coins >= cost.coins && Object.entries(cost.gems||{}).every(([g,n]) => (prog().gems[g]||0) >= n); }
+function payCost(cost){ act.payCost(cost); }
 function costHTML(cost){
   let h = `<span class="costCoins">${cost.coins}c</span>`;
   for (const [g,n] of Object.entries(cost.gems||{})){
-    const have = me.gems[g]||0;
+    const have = prog().gems[g]||0;
     h += `<span class="gemchip${have<n?' short':''}"><i style="background:${GEMS[g].col}"></i>${have}/${n}</span>`;
   }
   return h;
 }
 function craftWeapon(i){
   const cost = CRAFT_RECIPES[i];
-  if (!cost || me.owned.has(i) || !canAfford(cost)) return;
-  payCost(cost); me.owned.add(i); wxpOf(i);
+  if (!cost || prog().owned.has(i) || !canAfford(cost)) return;
+  payCost(cost); act.ownWeapon(i); wxpOf(i);
   sfx.buy(); updateShopPanel(); buildRack(); refreshHUD(); saveGame();
   notify(WEAPONS[i].name.toUpperCase() + ' CRAFTED! Press ' + (i+1) + ' to wield it', { type:'success' });
 }
 function breakthroughWeapon(i){
   const wp = wxpOf(i);
-  if (!me.owned.has(i) || !isGate(wp.lv) || wp.xp < xpNeed(wp.lv)) return;
+  if (!prog().owned.has(i) || !isGate(wp.lv) || wp.xp < xpNeed(wp.lv)) return;
   const cost = BREAKTHROUGH_COSTS[wp.lv];
   if (!canAfford(cost)) return;
-  payCost(cost); wp.lv++; wp.xp = 0;   // through the gate — XP flows again from 0
+  payCost(cost); act.setWxp(i, { lv:wp.lv + 1, xp:0 });   // through the gate — XP flows again from 0
   sfx.buy(); updateShopPanel(); buildRack(); refreshHUD(); saveGame();
-  notify('BREAKTHROUGH! ' + WEAPONS[i].name.toUpperCase() + ' LV ' + wp.lv, { type:'success' });
+  notify('BREAKTHROUGH! ' + WEAPONS[i].name.toUpperCase() + ' LV ' + wxpOf(i).lv, { type:'success' });
 }
 function buildWeaponRows(wrap){
   const head = document.createElement('div');
@@ -2325,11 +2467,11 @@ function buildWeaponRows(wrap){
     row.innerHTML = `<img src="assets/weapons/${w.id}.png" alt="" style="width:64px;height:20px;object-fit:contain;flex:none"><div class="info"><b></b><span>${w.dmg} dmg · ${w.desc}</span></div><span class="wstate"></span>`;
     const nameEl = row.querySelector('.info b'), stateEl = row.querySelector('.wstate');
     const btn = document.createElement('button');
-    btn.onclick = ()=>{ if (!me.owned.has(i)) craftWeapon(i); else breakthroughWeapon(i); };   // role decided at tap time, node never replaced
+    btn.onclick = ()=>{ if (!prog().owned.has(i)) craftWeapon(i); else breakthroughWeapon(i); };   // role decided at tap time, node never replaced
     row.appendChild(btn);
     wrap.appendChild(row);
     shopUpdaters.push(()=>{
-      const owned = me.owned.has(i), wp = wxpOf(i);
+      const owned = prog().owned.has(i), wp = wxpOf(i);
       nameEl.textContent = w.name + (owned ? ' · Lv ' + wp.lv : '');
       let mode = null;   // null = no button (pure state text)
       if (!owned){
@@ -2353,10 +2495,10 @@ function buildWeaponRows(wrap){
 }
 function buyItem(id){
   const it = SHOP_ITEMS.find(i=>i.id===id); if (!it) return;
-  if (me.coins < it.price) return;
-  if (id==='purse'){ if (me.purse) return; me.purse = true; }
-  else me.items[id]++;
-  me.coins -= it.price;
+  if (prog().coins < it.price) return;
+  if (id==='purse'){ if (prog().purse) return; act.patchProgress({ purse: true }); }
+  else act.addItem(id, 1);
+  act.addCoins(-it.price);
   sfx.buy();
   updateShopPanel(); refreshHUD(); saveGame();
 }
@@ -2366,8 +2508,8 @@ function fullHealPrice(){ return Math.max(15, Math.ceil((me.maxHp - me.hp) * .8)
 function sleepSavePrice(){ return (me.hp < me.maxHp ? fullHealPrice() : 0) + 25; }   // heal (if hurt) + 25c flat for the respawn
 function updateHospitalRows(){
   $('#hospHp').textContent = Math.max(0, Math.ceil(me.hp)) + ' / ' + me.maxHp;
-  $('#hospCoins').textContent = me.coins;
-  $('#hospSpawn').textContent = me.spawnAt ? 'The Inn' : 'Town Centre';
+  $('#hospCoins').textContent = prog().coins;
+  $('#hospSpawn').textContent = prog().spawnAt ? 'The Inn' : 'Town Centre';
   for (const u of hospUpdaters) u();
 }
 function buildHospitalRows(){
@@ -2376,11 +2518,11 @@ function buildHospitalRows(){
   const rows = [
     { id:'sleep', name:'SLEEP',        btn:'SLEEP', desc:'Heal to full HP',
       price:()=>fullHealPrice(),
-      disabled:()=> me.hp >= me.maxHp || me.coins < fullHealPrice() },
+      disabled:()=> me.hp >= me.maxHp || prog().coins < fullHealPrice() },
     { id:'save',  name:'SLEEP & SAVE', btn:'SAVE', desc:'Heal to full + respawn at the inn',
       price:()=>sleepSavePrice(),
       // at full HP this stays buyable (flat 25c) UNLESS the inn is already your respawn
-      disabled:()=> (me.hp >= me.maxHp && !!me.spawnAt) || me.coins < sleepSavePrice() },
+      disabled:()=> (me.hp >= me.maxHp && !!prog().spawnAt) || prog().coins < sleepSavePrice() },
   ];
   for (const r of rows){
     const row = document.createElement('div'); row.className = 'shopRow';
@@ -2401,16 +2543,16 @@ function buildHospitalRows(){
 function buyInn(id){
   if (id === 'save'){
     const price = sleepSavePrice();
-    if ((me.hp >= me.maxHp && me.spawnAt) || me.coins < price) return;
-    me.coins -= price;
+    if ((me.hp >= me.maxHp && prog().spawnAt) || prog().coins < price) return;
+    act.addCoins(-price);
     me.hp = me.maxHp;
     // respawn at the inn door: just north of the sprite, toward the plaza centre
-    me.spawnAt = { x: HOSPITAL_POS.x, y: HOSPITAL_POS.y - .28 };
+    act.patchProgress({ spawnAt: { x: HOSPITAL_POS.x, y: HOSPITAL_POS.y - .28 } });
     notify('SPAWN SAVED AT THE INN', { type:'success' });
   } else {
     const price = fullHealPrice();
-    if (me.hp >= me.maxHp || me.coins < price) return;
-    me.coins -= price;
+    if (me.hp >= me.maxHp || prog().coins < price) return;
+    act.addCoins(-price);
     me.hp = me.maxHp;
   }
   sfx.buy();
@@ -2460,9 +2602,9 @@ function useItem(id){
   if (!ses.started || ses.paused) return;
   const now = performance.now();
   if (id==='potion'){
-    if (me.items.potion<=0) return;
+    if (prog().items.potion<=0) return;
     if (me.hp>=me.maxHp){ notify('HP FULL'); beep(160,.09,'square',.07); return; }   // never waste a potion at full HP
-    me.items.potion--;
+    act.addItem('potion', -1);
     me.hp = Math.min(me.maxHp, me.hp + 60);
     for (let i=0;i<10;i++) ses.particles.push({ x:me.x, y:me.y, vx:rand(-.06,.06), vy:rand(-.14,-.03), life:1, color:'#57d93d', r:rand(2,5) });
     capParticles();
@@ -2470,8 +2612,8 @@ function useItem(id){
     addFloat(me.x, me.y-.06, '+60 HP', '#57d93d');
   }
   if (id==='bomb'){
-    if (me.items.bomb<=0) return;
-    me.items.bomb--;
+    if (prog().items.bomb<=0) return;
+    act.addItem('bomb', -1);
     ses.popRings.push({ x:me.x, y:me.y, r:.05, life:1, color:'#ffb52e' });
     spawnHitFx(me.x, me.y, '#ffb52e', 24);
     sfx.pop();
@@ -2479,8 +2621,8 @@ function useItem(id){
       if (dist2(s.x,s.y,me.x,me.y) < .38*.38) doHit(s, 150);   // normal claim flow — host still validates/caps
   }
   if (id==='shield'){
-    if (me.items.shield<=0) return;
-    me.items.shield--;
+    if (prog().items.shield<=0) return;
+    act.addItem('shield', -1);
     me.shieldUntil = now + 6000;
     bubble('AEGIS!', me.x, me.y, 900);
     beep(520,.15,'sine',.09,260);
@@ -2565,7 +2707,7 @@ function joinWorld(roomCode){
   setTimeout(refreshPeers, 15500);
 }
 setInterval(()=>{ // sword state @ ~20Hz
-  if (ses.started && world.sendPos && hasPeers()){ const bl = bladeAt(performance.now()); world.sendPos({ x:+me.x.toFixed(3), y:+me.y.toFixed(3), a:+bl.ang.toFixed(2), e:+bl.ext.toFixed(2), w:me.weapon, n:me.name, c:me.color, s: performance.now()<me.whirlUntil, l: me.level }); }
+  if (ses.started && world.sendPos && hasPeers()){ const bl = bladeAt(performance.now()); world.sendPos({ x:+me.x.toFixed(3), y:+me.y.toFixed(3), a:+bl.ang.toFixed(2), e:+bl.ext.toFixed(2), w:prog().weapon, n:prog().name, c:me.color, s: performance.now()<me.whirlUntil, l: prog().level }); }
 }, 50);
 
 /* ============================================================ input */
@@ -2665,10 +2807,10 @@ function setText(el, v){ v = String(v); if (el._t !== v){ el._t = v; el.textCont
 function setStyle(el, prop, v){ const k = '_s' + prop; if (el[k] !== v){ el[k] = v; el.style[prop] = v; } }
 const pct = (a, b) => clamp(a/b*100, 0, 100).toFixed(1) + '%';
 function refreshHUD(){
-  setText($('#coins'), me.coins);
-  setText($('#lvl'), me.level);
-  setText($('#kills'), me.kills+' kills');
-  setStyle($('#xpFill'), 'width', pct(me.xp, me.level*100));
+  setText($('#coins'), prog().coins);
+  setText($('#lvl'), prog().level);
+  setText($('#kills'), prog().kills+' kills');
+  setStyle($('#xpFill'), 'width', pct(prog().xp, prog().level*100));
   // player HP (local only)
   setStyle($('#hpFill'), 'width', pct(me.hp, me.maxHp));
   setText($('#hpText'), Math.max(0, Math.ceil(me.hp)) + ' / ' + me.maxHp);   // overlaid ON the bar — numbers only, no 'HP' prefix
@@ -2683,20 +2825,20 @@ function refreshHUD(){
   // item buttons: counts + greyed when empty
   for (const [id, sel] of [['potion','#itemPotion'],['bomb','#itemBomb'],['shield','#itemShield']]){
     const b = $(sel); if (!b) continue;
-    setText(b.querySelector('.cnt'), me.items[id]);
-    b.classList.toggle('empty', me.items[id]<=0);
+    setText(b.querySelector('.cnt'), prog().items[id]);
+    b.classList.toggle('empty', prog().items[id]<=0);
   }
   // panic pulse: dying (HP < 35%) with a potion in hand -> POTION throbs
-  $('#itemPotion').classList.toggle('panic', me.hp < me.maxHp*.35 && me.items.potion > 0);
+  $('#itemPotion').classList.toggle('panic', me.hp < me.maxHp*.35 && prog().items.potion > 0);
   if (!$('#bankPanel').classList.contains('hidden')) updateBankPanel();
   if (!$('#shopPanel').classList.contains('hidden')) updateShopPanel();   // in-place: same nodes, fresh values/disabled states
   if (!$('#hospitalPanel').classList.contains('hidden')) updateHospitalRows();
   // weapon skill button: exists ONLY while the equipped weapon's
   // Sphere-path skill is unlocked — locked means NO billboard at all
   // (pressing V still explains itself via castWeaponSkill's toast)
-  const wsk = WSKILLS[me.weapon];
+  const wsk = WSKILLS[prog().weapon];
   const wsBtn = $('#wSkillBtn');
-  if (wsk && unlocked.has(wsk.node)){
+  if (wsk && prog().unlocked.has(wsk.node)){
     setStyle(wsBtn, 'display', '');
     setText($('#wsName'), wsk.name);
     setText($('#wsSub'), 'V · ' + wsk.mp + ' MP');
@@ -2704,18 +2846,18 @@ function refreshHUD(){
   } else {
     setStyle(wsBtn, 'display', 'none');
   }
-  // scoreboard — my own row always shows LIVE me.kills/me.name (local kills are
+  // scoreboard — my own row always shows LIVE progress kills/name (local kills are
   // credited in a path that does not write into scores, so the table lagged)
   const sEntries = Object.entries(world.scores);
-  if (!sEntries.some(([id])=>id===me.id)) sEntries.push([me.id, { name:me.name, kills:me.kills }]);
+  if (!sEntries.some(([id])=>id===me.id)) sEntries.push([me.id, { name:prog().name, kills:prog().kills }]);
   const rows = sEntries
-    .map(([id,s])=> id===me.id ? [id, { name:me.name, kills:me.kills }] : [id, s])
+    .map(([id,s])=> id===me.id ? [id, { name:prog().name, kills:prog().kills }] : [id, s])
     .sort((a,b)=>b[1].kills-a[1].kills).slice(0,5);
   const boardHtml = rows.length ? rows.map(([id,s])=>`<div class="row ${id===me.id?'me':''}"><span>${esc(s.name)}</span><b>${s.kills}</b></div>`).join('') : '<div class="row"><span>No kills yet</span></div>';
   const boardEl = $('#board');
   if (boardEl._h !== boardHtml){ boardEl._h = boardHtml; boardEl.innerHTML = boardHtml; }   // innerHTML re-parses + rebuilds the subtree: only when the table actually changed
   // sphere points
-  $('#spCount').textContent = me.sp;
+  $('#spCount').textContent = prog().sp;
   // RPG menu: refresh the visible tab's values IN PLACE (same nodes —
   // rebuilding mid-tap is what ate inn button clicks in an earlier pass)
   if (!$('#menuPanel').classList.contains('hidden')){
@@ -2747,19 +2889,18 @@ function refreshPeers(){
   refreshHUD();
 }
 /* ---------- collapsible rack ---------- */
-let rackCollapsed = window.innerWidth <= 640;   // phones start collapsed; loadGame may override from the save
 function syncDockH(){
   const dock = $('#rackDock'); if (!dock || !dock.offsetHeight) return;
   document.documentElement.style.setProperty('--dockH', dock.offsetHeight + 'px');
 }
 function syncRackUI(){
   const dock = $('#rackDock'); if (!dock) return;
-  dock.classList.toggle('collapsed', rackCollapsed);
-  const w = WEAPONS[me.weapon];
+  dock.classList.toggle('collapsed', prog().rackCollapsed);
+  const w = WEAPONS[prog().weapon];
   if (w) $('#rackTabName').textContent = w.name;
-  $('#rackTabChev').textContent = rackCollapsed ? '▲' : '▼';
+  $('#rackTabChev').textContent = prog().rackCollapsed ? '▲' : '▼';
   const rack = $('#rack');
-  if (rackCollapsed){
+  if (prog().rackCollapsed){
     const sel = rack.querySelector('.wcard.sel');
     rack.style.maxHeight = (sel ? sel.offsetHeight : 76) + 'px';
   } else {
@@ -2768,16 +2909,16 @@ function syncRackUI(){
   syncDockH();
 }
 function toggleRack(){
-  rackCollapsed = !rackCollapsed;
+  act.patchProgress(p => ({ rackCollapsed: !p.rackCollapsed }));
   syncRackUI(); saveGame();
-  beep(rackCollapsed ? 500 : 700, .05, 'triangle', .06);
+  beep(prog().rackCollapsed ? 500 : 700, .05, 'triangle', .06);
 }
 function buildRack(){
   const rack=$('#rack'); rack.innerHTML='';
   WEAPONS.forEach((w,i)=>{
-    const locked = !me.owned.has(i);
+    const locked = !prog().owned.has(i);
     const d=document.createElement('div');
-    d.className='wcard'+(me.weapon===i?' sel':'')+(locked?' locked':'');
+    d.className='wcard'+(prog().weapon===i?' sel':'')+(locked?' locked':'');
     let extra;
     if (locked) extra = `<div class="wl">FORGE</div>`;
     else {
@@ -2785,10 +2926,10 @@ function buildRack(){
       const pct = wp.lv >= WLV_MAX ? 100 : clamp(wp.xp/need*100, 0, 100);
       const ready = isGate(wp.lv) && wp.xp >= need;   // gate bar full: pulses (see .wxpbar.ready) until the Forge breakthrough
       // soul-gem socket pips: filled (rarity colour) / total slots, tiny diamonds
-      const sTot = slotsFor(i), sIds = me.sockets[i] || [];
+      const sTot = slotsFor(i), sIds = prog().sockets[i] || [];
       let pips = '<div class="wpips">';
       for (let p = 0; p < sTot; p++){
-        const gem = sIds[p] ? me.gemBag.find(g => g.id === sIds[p]) : null;
+        const gem = sIds[p] ? prog().gemBag.find(g => g.id === sIds[p]) : null;
         pips += gem ? `<i class="on" style="background:${GEM_RARITY_COL[gem.rarity]}"></i>` : '<i></i>';
       }
       pips += '</div>';
@@ -2803,9 +2944,9 @@ function buildRack(){
 }
 function equip(i){
   const w=WEAPONS[i];
-  if (!me.owned.has(i)){ notify('Craft the ' + w.name + ' at the FORGE — in the SHOP'); return; }
-  if (window.innerWidth <= 640) rackCollapsed = true;   // phone: picking a card folds the rack away (applies via buildRack → syncRackUI)
-  me.weapon=i; me.lastHitAt.clear(); buildRack(); beep(600,.06,'triangle',.08); refreshHUD(); saveGame();
+  if (!prog().owned.has(i)){ notify('Craft the ' + w.name + ' at the FORGE — in the SHOP'); return; }
+  if (window.innerWidth <= 640) act.patchProgress({ rackCollapsed: true });   // phone: picking a card folds the rack away (applies via buildRack → syncRackUI)
+  act.patchProgress({ weapon: i }); me.lastHitAt.clear(); buildRack(); beep(600,.06,'triangle',.08); refreshHUD(); saveGame();
   bubble(w.name.toUpperCase()+'!', me.x, me.y, 900);
 }
 /* ============================================================ RPG MENU
@@ -2826,7 +2967,7 @@ function showMenuTab(tab){
   ses.menuTab = tab;
   for (const [k, sel] of Object.entries(MENU_SECTIONS)) $(sel).classList.toggle('hidden', k !== tab);
   document.querySelectorAll('#menuTabs .mtab').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
-  if (tab === 'sphere'){ buildSphere(); hintsSeen.sphere = true; }
+  if (tab === 'sphere'){ buildSphere(); act.markHint('sphere'); }
   if (tab === 'gems') buildGemPanel();
   if (tab === 'inventory') buildMenuInventory();
   if (tab === 'more') buildMenuMore();
@@ -2858,7 +2999,7 @@ function buildMenuInventory(){
     if (it.id === 'purse'){
       row.innerHTML = `<div class="info"><b>Coin Purse</b><span>${it.desc}</span></div><div class="own"></div>`;
       const ownEl = row.querySelector('.own');
-      menuInvUpdaters.push(()=>{ ownEl.textContent = me.purse ? 'OWNED' : it.price + 'c — at the SHOP'; });
+      menuInvUpdaters.push(()=>{ ownEl.textContent = prog().purse ? 'OWNED' : it.price + 'c — at the SHOP'; });
     } else {
       const icon = $('#' + ({ potion:'itemPotion', bomb:'itemBomb', shield:'itemShield' })[it.id]).querySelector('svg').outerHTML;
       row.innerHTML = `${icon}<div class="info"><b>${it.name}</b><span>${it.desc}</span></div><div class="own"></div>`;
@@ -2868,8 +3009,8 @@ function buildMenuInventory(){
       btn.onclick = ()=>useItem(it.id);   // the SAME use path as the HUD thumb buttons / Z X C keys
       row.appendChild(btn);
       menuInvUpdaters.push(()=>{
-        ownEl.textContent = 'x' + me.items[it.id];
-        btn.disabled = me.items[it.id] <= 0;
+        ownEl.textContent = 'x' + prog().items[it.id];
+        btn.disabled = prog().items[it.id] <= 0;
       });
     }
     iw.appendChild(row);
@@ -2879,7 +3020,7 @@ function buildMenuInventory(){
     const row = document.createElement('div'); row.className = 'shopRow';
     row.innerHTML = `<div class="info"><b><span class="gemchip"><i style="background:${g.col}"></i></span>${g.name}</b><span>Mined from ore rocks — the Forge spends these</span></div><div class="own"></div>`;
     const ownEl = row.querySelector('.own');
-    menuInvUpdaters.push(()=>{ ownEl.textContent = 'x' + (me.gems[gk] || 0); });
+    menuInvUpdaters.push(()=>{ ownEl.textContent = 'x' + (prog().gems[gk] || 0); });
     gw.appendChild(row);
   }
   updateMenuInventory();
@@ -2889,11 +3030,11 @@ function updateMenuInventory(){ for (const u of menuInvUpdaters) u(); }
    here now — updateBountyUI writes them unchanged), progress, system -- */
 function buildMenuMore(){ updateMenuMore(); }
 function updateMenuMore(){
-  $('#menuLvl').textContent = me.level;
-  $('#menuKills').textContent = me.kills;
-  $('#menuCarried').textContent = me.coins;
-  $('#menuBanked').textContent = me.banked;
-  $('#menuSp').textContent = me.sp;
+  $('#menuLvl').textContent = prog().level;
+  $('#menuKills').textContent = prog().kills;
+  $('#menuCarried').textContent = prog().coins;
+  $('#menuBanked').textContent = prog().banked;
+  $('#menuSp').textContent = prog().sp;
 }
 /* ---- SOUL GEM panel: equipped weapon's slots, the loose-gem bag, and
    other weapons' socketed gems (unsocketing from anywhere is allowed) ---- */
@@ -2903,29 +3044,29 @@ function toggleGems(force){
   else toggleMenu('gems');
 }
 function socketGem(gid){
-  const wi = me.weapon, sock = me.sockets[wi] || (me.sockets[wi] = []);
+  const wi = prog().weapon, sock = prog().sockets[wi] || [];
   if (sock.length >= slotsFor(wi) || sock.includes(gid)) return;
-  sock.push(gid);
+  act.patchProgress(p => ({ sockets: { ...p.sockets, [wi]: [...sock, gid] } }));
   afterGemChange();
 }
 function unsocketGem(gid){
-  for (const k of Object.keys(me.sockets)) me.sockets[k] = me.sockets[k].filter(id => id !== gid);
+  act.patchProgress(p => ({ sockets: Object.fromEntries(Object.entries(p.sockets).map(([k, ids]) => [k, ids.filter(id => id !== gid)])) }));
   afterGemChange();
 }
 function afterGemChange(){ recalc(); refreshHUD(); buildRack(); saveGame(); buildGemPanel(); }
 function buildGemPanel(){
-  $('#gemBagCount').textContent = '(' + me.gemBag.length + ' / 99)';
-  const wi = me.weapon, sock = me.sockets[wi] || [], total = slotsFor(wi);
+  $('#gemBagCount').textContent = '(' + prog().gemBag.length + ' / 99)';
+  const wi = prog().weapon, sock = prog().sockets[wi] || [], total = slotsFor(wi);
   let sh = `<div class="gemEquipHead">${WEAPONS[wi].name.toUpperCase()} — SOCKETS ${sock.length}/${total}</div><div class="gemSlotsRow">`;
   for (let i = 0; i < total; i++){
-    const gem = sock[i] ? me.gemBag.find(g => g.id === sock[i]) : null;
+    const gem = sock[i] ? prog().gemBag.find(g => g.id === sock[i]) : null;
     sh += gem
       ? `<button class="gemSlot filled" data-unsocket="${gem.id}" title="Click to unsocket"><i style="background:${GEM_RARITY_COL[gem.rarity]}"></i><span>${gemLabel(gem)}<small class="gemDesc">${GEM_STAT_INFO[gem.stat] || ''}</small></span></button>`
       : `<div class="gemSlot empty"><i></i><span>EMPTY SLOT</span></div>`;
   }
   $('#gemSlots').innerHTML = sh + '</div>';
-  const socketedIds = new Set(Object.values(me.sockets).flat());
-  const free = me.gemBag.filter(g => !socketedIds.has(g.id));
+  const socketedIds = new Set(Object.values(prog().sockets).flat());
+  const free = prog().gemBag.filter(g => !socketedIds.has(g.id));
   let bh = '<div class="gemBagHead">GEM BAG — loose gems</div>';
   if (!free.length) bh += '<div class="own">No loose gems. Slimes drop soul gems — elites, Kings, metals and the Emperor drop them best.</div>';
   for (const gem of free){
@@ -2935,8 +3076,8 @@ function buildGemPanel(){
   let oh = '';
   WEAPONS.forEach((w2, i2) => {
     if (i2 === wi) return;
-    for (const gid of (me.sockets[i2] || [])){
-      const gem = me.gemBag.find(g => g.id === gid); if (!gem) continue;
+    for (const gid of (prog().sockets[i2] || [])){
+      const gem = prog().gemBag.find(g => g.id === gid); if (!gem) continue;
       oh += `<div class="shopRow"><div class="info"><b><i class="gemDot" style="background:${GEM_RARITY_COL[gem.rarity]}"></i>${gemLabel(gem)}</b><span class="gemDesc">${GEM_STAT_INFO[gem.stat] || ''}</span><span>${GEM_RARITY_NAME[gem.rarity]} · In ${w2.name}</span></div><button data-unsocket="${gid}">UNSOCKET</button></div>`;
     }
   });
@@ -2949,7 +3090,7 @@ $('#menuCloseBtn').onclick = () => closeMenu();
 $('#menuSheetClose').onclick = () => closeMenu();
 $('#menuPanel').addEventListener('click', e => { if (e.target.id === 'menuPanel') closeMenu(); });
 document.querySelectorAll('#menuTabs .mtab').forEach(b => b.onclick = ()=>{ showMenuTab(b.dataset.tab); beep(600,.05,'triangle',.06); });
-$('#menuSoundBtn').onclick = ()=>{ setMuted(!muted); saveGame(); };
+$('#menuSoundBtn').onclick = ()=>{ setMuted(!prog().muted); saveGame(); };
 $('#menuResetBtn').onclick = ()=>{
   const b = $('#menuResetBtn');
   if (!ses.menuResetArmed){ ses.menuResetArmed = true; b.textContent = 'TAP AGAIN TO ERASE EVERYTHING'; return; }
@@ -3000,10 +3141,10 @@ function rollGemRarity(floor){
   return 4;
 }
 function grantGem(floor, x, y){
-  if (me.gemBag.length >= 99){ me.coins += 15; addFloat(x, y - .16, '+15c (BAG FULL)', '#ffd94d'); return; }   // bag cap 99: the drop converts to coins
+  if (prog().gemBag.length >= 99){ act.addCoins(15); addFloat(x, y - .16, '+15c (BAG FULL)', '#ffd94d'); return; }   // bag cap 99: the drop converts to coins
   const stats = Object.keys(GEM_STATS);
   const gem = { id:'g' + Date.now().toString(36) + (ses.gemSeq++), stat:stats[Math.floor(Math.random()*stats.length)], rarity:rollGemRarity(floor) };
-  me.gemBag.push(gem);
+  act.addToGemBag(gem);
   addFloat(x, y - .16, '+ SOUL GEM', GEM_RARITY_COL[gem.rarity], { big:true });
   for (let i=0;i<10;i++) ses.particles.push({ x, y, vx:rand(-.09,.09), vy:rand(-.16,-.02), life:1, color:GEM_RARITY_COL[gem.rarity], r:rand(2,4) });
   capParticles();
@@ -3013,7 +3154,7 @@ function grantGem(floor, x, y){
 /* sockets per weapon: 1 base + Lv8 + Lv16 (player) + weapon Lv4 + the
    ARCANE capstone node a9 'Soul Socket' — max 5 */
 function slotsFor(wi){
-  return 1 + (me.level >= 8 ? 1 : 0) + (me.level >= 16 ? 1 : 0) + (wxpOf(wi).lv >= 4 ? 1 : 0) + (unlocked.has('a9') ? 1 : 0);
+  return 1 + (prog().level >= 8 ? 1 : 0) + (prog().level >= 16 ? 1 : 0) + (wxpOf(wi).lv >= 4 ? 1 : 0) + (prog().unlocked.has('a9') ? 1 : 0);
 }
 const BRANCHES = [
   { name:'POWER',   color:'#ff6b5e', ang:-90 },
@@ -3121,10 +3262,9 @@ const nodePos = n => {
   const x = 50 + Math.cos(a+perp)*dist, y = 50 + Math.sin(a+perp)*dist;
   return { x:x+50, y:y+50, idx };
 };
-const unlocked = new Set();
-function recalc(){
+function recalc(wi = prog().weapon){
   ses.stats = { dmg:0, reach:0, cd:0, crit:0, coin:0, xp:0, splash:0, kingBane:0, double:0, arcWide:0, skillCd:0, bounty:0, comboWin:0, exec:0, maxHp:0, regen:0, socket:0, actives:new Set() };
-  for (const n of NODES) if (unlocked.has(n.id)){
+  for (const n of NODES) if (prog().unlocked.has(n.id)){
     const f = n.fx || {};   // weapon-path tiers 1-4 carry no global fx (equipped-only effects live in wHas checks); CROSS nodes do
     for (const k of ['dmg','reach','cd','crit','coin','xp','kingBane','double','arcWide','skillCd','bounty','comboWin','exec','maxHp','regen','socket']) if (f[k]) ses.stats[k]+=f[k];
     if (f.splash) ses.stats.splash = Math.max(ses.stats.splash, f.splash);
@@ -3134,8 +3274,8 @@ function recalc(){
      crit->crit (%), dmg->dmg (flat), reach->reach (%), haste->cd (—, its
      multiplier is floored at .5x where cooldowns are applied), greed->
      coin (%), wisdom->xp (%), vitality->maxHp (flat), mending->regen. */
-  for (const gid of (me.sockets[me.weapon] || [])){
-    const gem = me.gemBag.find(g => g.id === gid);
+  for (const gid of (prog().sockets[wi] || [])){
+    const gem = prog().gemBag.find(g => g.id === gid);
     if (!gem || !GEM_STATS[gem.stat]) continue;
     const v = GEM_STATS[gem.stat].vals[gem.rarity];
     if (gem.stat==='crit') ses.stats.crit += v/100;
@@ -3152,18 +3292,18 @@ function recalc(){
      they can, defaulting to 0). Growth never heals by itself: gainXp
      adds the level-up delta explicitly. A shrink (RESET SAVE) clamps
      current HP down to the new max. MP is NOT derived — capped at 100. */
-  me.maxHp = 100 + 10*(me.level - 1) + (ses.stats.maxHp || 0);
+  me.maxHp = 100 + 10*(prog().level - 1) + (ses.stats.maxHp || 0);
   if (me.hp > me.maxHp) me.hp = me.maxHp;
 }
 recalc();
 const nodeAvail = n => {
-  if (unlocked.has(n.id)) return false;
-  if (n.w !== undefined && !me.owned.has(n.w)) return false;   // weapon path nodes: own the weapon first (the old skill-tree rule)
-  if (n.preAny) return n.preAny.some(id => unlocked.has(id));   // CROSS: tier II of EITHER side (or the Fortune node for xPF)
-  if (n.pre) return unlocked.has(n.pre);
+  if (prog().unlocked.has(n.id)) return false;
+  if (n.w !== undefined && !prog().owned.has(n.w)) return false;   // weapon path nodes: own the weapon first (the old skill-tree rule)
+  if (n.preAny) return n.preAny.some(id => prog().unlocked.has(id));   // CROSS: tier II of EITHER side (or the Fortune node for xPF)
+  if (n.pre) return prog().unlocked.has(n.pre);
   if (n.root) return true;
   const { idx } = nodePos(n);
-  return idx===0 || unlocked.has(NODES.filter(m=>m.b===n.b)[idx-1].id);
+  return idx===0 || prog().unlocked.has(NODES.filter(m=>m.b===n.b)[idx-1].id);
 };
 function buildSphere(){
   const lines = $('#sphereLines'), wrap = $('#sphereNodes');
@@ -3172,7 +3312,7 @@ function buildSphere(){
     let prev = {x:100, y:100};
     for (const n of NODES.filter(m=>m.b===BRANCHES.indexOf(br))){
       const p = nodePos(n);
-      lh += `<line x1="${prev.x}" y1="${prev.y}" x2="${p.x}" y2="${p.y}" stroke="${unlocked.has(n.id)?'#ffd94d':'rgba(255,255,255,.28)'}" stroke-width="${unlocked.has(n.id)?1.6:.9}"/>`;
+      lh += `<line x1="${prev.x}" y1="${prev.y}" x2="${p.x}" y2="${p.y}" stroke="${prog().unlocked.has(n.id)?'#ffd94d':'rgba(255,255,255,.28)'}" stroke-width="${prog().unlocked.has(n.id)?1.6:.9}"/>`;
       prev = p;
     }
   }
@@ -3191,7 +3331,7 @@ function buildSphere(){
       if (drawnLinks.has(key)) continue;
       drawnLinks.add(key);
       const t = NODES.find(m=>m.id===tid); if (!t) continue;
-      const q = nodePos(t), gold = unlocked.has(n.id);
+      const q = nodePos(t), gold = prog().unlocked.has(n.id);
       lh += `<line x1="${p.x}" y1="${p.y}" x2="${q.x}" y2="${q.y}" stroke="${gold?'#ffd94d':'rgba(255,255,255,.28)'}" stroke-width="${gold?1.6:.9}"/>`;
     }
   }
@@ -3199,7 +3339,7 @@ function buildSphere(){
   wrap.innerHTML = '<div class="snode center" style="left:50%;top:50%">START</div>';
   for (const n of NODES){
     const p = nodePos(n);
-    const owned = unlocked.has(n.id), avail = nodeAvail(n);
+    const owned = prog().unlocked.has(n.id), avail = nodeAvail(n);
     const d = document.createElement('button');
     d.className = 'snode' + (owned?' owned':'') + (avail?' avail':'') + (ses.selNode===n.id?' sel':'');
     d.style.left = (p.x/2)+'%'; d.style.top = (p.y/2)+'%';   // board units -> % of the 200-unit inner board
@@ -3222,7 +3362,7 @@ function buildSphere(){
     wrap.appendChild(d);
   }
   renderNodeCard();
-  $('#spCount').textContent = me.sp;
+  $('#spCount').textContent = prog().sp;
   applySphereZoom();   // sizer must match the current zoom before scrollWidth is read for centring
   if (!ses.sphereCentered){ const b = $('#sphereBoard'); if (b && b.clientWidth){ b.scrollLeft = (b.scrollWidth - b.clientWidth)/2; b.scrollTop = (b.scrollHeight - b.clientHeight)/2; ses.sphereCentered = true; } }
 }
@@ -3237,18 +3377,18 @@ function renderNodeCard(){
   $('#ncName').textContent = n.name;
   $('#ncDesc').textContent = n.desc;
   const btn = $('#ncBtn');
-  if (unlocked.has(n.id)){ btn.textContent = 'UNLOCKED'; btn.disabled = true; }
-  else if (n.w !== undefined && !me.owned.has(n.w)){ btn.textContent = 'BUY THE ' + WEAPONS[n.w].name.toUpperCase() + ' AT THE SHOP FIRST'; btn.disabled = true; }
+  if (prog().unlocked.has(n.id)){ btn.textContent = 'UNLOCKED'; btn.disabled = true; }
+  else if (n.w !== undefined && !prog().owned.has(n.w)){ btn.textContent = 'BUY THE ' + WEAPONS[n.w].name.toUpperCase() + ' AT THE SHOP FIRST'; btn.disabled = true; }
   else if (!nodeAvail(n)){ btn.textContent = n.preAny ? 'NEEDS TIER II ON EITHER SIDE FIRST' : 'REACH THIS NODE FIRST'; btn.disabled = true; }
-  else if (me.sp < n.cost){ btn.textContent = 'NEED '+n.cost+' SP — YOU HAVE '+me.sp; btn.disabled = true; }
+  else if (prog().sp < n.cost){ btn.textContent = 'NEED '+n.cost+' SP — YOU HAVE '+prog().sp; btn.disabled = true; }
   else { btn.textContent = 'UNLOCK — '+n.cost+' SP'; btn.disabled = false; }
   btn.onclick = ()=>{
-    if (me.sp < n.cost || !nodeAvail(n)) return;
-    me.sp -= n.cost; unlocked.add(n.id); recalc(); sfx.buy(); saveGame();   // an unlock is an event: persist now (the HUD-cadence save is throttled to 2.5s)
+    if (prog().sp < n.cost || !nodeAvail(n)) return;
+    act.unlockNode(n.id, n.cost); recalc(); sfx.buy(); saveGame();   // an unlock is an event: persist now (the HUD-cadence save is throttled to 2.5s)
     bubble(n.name.toUpperCase()+'!', me.x, me.y, 1000);
     buildSphere(); buildActives(); refreshHUD();
   };
-  $('#spCount').textContent = me.sp;
+  $('#spCount').textContent = prog().sp;
 }
 
 /* ============================================================ Sphere board ZOOM
@@ -3361,19 +3501,19 @@ function rollBounty(){
     const entries = Object.entries(COLOR2IMG);
     const [hex, name] = entries[Math.floor(Math.random()*entries.length)];
     const need = 6 + Math.floor(Math.random()*7);                    // 6-12
-    bounty = { type:'color', key:hex, label:name.toUpperCase(), need, have:0, reward:need*5 };
+    act.patchProgress({ bounty: { type:'color', key:hex, label:name.toUpperCase(), need, have:0, reward:need*5 } });
   } else {
     const kinds = [ ['baby','BABY',8,12], ['mid','MID',8,12], ['big','BIG',6,6], ['king','KING',3,3] ];
     const k = kinds[Math.floor(Math.random()*kinds.length)];
     const need = k[2] + Math.floor(Math.random()*(k[3]-k[2]+1));
-    bounty = { type:'kind', key:k[0], label:k[1], need, have:0, reward:need*5 + 10 };
+    act.patchProgress({ bounty: { type:'kind', key:k[0], label:k[1], need, have:0, reward:need*5 + 10 } });
   }
   updateBountyUI();
 }
 function updateBountyUI(){
-  if (!bounty) return;
-  $('#bountyText').textContent = 'Slay '+bounty.need+' '+bounty.label+' slimes';
-  $('#bountyProg').textContent = bounty.have+'/'+bounty.need+' · Reward '+bounty.reward+'c + 1 SP';
+  if (!prog().bounty) return;
+  $('#bountyText').textContent = 'Slay '+prog().bounty.need+' '+prog().bounty.label+' slimes';
+  $('#bountyProg').textContent = prog().bounty.have+'/'+prog().bounty.need+' · Reward '+prog().bounty.reward+'c + 1 SP';
 }
 
 /* ---------- king banner ---------- */
@@ -3401,9 +3541,9 @@ function updateHint(){
   const h = $('#hint');
   if (!ses.started || ses.paused || ses.nearBuilding || !$('#menuPanel').classList.contains('hidden')){ h.classList.add('hidden'); return; }
   let txt = '';
-  if (!hintsSeen.slash) txt = 'DRAG TO SLASH!';
-  else if (!hintsSeen.skill) txt = 'CLICK / TAP — WEAPON SKILL';
-  else if (!hintsSeen.sphere && (me.level>=2 || me.sp>0)) txt = 'F — OPEN THE SPHERE GRID';
+  if (!prog().hintsSeen.slash) txt = 'DRAG TO SLASH!';
+  else if (!prog().hintsSeen.skill) txt = 'CLICK / TAP — WEAPON SKILL';
+  else if (!prog().hintsSeen.sphere && (prog().level>=2 || prog().sp>0)) txt = 'F — OPEN THE SPHERE GRID';
   if (!txt){ h.classList.add('hidden'); return; }
   h.textContent = txt; h.classList.remove('hidden');
 }
@@ -3416,21 +3556,20 @@ function togglePause(force){
   updateHint();
 }
 function setMuted(v){
-  muted = !!v; sfx.muted = muted;
-  const label = 'SOUND: '+(muted ? 'OFF' : 'ON');
+  act.patchProgress({ muted: !!v });
+  const label = 'SOUND: '+(prog().muted ? 'OFF' : 'ON');
   $('#soundBtn').textContent = label;
   const mb = $('#menuSoundBtn'); if (mb) mb.textContent = label;   // the menu's MORE tab mirrors the pause toggle
 }
 function resetRun(){
-  me.level=1; me.xp=0; me.coins=0; me.kills=0; me.sp=0; me.spBuys=0; me.weapon=0; me.owned=new Set([0,6]);
-  me.gems=freshGems(); me.wxp={}; me.gemRushUntil=0; me.gemBag=[]; me.sockets={};
-  me.hp=me.maxHp; me.mp=me.maxMp; me.wSkillCdUntil=0; me.banked=0; me.items={ potion:0, bomb:0, shield:0 }; me.purse=false; me.shieldUntil=0; me.spawnAt=null;
+  act.resetProgress();   // progress back to a fresh character (level, coins, SP, unlocks, weapons, gems, items, hints, respawn) — name + settings kept
+  me.gemRushUntil=0;
+  me.hp=me.maxHp; me.mp=me.maxMp; me.wSkillCdUntil=0; me.shieldUntil=0;
   $('#bankPanel').classList.add('hidden'); $('#shopPanel').classList.add('hidden'); $('#hospitalPanel').classList.add('hidden'); closeMenu();
-  unlocked.clear(); recalc();   // one shared set: branch, weapon-path and cross nodes all reset
+  recalc();   // one shared unlock set (branch, weapon-path and cross nodes) — reset above; re-derive stats + clamp HP
   ses.combo=0; ses.comboUntil=0; updateComboBadge(false);
   if (world.scores[me.id]) world.scores[me.id].kills = 0;
-  hintsSeen = { slash:false, skill:false, sphere:false };
-  try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
+  act.clearSave();
   rollBounty();
   buildRack(); buildActives(); buildSphere(); refreshHUD(); updateHint();
   togglePause(false);
@@ -3438,72 +3577,26 @@ function resetRun(){
 }
 
 /* ---------- persistence ---------- */
-function saveGame(){
-  if (!ses.started) return;
-  try{
-    localStorage.setItem(SAVE_KEY, JSON.stringify({
-      level:me.level, xp:me.xp, coins:me.coins, kills:me.kills, sp:me.sp, spBuys:me.spBuys,
-      unlocked:[...unlocked], weapon:me.weapon, name:me.name, muted, hintsSeen,
-      banked:me.banked, items:me.items, purse:me.purse, owned:[...me.owned],
-      gems:me.gems, wxp:me.wxp, rackCollapsed, spawnAt: me.spawnAt || null,
-      gemBag: me.gemBag, sockets: me.sockets,
-      bounty: bounty ? { type:bounty.type, key:bounty.key, label:bounty.label, need:bounty.need, have:bounty.have, reward:bounty.reward } : null
-    }));
-  }catch(e){}
-}
+/* Saves are the progress slice's persist action (store.persistProgress);
+   loading commits the save through store.loadProgress, then applies the
+   SESSION side of a load here: HP to full at the derived max, the first
+   spawn at a saved respawn, and the title/menu UI. */
+function saveGame(){ act.persistProgress(); }
 function loadGame(){
-  let d = null;
-  try{ d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); }catch(e){}
+  const d = act.loadProgress();
   if (!d) return;
-  me.level = Math.max(1, d.level|0 || 1);
-  me.xp = Math.max(0, d.xp|0); me.coins = Math.max(0, d.coins|0);
-  me.kills = Math.max(0, d.kills|0); me.sp = Math.max(0, d.sp|0);
-  me.spBuys = Math.max(0, d.spBuys|0);   // lifetime Bank SP purchases (escalating price); old saves default to 0
-  if (Array.isArray(d.unlocked)) for (const id of d.unlocked) if (NODES.some(n=>n.id===id)) unlocked.add(id);   // one table now: branch + weapon-path + cross ids all live in NODES, so old tree unlocks (w<idx>1..3) validate identically
-  // SOUL GEMS restore BEFORE recalc, so socketed vitality counts toward
-  // the derived maxHp. Validated: known stat, rarity 0-4, string id;
-  // socket lists keep only ids that reference a real bag gem. Old saves
-  // (no gemBag/sockets fields) migrate to empty.
-  me.gemBag = Array.isArray(d.gemBag) ? d.gemBag.filter(g => g && typeof g.id === 'string' && GEM_STATS[g.stat] && (g.rarity|0) >= 0 && (g.rarity|0) <= 4).map(g => ({ id:g.id, stat:g.stat, rarity:g.rarity|0 })) : [];
-  me.sockets = {};
-  if (d.sockets && typeof d.sockets === 'object') for (const [wi, ids] of Object.entries(d.sockets)){
-    if (WEAPONS[wi|0] && Array.isArray(ids)) me.sockets[wi|0] = ids.filter(id => me.gemBag.some(g => g.id === id));
-  }
-  recalc();   // derives me.maxHp from the loaded level (Lv12 -> 210)
+  /* Stats + maxHp are derived for weapon 1 — the default — not the saved
+     weapon: the pre-store loadGame ran recalc() BEFORE it restored the
+     saved weapon, so a loaded character's soul-gem stats (vitality ->
+     maxHp included) came from weapon 1's sockets until the next recalc.
+     Kept exactly; see REFACTOR_NOTES.md. */
+  recalc(1);
   me.hp = me.maxHp;   // HP is not persisted — a loaded character starts full at the scaled max
-  if (Array.isArray(d.owned)) me.owned = new Set(d.owned.filter(i=>WEAPONS[i|0]).map(i=>i|0));
-  else { // legacy save (pre-shop): keep every weapon your level had unlocked
-    me.owned = new Set([0]);
-    WEAPONS.forEach((w,i)=>{ if (me.level >= w.unlock) me.owned.add(i); });
-  }
-  if (!me.owned.size) me.owned.add(0);
-  me.owned.add(6);   // migration: the Pickaxe is a free starter — every existing save gains it, nothing is lost
-  // mining state persists: gem pouch + per-weapon levels
-  if (d.gems) for (const g of Object.keys(GEMS)) me.gems[g] = Math.max(0, d.gems[g]|0);
-  if (d.wxp) for (const [k,v] of Object.entries(d.wxp)){
-    const i = k|0;
-    if (WEAPONS[i] && v) me.wxp[i] = { lv:clamp(v.lv|0 || 1, 1, WLV_MAX), xp:Math.max(0, v.xp|0) };   // cap is WLV_MAX (50) — the old 1..5 clamp would have confiscated post-gates levels on load
-  }
-  let wi = d.weapon|0;
-  if (!WEAPONS[wi] || !me.owned.has(wi)) wi = Math.max(...me.owned);
-  me.weapon = wi;
-  // economy persists; HP deliberately does NOT — you always load in at full health
-  me.banked = Math.max(0, d.banked|0);
-  if (d.items) me.items = { potion:Math.max(0, d.items.potion|0), bomb:Math.max(0, d.items.bomb|0), shield:Math.max(0, d.items.shield|0) };
-  me.purse = !!d.purse;
-  if (d.name){ me.name = cleanName(d.name); $('#nameIn').value = me.name; }
-  if (d.hintsSeen) hintsSeen = { slash:!!d.hintsSeen.slash, skill:!!(d.hintsSeen.skill || d.hintsSeen.spin), sphere:!!d.hintsSeen.sphere };   // old saves carry the retired 'spin' hint key — it maps onto 'skill'
-  if (typeof d.rackCollapsed === 'boolean') rackCollapsed = d.rackCollapsed;
-  if (d.spawnAt && isFinite(d.spawnAt.x) && isFinite(d.spawnAt.y)){
-    me.spawnAt = { x:+d.spawnAt.x, y:+d.spawnAt.y };
-    me.x = me.spawnAt.x; me.y = me.spawnAt.y; me.px = me.x; me.py = me.y;   // first spawn uses the saved respawn too
-  }
-  if (d.bounty && d.bounty.key && (d.bounty.type==='color' || d.bounty.type==='kind')){
-    bounty = { type:d.bounty.type, key:d.bounty.key, label:String(d.bounty.label||'').slice(0,16) || 'SLIME',
-               need:Math.max(1, d.bounty.need|0 || 8), have:Math.max(0, d.bounty.have|0), reward:Math.max(0, d.bounty.reward|0 || 40) };
-    updateBountyUI();
-  }
-  setMuted(!!d.muted);
+  const p = prog();
+  if (d.name) $('#nameIn').value = p.name;
+  if (p.spawnAt){ me.x = p.spawnAt.x; me.y = p.spawnAt.y; me.px = me.x; me.py = me.y; }   // first spawn uses the saved respawn too
+  if (p.bounty) updateBountyUI();
+  setMuted(p.muted);
 }
 /* SAVE ON HIDE: iOS Safari can discard a backgrounded tab without warning,
    and since the HUD-cadence save is throttled to 2.5s, up to 2.5s of
@@ -3603,7 +3696,7 @@ function tickActives(now, dt){
   const wsOv = document.getElementById('wsCdov');
   // (per-frame overlays: setStyle skips same-value writes, so an idle
   // button costs nothing instead of a style write every frame)
-  if (wsOv){ const sk = WSKILLS[me.weapon]; setStyle(wsOv, 'height', (sk ? clamp((me.wSkillCdUntil-now)/wSkillCd(sk)*100, 0, 100) : 0).toFixed(1) + '%'); }
+  if (wsOv){ const sk = WSKILLS[prog().weapon]; setStyle(wsOv, 'height', (sk ? clamp((me.wSkillCdUntil-now)/wSkillCd(sk)*100, 0, 100) : 0).toFixed(1) + '%'); }
   // cooldown overlays
   for (const [id, a] of Object.entries(ACTIVES)){
     const b = document.getElementById('abtn-'+id); if (!b) continue;
@@ -3619,14 +3712,14 @@ function tickActives(now, dt){
 function castWeaponSkill(){
   if (!ses.started || ses.paused) return;
   const now = performance.now();
-  const sk = WSKILLS[me.weapon]; if (!sk) return;
-  if (!hintsSeen.skill){ hintsSeen.skill = true; updateHint(); }   // casting by tap/SPACE/V retires the skill hint
-  if (!unlocked.has(sk.node)){ notify('Unlock ' + sk.name + ' on the SPHERE grid (key K)'); return; }
+  const sk = WSKILLS[prog().weapon]; if (!sk) return;
+  if (!prog().hintsSeen.skill){ act.markHint('skill'); updateHint(); }   // casting by tap/SPACE/V retires the skill hint
+  if (!prog().unlocked.has(sk.node)){ notify('Unlock ' + sk.name + ' on the SPHERE grid (key K)'); return; }
   if (now < me.wSkillCdUntil) return;
   if (me.mp < sk.mp){ notify('Not enough MP!'); return; }
   me.mp -= sk.mp; me.wSkillCdUntil = now + wSkillCd(sk);
   const dmg = myDamage(), ang = bladeAt(now).ang, wcol = myWeapon().color;
-  if (me.weapon===0){          // DAGGER — SHADOW STAB: dash along the blade, cutting the path
+  if (prog().weapon===0){          // DAGGER — SHADOW STAB: dash along the blade, cutting the path
     const x0 = me.x, y0 = me.y;
     const x1 = clamp(me.x + Math.cos(ang)*.45, .05, WORLD-.05), y1 = clamp(me.y + Math.sin(ang)*.45, .05, WORLD-.05);
     for (let i=0;i<=8;i++) ses.particles.push({ x:x0+(x1-x0)*i/8, y:y0+(y1-y0)*i/8, vx:rand(-.03,.03), vy:rand(-.03,.03), life:1, color:wcol, r:rand(2,5) });
@@ -3640,31 +3733,31 @@ function castWeaponSkill(){
     me.trailBreak = true; ses.myTrail.length = 0;
     ses.popRings.push({ x:me.x, y:me.y, r:.03, life:1, color:wcol });
     beep(200,.15,'sawtooth',.08,600);
-  } else if (me.weapon===1){   // SWORD — WHIRLWIND
+  } else if (prog().weapon===1){   // SWORD — WHIRLWIND
     const R = myReach()*1.6;
     for (const s of [...world.slimes.values()]) if (dist2(s.x,s.y,me.x,me.y) < R*R) doHit(s, Math.round(dmg*1.6));
     ses.popRings.push({ x:me.x, y:me.y, r:myReach(), life:1, color:wcol });
     me.whirlUntil = now + 260;   // the sword spins for the WHIRLWIND render (peers see it via the pos s flag)
     sfx.whirl();
-  } else if (me.weapon===2){   // KATANA — IAIDO WAVE: faster, longer, harder crescent
+  } else if (prog().weapon===2){   // KATANA — IAIDO WAVE: faster, longer, harder crescent
     ses.waves.push({ x:me.x, y:me.y, ang, t0:now, hit:new Set(), dmgMul:2.2, spd:.00065, life:1150, col:'#f8bbd0' });
     beep(300,.18,'sawtooth',.06,1200);
-  } else if (me.weapon===3){   // SPEAR — THROW SPEAR: piercing projectile along the blade
+  } else if (prog().weapon===3){   // SPEAR — THROW SPEAR: piercing projectile along the blade
     ses.shots.push({ x:me.x, y:me.y, vx:Math.cos(ang)*1.8, vy:Math.sin(ang)*1.8, dmg:Math.round(dmg*2.5), until:now+900, hitSet:new Set(), sparkAt:0 });
     beep(500,.12,'triangle',.08,300);
-  } else if (me.weapon===4){   // GREATSWORD — EARTHSHAKER
+  } else if (prog().weapon===4){   // GREATSWORD — EARTHSHAKER
     for (const s of [...world.slimes.values()]) if (dist2(s.x,s.y,me.x,me.y) < .30*.30) doHit(s, Math.round(dmg*2.2));
     ses.popRings.push({ x:me.x, y:me.y, r:.30, life:1, color:wcol });
     spawnHitFx(me.x, me.y, wcol, 30);
     sfx.pop();
-  } else if (me.weapon===5){   // WARHAMMER — THUNDER SMASH at the sword tip
+  } else if (prog().weapon===5){   // WARHAMMER — THUNDER SMASH at the sword tip
     const bl = bladeAt(now), reach = myReach() * (1 + bl.ext);
     const tx = me.x + Math.cos(bl.ang)*reach, ty = me.y + Math.sin(bl.ang)*reach;
     for (const s of [...world.slimes.values()]) if (dist2(s.x,s.y,tx,ty) < .24*.24) doHit(s, Math.round(dmg*3));
     ses.popRings.push({ x:tx, y:ty, r:.05, life:1, color:'#ffe082' });
     spawnPopFx(tx, ty, '#ffe082', 18, .02);
     beep(120,.2,'square',.1,40); setTimeout(()=>beep(880,.12,'square',.06,-200), 30);
-  } else if (me.weapon===6){   // PICKAXE — GEM RUSH: 8s of rich veins (claims carry the gr flag)
+  } else if (prog().weapon===6){   // PICKAXE — GEM RUSH: 8s of rich veins (claims carry the gr flag)
     me.gemRushUntil = now + 8000;
     bubble('GEM RUSH!', me.x, me.y, 900);
     sfx.lvl();
@@ -3682,7 +3775,7 @@ $('#shareBtn').onclick = shareInvite;
 $('#menuShareBtn').onclick = shareInvite;
 $('#pauseBtn').onclick = ()=>togglePause();
 $('#resumeBtn').onclick = ()=>togglePause(false);
-$('#soundBtn').onclick = ()=>{ setMuted(!muted); saveGame(); };
+$('#soundBtn').onclick = ()=>{ setMuted(!prog().muted); saveGame(); };
 $('#restartBtn').onclick = ()=>{
   const b = $('#restartBtn');
   if (!ses.resetArmed){ ses.resetArmed = true; b.textContent = 'TAP AGAIN TO ERASE EVERYTHING'; return; }
@@ -3692,8 +3785,8 @@ $('#interactPrompt').addEventListener('pointerdown', e=>{
   e.stopPropagation();   // fire on pointerDOWN so sword movement can't steal the click
   if (ses.nearBuilding==='bank') openBank(); else if (ses.nearBuilding==='shop') openShop(); else if (ses.nearBuilding==='hospital') openHospital();
 });
-$('#depBtn').onclick = ()=>{ me.banked += me.coins; me.coins = 0; sfx.buy(); updateBankPanel(); refreshHUD(); saveGame(); };   // a deposit must be on disk before the next death or tab kill
-$('#wdBtn').onclick = ()=>{ me.coins += me.banked; me.banked = 0; sfx.coin(); updateBankPanel(); refreshHUD(); saveGame(); };
+$('#depBtn').onclick = ()=>{ act.patchProgress(p => ({ banked: p.banked + p.coins, coins: 0 })); sfx.buy(); updateBankPanel(); refreshHUD(); saveGame(); };   // a deposit must be on disk before the next death or tab kill
+$('#wdBtn').onclick = ()=>{ act.patchProgress(p => ({ coins: p.coins + p.banked, banked: 0 })); sfx.coin(); updateBankPanel(); refreshHUD(); saveGame(); };
 $('#buySpBtn').onclick = buySpherePoint;
 $('#bankCloseBtn').onclick = ()=>$('#bankPanel').classList.add('hidden');
 $('#shopCloseBtn').onclick = ()=>$('#shopPanel').classList.add('hidden');
@@ -5177,7 +5270,7 @@ function frame(now){
       ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 2.5;
       ctx.beginPath(); ctx.arc(NX(me.x), NY(me.y), (myReach()+.045)*UNIT(), 0, 7); ctx.stroke();
     }
-    drawSword(NX(me.x),NY(me.y),bl.ang,me.weapon,me.color, ses.started?me.name:'', true, now, now<me.whirlUntil, bl.ext);
+    drawSword(NX(me.x),NY(me.y),bl.ang,prog().weapon,me.color, ses.started?prog().name:'', true, now, now<me.whirlUntil, bl.ext);
   }
 
   // pause guarantee: with dt frozen at 0 the trail vanishes and the sword can
@@ -5185,7 +5278,7 @@ function frame(now){
   // the LAST canvas op while paused so it always stays visible under the overlay
   if (ses.paused && ses.started){
     const bl = bladeAt(now);
-    drawSword(NX(me.x),NY(me.y),bl.ang,me.weapon,me.color, me.name, true, now, false, bl.ext);
+    drawSword(NX(me.x),NY(me.y),bl.ang,prog().weapon,me.color, prog().name, true, now, false, bl.ext);
   }
 
   // scoreboard refresh (2/s). refreshPeers() already calls refreshHUD()
@@ -5206,11 +5299,11 @@ setInterval(()=>{ if(!ses.started){ // ambient wander on title
 const WORLD_ID = 'slime-world-1';
 $('#nameIn').value = 'Knight-' + Math.floor(rand(10,99));
 loadGame();
-try{ if (localStorage.getItem(SAVE_KEY)) $('#titleReset').classList.remove('hidden'); }catch(e){}
+if (act.hasSave()) $('#titleReset').classList.remove('hidden');
 $('#titleReset').onclick = ()=>{
   const b = $('#titleReset');
   if (!ses.titleResetArmed){ ses.titleResetArmed = true; b.textContent = 'TAP AGAIN — ERASE EVERYTHING?'; return; }
-  try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
+  act.clearSave();
   location.reload();
 };
 /* HOW TO PLAY: the instruction panel starts collapsed on every load;
@@ -5221,13 +5314,13 @@ $('#howtoBtn').onclick = ()=>{
   beep(nowHidden ? 500 : 700, .05, 'triangle', .06);
 };
 $('#playBtn').onclick = ()=>{
-  me.name = cleanName($('#nameIn').value);
-  world.scores[me.id]={name:me.name,kills:0};
+  act.patchProgress({ name: cleanName($('#nameIn').value) });
+  world.scores[me.id]={name:prog().name,kills:0};
   $('#title').classList.add('hidden');
   $('#hud').classList.remove('hidden');
   ses.started=true; ses.startedAt = performance.now();
   buildRack(); refreshHUD(); refreshPeers();
-  if (!bounty) rollBounty();
+  if (!prog().bounty) rollBounty();
   updateHint();
   // the 9 title-screen ambient slimes (ids amb0..amb8, parked in the world's top-left
   // corner, no zone scaling) must not leak into the real world: with them
