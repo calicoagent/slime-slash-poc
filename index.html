@@ -1655,7 +1655,10 @@ function gainXp(n){
   me.xp += Math.round(n * (1 + S.xp));
   const need = me.level*100;
   if (me.xp >= need){
+    const maxBefore = me.maxHp;
     me.xp -= need; me.level++; me.sp++; sfx.lvl();
+    recalc();   // re-derive maxHp at the new level
+    me.hp += me.maxHp - maxBefore;   // top up by the capacity gained (+10/level) — never a free full heal
     let spMsg = '+1 Sphere Point';
     if (me.level % 3 === 0){ me.sp++; spMsg = '+2 Sphere Points (every-3rd-level bonus!)'; }
     toast('LEVEL '+me.level+'! '+spMsg+' — press F');
@@ -2097,7 +2100,7 @@ function refreshHUD(){
   $('#xpFill').style.width = clamp(me.xp/(me.level*100)*100,0,100)+'%';
   // player HP (local only)
   $('#hpFill').style.width = clamp(me.hp/me.maxHp*100,0,100)+'%';
-  $('#hpText').textContent = 'HP ' + Math.max(0, Math.ceil(me.hp));
+  $('#hpText').textContent = 'HP ' + Math.max(0, Math.ceil(me.hp)) + ' / ' + me.maxHp;
   // player MP (local only, mirrors the HP rows)
   $('#mpFill').style.width = clamp(me.mp/me.maxMp*100,0,100)+'%';
   $('#mpText').textContent = 'MP ' + Math.floor(me.mp);
@@ -2270,13 +2273,20 @@ const nodePos = n => {
 const unlocked = new Set();
 let S = null;
 function recalc(){
-  S = { dmg:0, reach:0, cd:0, crit:0, coin:0, xp:0, splash:0, kingBane:0, double:0, arcWide:0, spinCd:0, bounty:0, comboWin:0, exec:0, actives:new Set() };
+  S = { dmg:0, reach:0, cd:0, crit:0, coin:0, xp:0, splash:0, kingBane:0, double:0, arcWide:0, spinCd:0, bounty:0, comboWin:0, exec:0, maxHp:0, regen:0, actives:new Set() };
   for (const n of NODES) if (unlocked.has(n.id)){
     const f = n.fx;
-    for (const k of ['dmg','reach','cd','crit','coin','xp','kingBane','double','arcWide','spinCd','bounty','comboWin','exec']) if (f[k]) S[k]+=f[k];
+    for (const k of ['dmg','reach','cd','crit','coin','xp','kingBane','double','arcWide','spinCd','bounty','comboWin','exec','maxHp','regen']) if (f[k]) S[k]+=f[k];
     if (f.splash) S.splash = Math.max(S.splash, f.splash);
     if (f.active) S.actives.add(f.active);
   }
+  /* MAX HP derivation: 100 base + 10 per level past 1 + S.maxHp (Sphere
+     vitality — no nodes grant maxHp/regen YET; the hooks are wired so
+     they can, defaulting to 0). Growth never heals by itself: gainXp
+     adds the level-up delta explicitly. A shrink (RESET SAVE) clamps
+     current HP down to the new max. MP is NOT derived — capped at 100. */
+  me.maxHp = 100 + 10*(me.level - 1) + (S.maxHp || 0);
+  if (me.hp > me.maxHp) me.hp = me.maxHp;
 }
 recalc();
 const nodeAvail = n => {
@@ -2478,7 +2488,8 @@ function loadGame(){
   me.xp = Math.max(0, d.xp|0); me.coins = Math.max(0, d.coins|0);
   me.kills = Math.max(0, d.kills|0); me.sp = Math.max(0, d.sp|0);
   if (Array.isArray(d.unlocked)) for (const id of d.unlocked) if (NODES.some(n=>n.id===id) || WTREE_IDS.has(id)) unlocked.add(id);
-  recalc();
+  recalc();   // derives me.maxHp from the loaded level (Lv12 -> 210)
+  me.hp = me.maxHp;   // HP is not persisted — a loaded character starts full at the scaled max
   if (Array.isArray(d.owned)) me.owned = new Set(d.owned.filter(i=>WEAPONS[i|0]).map(i=>i|0));
   else { // legacy save (pre-shop): keep every weapon your level had unlocked
     me.owned = new Set([0]);
@@ -3647,7 +3658,7 @@ function frame(now){
         if (dist2(sh.x,sh.y,s.x,s.y) < .05*.05){ sh.hitSet.add(s.id); doHit(s, sh.dmg); }
       }
     }
-    if (me.hp < me.maxHp && now - me.lastDmgAt > 6000) me.hp = Math.min(me.maxHp, me.hp + 1.6*dt/1000);
+    if (me.hp < me.maxHp && now - me.lastDmgAt > 6000) me.hp = Math.min(me.maxHp, me.hp + (1.6 + (S.regen || 0))*dt/1000);   // base 1.6/s after 6s undamaged + S.regen (hook: no nodes grant it yet); all regen honours the same 6s delay — no node text promises otherwise
     if (me.mp < me.maxMp) me.mp = Math.min(me.maxMp, me.mp + 7*dt/1000);   // MP regen +7/s
   }
   // red damage vignette: hold full strength ~150ms, then fade over ~400ms
