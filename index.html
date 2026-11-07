@@ -2186,14 +2186,21 @@ const COLOR2IMG = {
 };
 /* ---- pixel world art: grass tile, decor and building sprites ---- */
 const WORLD_IMGS = {};
-for (const n of ['tile-grass','decor-tree','decor-rock','decor-pond','bld-bank','bld-shop','bld-hospital']){
+for (const n of ['tile-grass','decor-tree','decor-rock','decor-pond','decor-grass','bld-bank','bld-shop','bld-hospital']){
   const im=new Image(); im.src='assets/img/'+n+'.png'; WORLD_IMGS[n]=im;
 }
 const imgOk = im => !!(im && im.complete && im.naturalWidth);
-function drawVideoSlime(s,t,baseR){
-  const img = (s.kind==='king' || s.kind==='boss') ? SLIME_IMGS.king : s.kind==='metal' ? SLIME_IMGS.metal : SLIME_IMGS[COLOR2IMG[s.color]||'pink'];
-  if (!imgOk(img)) return false;
-  /* HOP LIFE — squash & stretch driven by the shared hop phase (same phase
+function slimeSpriteImg(s){
+  return (s.kind==='king' || s.kind==='boss') ? SLIME_IMGS.king : s.kind==='metal' ? SLIME_IMGS.metal : SLIME_IMGS[COLOR2IMG[s.color]||'pink'];
+}
+/* Sprite geometry for a slime at time t: the image plus every transform the
+   normal draw applies (hop squash/stretch, breathing, hit squash, lift).
+   Shared by drawVideoSlime and the occlusion-ghost pass so a ghost is the
+   EXACT same sprite, just faded and clipped. */
+function slimeSpriteGeom(s, t, baseR){
+  const img = slimeSpriteImg(s);
+  if (!imgOk(img)) return null;
+  /* HOP LIFE -- squash & stretch driven by the shared hop phase (same phase
      the host moves by, so the crouch/air/land you SEE is the hop that
      MOVES it). Lift is visual only: hit tests always use ground x,y.
      Breathing jiggle and hit squash multiply in, all bottom-anchored. */
@@ -2211,18 +2218,32 @@ function drawVideoSlime(s,t,baseR){
   const sqY = psy * bScaleY * (1 - s.squish * .35);
   const dw = baseR*2*1.04, dh = dw*0.88;   // rest footprint
   const gx = NX(s.x), gy = NY(s.y) + baseR*.92;
+  return { img, liftW, liftN, sqX, sqY, dw, dh, gx, gy };
+}
+/* Draw ONLY the slime's sprite image with the normal transform math (no
+   shadow, no HP bar / kind marks). Used by drawVideoSlime and the ghost
+   pass; honours whatever clip / globalAlpha the caller set up. */
+function paintSlimeSprite(s, t, baseR, g){
+  g = g || slimeSpriteGeom(s, t, baseR);
+  if (!g) return false;
+  ctx.save();
+  ctx.translate(g.gx, g.gy - g.liftW * UNIT());   // bottom anchor, raised by the hop arc
+  ctx.scale(g.sqX, g.sqY);
+  try{ ctx.filter = s.flash>0 ? 'brightness(1.9)' : 'none'; }catch(e){}
+  ctx.drawImage(g.img, -g.dw/2, -g.dh, g.dw, g.dh);
+  ctx.restore();
+  return true;
+}
+function drawVideoSlime(s,t,baseR){
+  const g = slimeSpriteGeom(s, t, baseR);
+  if (!g) return false;
   // soft ground shadow: shrinks and fades as the slime leaves the ground
   ctx.save();
-  ctx.globalAlpha = .16 * (1 - liftN*.35);
+  ctx.globalAlpha = .16 * (1 - g.liftN*.35);
   ctx.fillStyle = '#000';
-  ctx.beginPath(); ctx.ellipse(gx, gy - baseR*.06, dw*.40*(1 - liftN*.22), baseR*.20, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(g.gx, g.gy - baseR*.06, g.dw*.40*(1 - g.liftN*.22), baseR*.20, 0, 0, 7); ctx.fill();
   ctx.restore();
-  ctx.save();
-  ctx.translate(gx, gy - liftW * UNIT());   // bottom anchor, raised by the hop arc
-  ctx.scale(sqX, sqY);
-  try{ ctx.filter = s.flash>0 ? 'brightness(1.9)' : 'none'; }catch(e){}
-  ctx.drawImage(img, -dw/2, -dh, dw, dh);
-  ctx.restore();
+  paintSlimeSprite(s, t, baseR, g);
   return true;
 }
 
@@ -2250,51 +2271,123 @@ const DECOR = (()=>{
   for (let i=0;i<34;i++){ const p = place(.6); items.push({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }); }
   return items;
 })();
-function drawDecor(){
+/* Shared wind field: ONE function so grass tufts, flowers, pond shimmer and
+   tree canopies all sway with the same gusts crossing the map. */
+function windAt(x, y, t){ return Math.sin(t/1150 + x*2.2 + y*1.35) + .55*Math.sin(t/617 + x*4.7 + y*3.1); }
+/* Grass tufts: seeded scatter of little pixel grass clumps over the whole
+   world, kept out of pond interiors and off the building pads. */
+const TUFTS = (()=>{
+  const rng = mulberry32(20261108);
+  const items = [];
+  let guard = 0;
+  while (items.length < 420 && guard++ < 8000){
+    const x = .06 + rng()*(WORLD-.12), y = .06 + rng()*(WORLD-.12);
+    if (Math.hypot(x-BANK_POS.x, y-BANK_POS.y) < .30 ||
+        Math.hypot(x-SHOP_POS.x, y-SHOP_POS.y) < .30 ||
+        Math.hypot(x-HOSPITAL_POS.x, y-HOSPITAL_POS.y) < .30) continue;
+    let inPond = false;
+    for (const d of DECOR){ if (d.t==='pond' && Math.hypot(x-d.x, y-d.y) < d.r + .03){ inPond = true; break; } }
+    if (inPond) continue;
+    items.push({ x, y, s:.5 + rng()*.5, flip: rng() < .5 });
+  }
+  return items;
+})();
+function drawTufts(t){
+  const img = WORLD_IMGS['decor-grass'];
+  if (!imgOk(img)) return;                 // garnish only -- no fallback art
+  const u = UNIT(), vw = W/u, vh = H/u, asp = img.naturalHeight/img.naturalWidth;
+  for (const g of TUFTS){
+    if (g.x<cam.x-.1 || g.x>cam.x+vw+.1 || g.y<cam.y-.1 || g.y>cam.y+vh+.1) continue;   // view-culled
+    const w = .055*u*g.s, h = w*asp;
+    ctx.save();
+    ctx.translate(NX(g.x), NY(g.y));
+    ctx.rotate(windAt(g.x, g.y, t) * .055);   // lean with the gust (~+/-5 deg), base stays planted
+    if (g.flip) ctx.scale(-1, 1);             // mirrored twin (after rotate, so the lean direction survives)
+    ctx.drawImage(img, -w/2, -h, w, h);       // bottom-anchored
+    ctx.restore();
+  }
+}
+
+function drawPonds(t){
   const u = UNIT(), vw = W/u, vh = H/u;
   for (const d of DECOR){
+    if (d.t !== 'pond') continue;   // trees/rocks moved to the y-sorted entity pass
     if (d.x<cam.x-.4 || d.x>cam.x+vw+.4 || d.y<cam.y-.4 || d.y>cam.y+vh+.4) continue;   // view-culled
     const x = NX(d.x), y = NY(d.y);
-    if (d.t === 'pond'){
-      const img = WORLD_IMGS['decor-pond'];
-      if (imgOk(img)){   // pixel pond sprite, centred on the spot
-        const w = d.r*2.2*u, h = w * img.naturalHeight/img.naturalWidth;
-        ctx.drawImage(img, x-w/2, y-h/2, w, h);
-        continue;
-      }
-      const r = d.r*u;
-      ctx.fillStyle = '#4da3e0'; ctx.beginPath(); ctx.ellipse(x, y, r, r*.62, 0, 0, 7); ctx.fill();
-      ctx.fillStyle = '#7cc0f2'; ctx.beginPath(); ctx.ellipse(x-r*.12, y-r*.08, r*.68, r*.4, 0, 0, 7); ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.beginPath(); ctx.ellipse(x-r*.3, y-r*.16, r*.2, r*.07, -.4, 0, 7); ctx.fill();
-    } else if (d.t === 'rock'){
-      const img = WORLD_IMGS['decor-rock'];
-      if (imgOk(img)){   // pixel boulder, centred on the spot
-        const w = .17*u*d.s, h = w * img.naturalHeight/img.naturalWidth;
-        ctx.drawImage(img, x-w/2, y-h/2, w, h);
-        continue;
-      }
-      const r = .035*u*d.s;
-      ctx.fillStyle = '#9aa0a3'; ctx.beginPath(); ctx.ellipse(x, y, r, r*.75, 0, 0, 7); ctx.fill();
-      ctx.fillStyle = '#b9bfc2'; ctx.beginPath(); ctx.ellipse(x-r*.25, y-r*.22, r*.55, r*.4, 0, 0, 7); ctx.fill();
-      ctx.fillStyle = '#7e858a'; ctx.beginPath(); ctx.ellipse(x+r*.4, y+r*.18, r*.4, r*.3, 0, 0, 7); ctx.fill();
-    } else {   // tree
-      const img = WORLD_IMGS['decor-tree'];
-      if (imgOk(img)){   // pixel tree sprite, bottom-anchored on the spot
-        const w = .36*u*d.s, h = w * img.naturalHeight/img.naturalWidth;
-        ctx.drawImage(img, x-w/2, y + .03*u - h, w, h);
-        continue;
-      }
-      // vector fallback: brown trunk + layered green canopy
-      const s = d.s, tw = .016*u*s, th = .05*u*s, cr = .085*u*s;
-      ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.beginPath(); ctx.ellipse(x, y+th*.4, cr*.9, cr*.28, 0, 0, 7); ctx.fill();
-      ctx.fillStyle = '#7a4d16'; ctx.fillRect(x-tw/2, y-th, tw, th);
-      ctx.fillStyle = '#2e7d32'; ctx.beginPath(); ctx.arc(x, y-th-cr*.55, cr, 0, 7); ctx.fill();
-      ctx.fillStyle = '#43a047';
-      ctx.beginPath(); ctx.arc(x-cr*.45, y-th-cr*.25, cr*.62, 0, 7); ctx.fill();
-      ctx.beginPath(); ctx.arc(x+cr*.45, y-th-cr*.25, cr*.62, 0, 7); ctx.fill();
-      ctx.fillStyle = '#66bb6a'; ctx.beginPath(); ctx.arc(x-cr*.22, y-th-cr*.85, cr*.42, 0, 7); ctx.fill();
+    const br = 1 + .010*Math.sin(t/1400 + d.x*3);   // water breathe: a slow +/-1% pulse around the centre
+    const img = WORLD_IMGS['decor-pond'];
+    if (imgOk(img)){   // pixel pond sprite, centred on the spot
+      const w = d.r*2.2*u*br, h = w * img.naturalHeight/img.naturalWidth;
+      ctx.drawImage(img, x-w/2, y-h/2, w, h);
+      drawPondFx(d, x, y, w/2, h/2, t);
+      continue;
     }
+    const r = d.r*u*br;
+    ctx.fillStyle = '#4da3e0'; ctx.beginPath(); ctx.ellipse(x, y, r, r*.62, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#7cc0f2'; ctx.beginPath(); ctx.ellipse(x-r*.12, y-r*.08, r*.68, r*.4, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.beginPath(); ctx.ellipse(x-r*.3, y-r*.16, r*.2, r*.07, -.4, 0, 7); ctx.fill();
+    drawPondFx(d, x, y, r, r*.62, t);
   }
+}
+/* Water life, clipped to the pond's own ellipse: two soft shimmer bands of
+   light drifting across the surface, plus three tiny seeded sparkles that
+   blink and wiggle. Stateless -- everything derives from the clock. */
+function drawPondFx(d, x, y, rx, ry, t){
+  ctx.save();
+  ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, 7); ctx.clip();
+  for (let i=0;i<2;i++){
+    const ox = Math.sin(t/900 + d.x*5 + d.y*3 + i*2.4) * rx*.5;   // drift +/-25% of the pond's width
+    ctx.fillStyle = i ? 'rgba(190,230,255,.10)' : 'rgba(220,245,255,.16)';
+    ctx.beginPath(); ctx.ellipse(x + ox, y + (i ? ry*.28 : -ry*.22), rx*.55, ry*.30, 0, 0, 7); ctx.fill();
+  }
+  const u = UNIT();
+  for (let i=0;i<3;i++){
+    const h1 = Math.sin(d.x*127.1 + d.y*311.7 + i*74.7) * 43758.5453, f1 = h1 - Math.floor(h1);
+    const h2 = Math.sin(d.x*269.5 + d.y*183.3 + i*39.4) * 28001.8384, f2 = h2 - Math.floor(h2);
+    const a = Math.max(0, Math.sin(t/700 + f1*9));
+    if (a <= .05) continue;
+    const sx = x + (f1-.5)*1.1*rx + Math.sin(t/500 + f1*9) * .008*u;
+    const sy = y + (f2-.5)*1.0*ry;
+    const ss = 2 + (i%2);
+    ctx.fillStyle = 'rgba(255,255,255,' + (a*.75).toFixed(3) + ')';
+    ctx.fillRect(sx-ss/2, sy-ss/2, ss, ss);
+  }
+  ctx.restore();
+}
+function drawTree(d, t){
+  const u = UNIT(), x = NX(d.x), y = NY(d.y);
+  const img = WORLD_IMGS['decor-tree'];
+  if (imgOk(img)){   // pixel tree sprite, bottom-anchored on the spot
+    const w = .36*u*d.s, h = w * img.naturalHeight/img.naturalWidth;
+    ctx.save();
+    ctx.translate(x, y + .03*u);                 // pivot at the ground anchor (the sprite's bottom edge)
+    ctx.rotate(windAt(d.x, d.y, t) * .02);       // barely-there canopy lean in the same wind
+    ctx.drawImage(img, -w/2, -h, w, h);
+    ctx.restore();
+    return;
+  }
+  // vector fallback: brown trunk + layered green canopy
+  const s = d.s, tw = .016*u*s, th = .05*u*s, cr = .085*u*s;
+  ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.beginPath(); ctx.ellipse(x, y+th*.4, cr*.9, cr*.28, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#7a4d16'; ctx.fillRect(x-tw/2, y-th, tw, th);
+  ctx.fillStyle = '#2e7d32'; ctx.beginPath(); ctx.arc(x, y-th-cr*.55, cr, 0, 7); ctx.fill();
+  ctx.fillStyle = '#43a047';
+  ctx.beginPath(); ctx.arc(x-cr*.45, y-th-cr*.25, cr*.62, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(x+cr*.45, y-th-cr*.25, cr*.62, 0, 7); ctx.fill();
+  ctx.fillStyle = '#66bb6a'; ctx.beginPath(); ctx.arc(x-cr*.22, y-th-cr*.85, cr*.42, 0, 7); ctx.fill();
+}
+function drawRock(d){
+  const u = UNIT(), x = NX(d.x), y = NY(d.y);
+  const img = WORLD_IMGS['decor-rock'];
+  if (imgOk(img)){   // pixel boulder, centred on the spot
+    const w = .17*u*d.s, h = w * img.naturalHeight/img.naturalWidth;
+    ctx.drawImage(img, x-w/2, y-h/2, w, h);
+    return;
+  }
+  const r = .035*u*d.s;
+  ctx.fillStyle = '#9aa0a3'; ctx.beginPath(); ctx.ellipse(x, y, r, r*.75, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#b9bfc2'; ctx.beginPath(); ctx.ellipse(x-r*.25, y-r*.22, r*.55, r*.4, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#7e858a'; ctx.beginPath(); ctx.ellipse(x+r*.4, y+r*.18, r*.4, r*.3, 0, 0, 7); ctx.fill();
 }
 function drawField(t){
   const u=UNIT(), vw=W/u, vh=H/u;
@@ -2318,17 +2411,19 @@ function drawField(t){
   // flowers (only those in view): tiny pixel squares, not circles
   for (const f of FLOWERS){
     if (f.x<cam.x-.1 || f.x>cam.x+vw+.1 || f.y<cam.y-.1 || f.y>cam.y+vh+.1) continue;
-    const fs = f.s*1.5, fx = NX(f.x), fy = NY(f.y);
+    const fs = f.s*1.5, fx = NX(f.x) + windAt(f.x, f.y, t) * .003 * u, fy = NY(f.y);   // flower heads nod in the wind (half-strength offset, no stem to bend)
     ctx.fillStyle=f.c; ctx.fillRect(fx-fs/2, fy-fs/2, fs, fs);
     ctx.fillStyle='rgba(176,120,20,.9)'; ctx.fillRect(fx-.8, fy-.8, 1.6, 1.6);   // pollen centre pixel
   }
+  // grass tufts over the flowers, swaying in the same wind
+  drawTufts(t);
   // zone rings: the WILDS side darkens out past r=2.1, the MEADOW glows warm inside r=1.1
   ctx.fillStyle='rgba(40,80,40,.10)';
   ctx.beginPath(); ctx.arc(NX(WORLD/2), NY(WORLD/2), 2.1*u, 0, 7); ctx.fill();
   ctx.fillStyle='rgba(255,255,220,.07)';
   ctx.beginPath(); ctx.arc(NX(WORLD/2), NY(WORLD/2), 1.1*u, 0, 7); ctx.fill();
-  // trees / rocks / ponds (under slimes)
-  drawDecor();
+  // ponds only -- flat ground decals (trees/rocks live in the y-sorted entity pass)
+  drawPonds(t);
   // world border fence: chunky pixel posts + twin rails
   {
     const x0=NX(0), y0=NY(0), x1=NX(WORLD), y1=NY(WORLD), rail=6;
@@ -2351,7 +2446,7 @@ function drawField(t){
 }
 /* Bank & shop buildings in the Meadow near spawn — chunky canvas landmarks
    (~.3 units wide) with ground pads, drawn after decor, before slimes. */
-function drawBuildings(){
+function drawBuildings(only){
   const u = UNIT();
   const pad = (bx, by)=>{
     ctx.fillStyle = '#e8d9ae';
@@ -2377,6 +2472,7 @@ function drawBuildings(){
     sign(x, yBot - h - .040*u, name, sbg, sfg);
   };
   // ---- BANK: cream walls, brown roof, gold coin sign ----
+  if (!only || only==='bank'){
   if (imgOk(WORLD_IMGS['bld-bank'])) drawBld(BANK_POS, WORLD_IMGS['bld-bank'], 'BANK', '#fff8e7', '#5b3a1e');
   else {
     const x = NX(BANK_POS.x), y = NY(BANK_POS.y), w = .30*u, h = .19*u;
@@ -2399,7 +2495,9 @@ function drawBuildings(){
     ctx.fillStyle = '#ffd94d'; ctx.beginPath(); ctx.arc(x+.016*u, y+.055*u, .005*u, 0, 7); ctx.fill();
     sign(x, y-h/2-.052*u, 'BANK', '#5b3a1e', '#ffd94d');
   }
+  }
   // ---- SHOP: wooden stall, red/white striped awning ----
+  if (!only || only==='shop'){
   if (imgOk(WORLD_IMGS['bld-shop'])) drawBld(SHOP_POS, WORLD_IMGS['bld-shop'], 'SHOP', '#fff8e7', '#5b3a1e');
   else {
     const x = NX(SHOP_POS.x), y = NY(SHOP_POS.y), w = .30*u;
@@ -2428,7 +2526,9 @@ function drawBuildings(){
     ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 3; roundRect(ax, ay, aw, ah, 5); ctx.stroke();
     sign(x, y-.155*u, 'SHOP', '#c0392b', '#ffffff');
   }
+  }
   // ---- HOSPITAL: white walls, red roof, big red cross ----
+  if (!only || only==='hospital'){
   if (imgOk(WORLD_IMGS['bld-hospital'])) drawBld(HOSPITAL_POS, WORLD_IMGS['bld-hospital'], 'HOSPITAL', '#fff8e7', '#5b3a1e');
   else {
     const x = NX(HOSPITAL_POS.x), y = NY(HOSPITAL_POS.y), w = .30*u, h = .19*u;
@@ -2450,6 +2550,7 @@ function drawBuildings(){
     ctx.fillStyle = '#5b7a99'; roundRect(x-.028*u, y+.012*u, .056*u, h/2-.012*u, 4); ctx.fill();
     ctx.fillStyle = '#ffd94d'; ctx.beginPath(); ctx.arc(x+.016*u, y+.055*u, .005*u, 0, 7); ctx.fill();
     sign(x, y-h/2-.052*u, 'HOSPITAL', '#ffffff', '#e5484d');
+  }
   }
 }
 function drawEliteRing(x, y, baseR){
@@ -2551,6 +2652,91 @@ function shade(hex,amt){
   return `rgb(${r},${g},${b})`;
 }
 function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.roundRect(x,y,w,h,r); }
+/* ============================================================ y-sorted entity pass + occlusion ghosts
+   Trees, rocks, buildings and slimes share ONE depth order by ground
+   anchor (baseY, ascending), so slimes walk BEHIND props correctly.
+   Right after the pass, any slime part-hidden behind a prop is redrawn
+   as a faint ghost clipped to the overlap -- never fully invisible.
+   Ponds stay flat decals in drawField and never occlude; the fence is
+   low and never occludes; swords always draw on top afterwards. */
+const BUILDING_DEFS = [
+  { key:'bank', pos:BANK_POS, img:'bld-bank' },
+  { key:'shop', pos:SHOP_POS, img:'bld-shop' },
+  { key:'hospital', pos:HOSPITAL_POS, img:'bld-hospital' },
+];
+/* Occluder boxes in world coords: { cx, hw (half width), top, baseY } --
+   each matches the box its sprite is actually drawn into. */
+function treeBox(d){
+  const img = WORLD_IMGS['decor-tree'];
+  const w = .36 * d.s, h = imgOk(img) ? w * img.naturalHeight/img.naturalWidth : .30 * d.s;
+  const baseY = d.y + .03;                       // sprite bottom edge (see drawTree)
+  return { cx:d.x, hw:w/2, top:baseY - h, baseY };
+}
+function rockBox(d){
+  const img = WORLD_IMGS['decor-rock'];
+  const w = .17 * d.s, h = imgOk(img) ? w * img.naturalHeight/img.naturalWidth : .0525 * d.s;
+  return { cx:d.x, hw:w/2, top:d.y - h/2, baseY:d.y + h/2 };   // rocks are centre-drawn: base = centre + half height
+}
+function buildingBox(b){
+  const img = WORLD_IMGS[b.img];
+  const h = imgOk(img) ? .36 * img.naturalHeight/img.naturalWidth : .34;
+  const baseY = b.pos.y + .10;                   // sprite bottom edge (see drawBuildings)
+  return { cx:b.pos.x, hw:.18, top:baseY - h, baseY };
+}
+function drawEntities(t){
+  const u = UNIT(), vw = W/u, vh = H/u;
+  const ents = [], occluders = [];
+  for (const d of DECOR){
+    if (d.t === 'pond') continue;                // flat ground decal, drawn in drawField
+    if (d.x<cam.x-.55 || d.x>cam.x+vw+.55 || d.y<cam.y-.55 || d.y>cam.y+vh+.55) continue;   // view-culled
+    if (d.t === 'tree'){ const b = treeBox(d); ents.push({ baseY:b.baseY, kind:'tree', d }); occluders.push(b); }
+    else if (d.t === 'rock'){ const b = rockBox(d); ents.push({ baseY:b.baseY, kind:'rock', d }); occluders.push(b); }
+  }
+  for (const b of BUILDING_DEFS){
+    ents.push({ baseY:b.pos.y + .10, kind:'bld', b });
+    occluders.push(buildingBox(b));
+  }
+  // slime anchor = ground contact (y + r*.8) -- NOT the hop-lifted sprite,
+  // so a jumping slime never changes depth order mid-hop
+  for (const s of slimes.values()) ents.push({ baseY:s.y + s.r*.8, kind:'slime', s });
+  ents.sort((a,b)=>a.baseY - b.baseY);
+  for (const e of ents){
+    if (e.kind === 'tree') drawTree(e.d, t);
+    else if (e.kind === 'rock') drawRock(e.d);
+    else if (e.kind === 'bld') drawBuildings(e.b.key);
+    else drawSlime(e.s, t);
+  }
+  drawGhosts(t, occluders);
+}
+/* Ghost pass: for each slime BEHIND an occluder (ground anchor above the
+   occluder's base), redraw only its sprite at 38% alpha, clipped to the
+   intersection of the two boxes. No HP bar / marks -- just the body. */
+function drawGhosts(t, occluders){
+  const u = UNIT(), vw = W/u, vh = H/u;
+  for (const s of slimes.values()){
+    const baseR = s.r * SCALE();
+    const g = slimeSpriteGeom(s, t, baseR);
+    if (!g) continue;                            // vector-fallback slimes have no sprite to ghost
+    // generous sprite box (world coords): the clip only shows anything
+    // where the sprite actually has pixels, so over-estimating is safe
+    const sb = { l:s.x - s.r*1.5, r:s.x + s.r*1.5, top:s.y - s.r*3.2 - g.liftW, bot:s.y + s.r };
+    if (sb.r < cam.x || sb.l > cam.x + vw || sb.bot < cam.y || sb.top > cam.y + vh) continue;   // off-screen
+    const groundY = s.y + s.r*.8;                // the same anchor the sort used
+    for (const o of occluders){
+      if (groundY >= o.baseY) continue;          // in front of the prop: drawn normally, no ghost
+      const il = Math.max(sb.l, o.cx - o.hw), ir = Math.min(sb.r, o.cx + o.hw);
+      const it = Math.max(sb.top, o.top), ib = Math.min(sb.bot, o.baseY);
+      if (ir <= il || ib <= it) continue;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(NX(il), NY(it), (ir - il) * u, (ib - it) * u);
+      ctx.clip();
+      ctx.globalAlpha = .38;
+      paintSlimeSprite(s, t, baseR, g);
+      ctx.restore();
+    }
+  }
+}
 function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,spinning,ext=0){
   const w=WEAPONS[weaponIdx];
   const reachPx = (isMe?myReach():(w.reach)) * SCALE() * (1+ext);
@@ -2707,9 +2893,9 @@ function frame(now){
 
   if (started) updateInteract();   // every frame — the OPEN prompt and panel auto-close must never lag
   drawField(now);
-  drawBuildings();
-  // slimes sorted by y for fake depth
-  [...slimes.values()].sort((a,b)=>a.y-b.y).forEach(s=>drawSlime(s,now));
+  // y-sorted entity pass: trees, rocks, buildings and slimes by ground
+  // anchor, then occlusion ghosts for slimes hidden behind props
+  drawEntities(now);
 
   if (started) tickActives(now, dt);
   drawMinimap();
