@@ -666,6 +666,7 @@ function refreshHUD(){
   // sphere points
   $('#spCount').textContent = me.sp;
   $('#forgeBtn').textContent = me.sp>0 ? 'SPHERE ('+me.sp+')' : 'SPHERE';
+  if (selNode && !$('#forge').classList.contains('hidden')) renderNodeCard();
 }
 let joinedAt = 0;
 function refreshPeers(){
@@ -774,7 +775,10 @@ function buildSphere(){
     d.onclick = ()=>{ selNode = n.id; buildSphere(); };
     wrap.appendChild(d);
   }
-  // detail card
+  renderNodeCard();
+  $('#spCount').textContent = me.sp;
+}
+function renderNodeCard(){
   const card = $('#nodeCard');
   const n = NODES.find(m=>m.id===selNode);
   if (!n){ card.classList.add('hidden'); return; }
