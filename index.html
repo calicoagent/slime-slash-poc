@@ -2687,6 +2687,7 @@ function drawVideoSlime(s,t,baseR){
   ctx.fillStyle = '#000';
   ctx.beginPath(); ctx.ellipse(g.gx, g.gy - baseR*.06, g.dw*.40*(1 - g.liftN*.22), baseR*.20, 0, 0, 7); ctx.fill();
   ctx.restore();
+  if (s.elite) drawEliteAura(g.gx, g.gy - baseR*.06, baseR, s.seed, t);   // aura pools on the ground (shadow anchor), sprite hops inside it
   paintSlimeSprite(s, t, baseR, g);
   return true;
 }
@@ -3075,10 +3076,32 @@ function drawBuildings(only){
   }
   }
 }
-function drawEliteRing(x, y, baseR){
+/* Elite radiance: banded golden aura pooled on the ground UNDER the slime
+   (hard-edged steps, no blur), with motes rising and fading in a loop.
+   Anchored to the ground — the body hops inside it, the aura stays put. */
+function drawEliteAura(x, y, baseR, seed, t){
+  const pr = 1 + 0.07 * Math.sin(t/260 + seed * 9);   // pulse
   ctx.save();
-  ctx.strokeStyle = '#ffd94d'; ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.arc(x, y, baseR*1.25, 0, 7); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,183,47,.05)';
+  ctx.beginPath(); ctx.arc(x, y, baseR*2.6*pr, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(255,183,47,.08)';
+  ctx.beginPath(); ctx.arc(x, y, baseR*2.05*pr, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(255,183,47,.13)';
+  ctx.beginPath(); ctx.arc(x, y, baseR*1.55*pr, 0, 7); ctx.fill();
+  // ground pool
+  const rx = baseR*1.5*pr;
+  ctx.fillStyle = 'rgba(255,183,47,.16)';
+  ctx.beginPath(); ctx.ellipse(x, y, rx, rx*.42, 0, 0, 7); ctx.fill();
+  // rising motes: seeded squares that climb and fade, looping
+  ctx.fillStyle = '#ffd54a';
+  for (let k = 0; k < 3; k++){
+    const phase = ((t/1400) + seed*7 + k/3) % 1;
+    const mx = x + Math.sin(seed*40 + k*2.4) * baseR * 1.2;
+    const my = y - phase * baseR * 2.6;
+    const ms = 2 + (k % 2);
+    ctx.globalAlpha = (1 - phase) * .5;
+    ctx.fillRect(mx - ms/2, my - ms/2, ms, ms);
+  }
   ctx.restore();
 }
 function drawKindMarks(s, x, y, baseR, t){
@@ -3104,7 +3127,6 @@ function drawSlime(s,t){
     ctx.fillStyle = ag; ctx.beginPath(); ctx.arc(x, y, baseR*1.8, 0, 7); ctx.fill();
   }
   if (drawVideoSlime(s,t,baseR)){
-    if (s.elite) drawEliteRing(x, y - baseR*.4, baseR);   // gold ring marks elites (sprite sits bottom-anchored, so ring rides a bit high)
     drawKindMarks(s, x, y - baseR*.4, baseR, t);
     if (s.hp < s.max){
       const bw=baseR*1.6, bh=Math.max(5,baseR*.14), bx=x-bw/2, by=y-baseR*1.02;
@@ -3117,6 +3139,7 @@ function drawSlime(s,t){
   const wob = Math.sin(t/280 + s.seed*7)*0.08;
   const sq = 1 + wob - s.squish*.35;
   const rX = baseR*(2-sq)*.95, rY = baseR*sq*.82;
+  if (s.elite) drawEliteAura(x, y + rY, baseR, s.seed, t);   // aura under the body, at its ground contact
   ctx.save(); ctx.translate(x,y);
   if (s.flash>0){ ctx.shadowColor='#fff'; ctx.shadowBlur=18; }
   // body
@@ -3158,7 +3181,6 @@ function drawSlime(s,t){
     ctx.beginPath(); ctx.moveTo(-cw/2,cy); ctx.lineTo(-cw/2,cy-ch*.5); ctx.lineTo(-cw/4,cy-ch*.15); ctx.lineTo(0,cy-ch); ctx.lineTo(cw/4,cy-ch*.15); ctx.lineTo(cw/2,cy-ch*.5); ctx.lineTo(cw/2,cy); ctx.closePath(); ctx.fill(); ctx.stroke();
   }
   ctx.restore();
-  if (s.elite) drawEliteRing(x, y, baseR);
   drawKindMarks(s, x, y, baseR, t);
   // hp bar
   if (s.hp < s.max){
