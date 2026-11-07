@@ -1115,6 +1115,7 @@ const BANK_POS = { x: WORLD/2 - .67, y: WORLD/2 - .54 };
 const SHOP_POS = { x: WORLD/2 + .67, y: WORLD/2 - .54 };
 const HOSPITAL_POS = { x: WORLD/2, y: WORLD/2 + .70 };
 const TOWN_R = 1.30;   // safe-zone radius around the town centre — 1.30 ≈ .75*sqrt(3), so the plaza AREA is 3x the old disc; covers all three buildings + the plaza; NO enemies inside, NO damage inside
+const KING_BAR_RANGE = 1.0;   // a Slime King's floating HP bar renders only when the LOCAL player is within this many world units (Handler)
 let bullets = [];               // boss bullet-hell orbs (client-local sim, never networked)
 let spiralEmitters = [];
 let pendingVolleys = [];   // boss 'spread': timed 5-way volleys (client-local)        // active spiral bullet emitters (client-local)
@@ -4186,6 +4187,12 @@ function drawSlime(s,t){
      rendered size (and everything derived from baseR here: aura, HP bar)
      grows. The ghost pass applies the same factor. */
   const x=NX(s.x), y=NY(s.y), baseR=s.r*SCALE()*(s.kind==='boss' ? 1.3 : 1);
+  /* KING HP BAR (Handler): a King's floating bar shows ONLY when the local
+     player is close (<= KING_BAR_RANGE). Judged against me.x/me.y — the
+     same rendered position every other player-relative draw in this
+     function uses (cf. the vector eyes' look-at-me angle) — so host and
+     clients each gate against their OWN player. Other kinds: unchanged. */
+  const showBar = s.hp < s.max && (s.kind !== 'king' || dist2(s.x, s.y, me.x, me.y) <= KING_BAR_RANGE * KING_BAR_RANGE);
   if (s.kind==='boss'){
     // the Emperor radiates a dark red aura — ENRAGED (<=30% HP, read off
     // the replicated hp; boss HP never rises, so this is effectively a
@@ -4221,7 +4228,7 @@ function drawSlime(s,t){
       ctx.fillStyle = 'rgba(225,246,255,.28)';
       ctx.fillRect(x - gr, gy2 - 2, gr*2, 3);   // rim line where the dome meets the ground
     }
-    if (s.hp < s.max){
+    if (showBar){
       /* HP bar floats ABOVE the sprite — off its CURRENT top edge (ground
          anchor - hop lift - squashed height), with a small gap. The old
          fixed offset (y - baseR*1.02) sat mid-body: every hop stretch
@@ -4291,7 +4298,7 @@ function drawSlime(s,t){
   ctx.restore();
   drawKindMarks(s, x, y, baseR, t);
   // hp bar
-  if (s.hp < s.max){
+  if (showBar){
     const bw=rX*1.7, bh=Math.max(5,baseR*.14), bx=x-bw/2, by=y-rY-baseR*.32;
     ctx.fillStyle='rgba(40,30,20,.65)'; roundRect(bx-2,by-2,bw+4,bh+4,5); ctx.fill();
     ctx.fillStyle='#e5484d'; roundRect(bx,by,bw,bh,3); ctx.fill();
