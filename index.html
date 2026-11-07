@@ -1038,7 +1038,7 @@ let nodeSeq = 1;
 const nodeRespawnAt = [];       // host: timestamps when depleted nodes may be replaced
 let lastPickToastAt = 0;        // 'NEED THE PICKAXE' toast throttle
 /* ---- survival pass state ---- */
-const CONTACT_DMG = { baby:4, dart:4, mid:6, gold:2, metal:5, splitter:7, big:9, tank:13, king:16, boss:20 };
+const CONTACT_DMG = { baby:4, dart:4, mid:6, gold:2, metal:5, splitter:7, big:9, tank:13, king:16, boss:26 };
 const BANK_POS = { x: WORLD/2 - .67, y: WORLD/2 - .54 };
 const SHOP_POS = { x: WORLD/2 + .67, y: WORLD/2 - .54 };
 const HOSPITAL_POS = { x: WORLD/2, y: WORLD/2 + .70 };
@@ -1046,11 +1046,14 @@ const TOWN_R = 1.30;   // safe-zone radius around the town centre — 1.30 ≈ .
 let bullets = [];               // boss bullet-hell orbs (client-local sim, never networked)
 let spiralEmitters = [];
 let pendingVolleys = [];   // boss 'spread': timed 5-way volleys (client-local)        // active spiral bullet emitters (client-local)
+let pendingBursts = [];    // boss 'burst': timed single AIMED orbs, target re-picked per volley (client-local)
 let bossSpawnAt = Infinity;     // host: next SLIME EMPEROR spawn time
 let lastMetalAt = -1;           // host: the metal GUARANTEE clock — written ONLY inside spawnSlime at the moment a metal slime actually enters the world (plus reign init); -1 = uninitialised
 let metalNoneNearSince = 0;     // host: since when NO metal has been NEAR (within 0.9u of any player); 0 = a metal is near right now
 let bossFireAt = 0;             // host: next bullet-pattern volley
-let bossPatternIdx = 0;         // host: pattern rotation ring -> fan -> spiral
+let bossPatternIdx = 0;         // host: pattern rotation ring -> fan -> burst -> spiral -> spread
+let bossEnraged = false;        // host: ENRAGE latch (boss at <=30% HP) — fire interval x0.75, orb speeds x1.15, one-way
+let bossSummonAt = 0;           // host: next minion summon while the Emperor lives (every 20s)
 let dmgFlashAt = 0;             // last time the player took damage (red vignette decay)
 let nearBuilding = null;        // 'bank' | 'shop' | 'hospital' | null — drives the interact prompt
 const seenBosses = new Set();   // boss ids already announced by the banner
@@ -1079,7 +1082,7 @@ const SLIME_KINDS = [
   { kind:'splitter', hp:46, r:.040, coins:14, xp:24, speed:.010, weight:12, hopCycle:740, hopDist:.034 },
   { kind:'gold',  hp:10,  r:.022, coins:60, xp:30, speed:.026, weight:3,  hopCycle:540,  hopDist:.040 },
   { kind:'metal', hp:14,  r:.024, coins:150,xp:120,speed:.002, weight:3,  hopCycle:430,  hopDist:.044 },   // METAL SLIME — exactly 1 dmg per hit, flees, rich (still the fastest hop)
-  { kind:'boss',  hp:1500,r:.14,  coins:800,xp:600,speed:.007, weight:0,  hopCycle:1350, hopDist:.045 },   // SLIME EMPEROR — timed host spawn only, never random
+  { kind:'boss',  hp:4000,r:.14,  coins:1500,xp:1200,speed:.007, weight:0,  hopCycle:1350, hopDist:.045 },   // SLIME EMPEROR — timed host spawn only, never random
 ];
 /* Hop phase is a pure function of (slime, now) so host and every client
    render the same crouch/air/land timing with NO extra sync. The seed is
@@ -1150,7 +1153,7 @@ function spawnSlime(opts={}){
   const zi = zoneOf(sx, sy), zone = ZONES[zi];
   const k = opts.kind ? (SLIME_KINDS.find(m=>m.kind===opts.kind) || SLIME_KINDS[0]) : pickKind(zi);
   const id = (hostId||me.id).slice(0,4)+'-'+(slimeSeq++);
-  const hp = k.kind==='boss' ? k.hp : Math.round(k.hp * zone.hp);   // the Emperor keeps his true 1500 HP — no zone scaling
+  const hp = k.kind==='boss' ? k.hp : Math.round(k.hp * zone.hp);   // the Emperor keeps his true 4000 HP — no zone scaling
   const s = { id, kind:k.kind, hp, max:hp, r:k.r,
     x:sx, y:sy, vx:0, vy:0, dir:rand(0,Math.PI*2), turnAt:performance.now()+rand(800,2600),
     color: k.kind==='gold' ? '#ffe066' : k.kind==='metal' ? '#cfd8dc' : SLIME_COLORS[Math.floor(Math.random()*SLIME_COLORS.length)],
@@ -1325,20 +1328,41 @@ function hostTick(now,dt){
   if (bosses.length > 1) for (let i=1;i<bosses.length;i++) slimes.delete(bosses[i].id);   // Emperor is unique — purge duplicates (e.g. one adopted via world payload across a host handover)
   let boss = bosses[0];
   if (now >= bossSpawnAt){
-    bossSpawnAt = now + 150000;
+    bossSpawnAt = now + 240000;   // fallback cadence (hostKill re-anchors this to the kill moment); the FIRST spawn stays at +75s
     if (!boss){
       let bx=WORLD/2, by=.3;
       for (let i=0;i<40;i++){ const x=rand(.15,WORLD-.15), y=rand(.15,WORLD-.15); if (Math.hypot(x-WORLD/2, y-WORLD/2) > 2.3){ bx=x; by=y; break; } }
       boss = spawnSlime({ kind:'boss', x:bx, y:by });
+      bossEnraged = false; bossSummonAt = 0;   // a fresh Emperor starts calm and summons on his own clock
     }
   }
   if (boss){
+    // ENRAGE: at <=30% HP the Emperor latches into a faster, meaner fight
+    if (!bossEnraged && boss.hp <= boss.max * .30){
+      bossEnraged = true;
+      const ep = { p:'enrage', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now };
+      bossEvent(ep);
+      if (sendBoss){ try { sendBoss(ep); } catch(e){} }
+    }
+    // SUMMONS: every 20s while he lives, he calls 2-3 minions to his side
+    if (!bossSummonAt) bossSummonAt = now + 20000;
+    else if (now >= bossSummonAt){
+      bossSummonAt = now + 20000;
+      const nMin = Math.random() < .5 ? 2 : 3;
+      for (let i=0;i<nMin;i++)
+        spawnSlime({ kind: Math.random() < .5 ? 'mid' : 'dart', x:clamp(boss.x+rand(-.25,.25), .06, WORLD-.06), y:clamp(boss.y+rand(-.25,.25), .1, WORLD-.06) });
+      const sp = { p:'summon', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now };
+      bossEvent(sp);
+      if (sendBoss){ try { sendBoss(sp); } catch(e){} }
+      broadcastWorld();   // minions ride the normal slime sync — push them out now, not on the next cycle
+    }
     if (!bossFireAt) bossFireAt = now + 1200;
     if (now >= bossFireAt){
-      bossFireAt = now + 1500;
-      const p = ['ring','fan','spiral','spread'][bossPatternIdx++ % 4];
+      bossFireAt = now + (bossEnraged ? 938 : 1250);   // enraged: interval x0.75 (~0.94s)
+      const p = ['ring','fan','burst','spiral','spread'][bossPatternIdx++ % 5];
+      const sm = bossEnraged ? 1.15 : 1;   // enraged orb-speed multiplier, carried on every pattern payload
       let payload;
-      if (p==='ring') payload = { p:'ring', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now, n:22, spd:.32 };
+      if (p==='ring') payload = { p:'ring', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now, n:28, spd:.32, sm };
       else if (p==='fan' || p==='spread'){
         let bx=me.x, by=me.y, bd=dist2(boss.x,boss.y,me.x,me.y);
         for (const pp of peers.values()){
@@ -1346,9 +1370,10 @@ function hostTick(now,dt){
           const d=dist2(boss.x,boss.y,px,py);
           if (d<bd){ bd=d; bx=px; by=py; }
         }
-        payload = { p, x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now, aim:+Math.atan2(by-boss.y, bx-boss.x).toFixed(3) };
+        payload = { p, x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now, aim:+Math.atan2(by-boss.y, bx-boss.x).toFixed(3), sm };
       }
-      else payload = { p:'spiral', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now };
+      else if (p==='burst') payload = { p:'burst', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now, sm };   // no aim: each client re-picks the nearest player per volley, so it tracks
+      else payload = { p:'spiral', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now, sm };
       /* LOCAL SIM FIRST, NETWORK SECOND — never gate gameplay on the
          network handle. This block used to read `if (boss && sendBoss)`
          with sendBoss() called before bossEvent(): in the solo fallback
@@ -1596,21 +1621,28 @@ function bubble(text,x,y,ms=1600){ const b=$('#bubble'); b.textContent=text; b.s
    Bullets are never added to the world payload. */
 function spawnBullet(x,y,vx,vy,now){
   bullets.push({ x, y, vx, vy, born:now, life:3000 });
-  if (bullets.length > 260) bullets.splice(0, bullets.length-260);   // global live-orb cap: cull the OLDEST first
+  if (bullets.length > 320) bullets.splice(0, bullets.length-320);   // global live-orb cap: cull the OLDEST first
 }
 function bossEvent(d){
   if (!d || typeof d.x!=='number' || typeof d.y!=='number') return;
   const now = performance.now();
+  const sm = d.sm || 1;   // enrage orb-speed multiplier (host-latched, carried on every pattern payload)
   if (d.p==='ring'){
-    const n = d.n || 26, spd = d.spd || .34;
+    const n = d.n || 26, spd = (d.spd || .34) * sm;
     for (let i=0;i<n;i++){ const a = (i/n)*Math.PI*2; spawnBullet(d.x, d.y, Math.cos(a)*spd, Math.sin(a)*spd, now); }
   } else if (d.p==='fan'){
     const aim = +d.aim || 0;
-    for (let i=0;i<9;i++){ const a = aim + (i-4)*(1.0/8); spawnBullet(d.x, d.y, Math.cos(a)*.4, Math.sin(a)*.4, now); }
+    for (let i=0;i<9;i++){ const a = aim + (i-4)*(1.0/8); spawnBullet(d.x, d.y, Math.cos(a)*.4*sm, Math.sin(a)*.4*sm, now); }
   } else if (d.p==='spiral'){
-    spiralEmitters.push({ until: now+2400, nextAt: now, ang: rand(0, Math.PI*2) });
+    spiralEmitters.push({ until: now+2400, nextAt: now, ang: rand(0, Math.PI*2), sm });
   } else if (d.p==='spread'){
-    pendingVolleys.push({ aim: +d.aim || 0, left: 3, nextAt: now });
+    pendingVolleys.push({ aim: +d.aim || 0, left: 3, nextAt: now, sm });
+  } else if (d.p==='burst'){
+    pendingBursts.push({ left: 3, nextAt: now, sm });   // volleys fired by the frame loop, aim re-picked per volley
+  } else if (d.p==='enrage'){
+    showKingBanner('THE EMPEROR IS ENRAGED!');
+  } else if (d.p==='summon'){
+    addFloat(d.x, d.y-.16, 'THE EMPEROR CALLS!', '#ff8a7a', { big:true });
   }
 }
 
@@ -1765,6 +1797,7 @@ function hostApplyHit(slimeId, dmg, byId){
 }
 function hostKill(s, byId){
   slimes.delete(s.id);
+  if (s.kind==='boss'){ bossSpawnAt = performance.now() + 240000; bossEnraged = false; bossSummonAt = 0; }   // next Emperor 240s after the KILL; enrage/summon state dies with him
   // (a metal KILL deliberately does not touch lastMetalAt — the guarantee
   // clock moves only when a metal ENTERS the world; see hostTick)
   const k = SLIME_KINDS.find(k=>k.kind===s.kind);
@@ -3867,9 +3900,13 @@ function drawSlime(s,t){
      grows. The ghost pass applies the same factor. */
   const x=NX(s.x), y=NY(s.y), baseR=s.r*SCALE()*(s.kind==='boss' ? 1.3 : 1);
   if (s.kind==='boss'){
-    // the Emperor radiates a dark red aura
-    const ag = ctx.createRadialGradient(x, y, baseR*.4, x, y, baseR*1.8);
-    ag.addColorStop(0, 'rgba(120,10,20,.50)'); ag.addColorStop(1, 'rgba(120,10,20,0)');
+    // the Emperor radiates a dark red aura — ENRAGED (<=30% HP, read off
+    // the replicated hp; boss HP never rises, so this is effectively a
+    // latch) it burns brighter, wider, and pulses
+    const enr = s.hp <= s.max * .30;
+    const ag = ctx.createRadialGradient(x, y, baseR*.4, x, y, baseR*(enr ? 1.95 : 1.8));
+    ag.addColorStop(0, enr ? 'rgba(215,25,35,' + (.62 + .08*Math.sin(t/260)).toFixed(3) + ')' : 'rgba(120,10,20,.50)');
+    ag.addColorStop(1, 'rgba(120,10,20,0)');
     ctx.fillStyle = ag; ctx.beginPath(); ctx.arc(x, y, baseR*1.8, 0, 7); ctx.fill();
     // floating name label — Kings don't get one, so the real Emperor is
     // identifiable at a glance even mid-cluster
@@ -4231,7 +4268,7 @@ function frame(now){
       const b = bullets[i];
       b.x += b.vx*dt/1000; b.y += b.vy*dt/1000;
       if (now-b.born > b.life || b.x<-.1 || b.y<-.1 || b.x>WORLD+.1 || b.y>WORLD+.1){ bullets.splice(i,1); continue; }
-      if (now > me.invulnUntil && dist2(b.x,b.y,me.x,me.y) < .032*.032){ bullets.splice(i,1); damagePlayer(8, now); }
+      if (now > me.invulnUntil && dist2(b.x,b.y,me.x,me.y) < .032*.032){ bullets.splice(i,1); damagePlayer(12, now); }
     }
     for (let i=spiralEmitters.length-1;i>=0;i--){
       const em = spiralEmitters[i];
@@ -4239,10 +4276,11 @@ function frame(now){
       if (em.nextAt < now-450) em.nextAt = now;   // never burst-spawn a backlog after a stall
       const bossS = [...slimes.values()].find(s=>s.kind==='boss');
       while (em.nextAt <= now){
-        em.nextAt += 110;
+        em.nextAt += 90;
         if (bossS){
-          spawnBullet(bossS.x, bossS.y, Math.cos(em.ang)*.3, Math.sin(em.ang)*.3, now);
-          spawnBullet(bossS.x, bossS.y, Math.cos(em.ang+Math.PI)*.3, Math.sin(em.ang+Math.PI)*.3, now);
+          const es = .3 * (em.sm || 1);
+          spawnBullet(bossS.x, bossS.y, Math.cos(em.ang)*es, Math.sin(em.ang)*es, now);
+          spawnBullet(bossS.x, bossS.y, Math.cos(em.ang+Math.PI)*es, Math.sin(em.ang+Math.PI)*es, now);
           em.ang += .42;
         }
       }
@@ -4252,8 +4290,27 @@ function frame(now){
       if (now < v.nextAt) continue;
       v.nextAt = now + 170; v.left--;
       const bossS = [...slimes.values()].find(s=>s.kind==='boss');
-      if (bossS) for (let k=0;k<4;k++){ const a = v.aim + (k-1.5)*.18; spawnBullet(bossS.x, bossS.y, Math.cos(a)*.42, Math.sin(a)*.42, now); }
+      if (bossS) for (let k=0;k<4;k++){ const a = v.aim + (k-1.5)*.18; spawnBullet(bossS.x, bossS.y, Math.cos(a)*.42*(v.sm||1), Math.sin(a)*.42*(v.sm||1), now); }
       if (v.left<=0) pendingVolleys.splice(i,1);
+    }
+    for (let i=pendingBursts.length-1;i>=0;i--){
+      const bst = pendingBursts[i];
+      if (now < bst.nextAt) continue;
+      bst.nextAt = now + 160; bst.left--;
+      const bossS = [...slimes.values()].find(s=>s.kind==='boss');
+      if (bossS){
+        // AIMED BURST: target re-picked at VOLLEY time from this client's
+        // replicated player positions, so the shot tracks a moving player
+        let tx=me.x, ty=me.y, td=dist2(bossS.x,bossS.y,me.x,me.y);
+        for (const pp of peers.values()){
+          const px=(pp.tx!==undefined?pp.tx:pp.x), py=(pp.ty!==undefined?pp.ty:pp.y);
+          const dd=dist2(bossS.x,bossS.y,px,py);
+          if (dd<td){ td=dd; tx=px; ty=py; }
+        }
+        const a = Math.atan2(ty-bossS.y, tx-bossS.x), sp = .55 * (bst.sm || 1);
+        spawnBullet(bossS.x, bossS.y, Math.cos(a)*sp, Math.sin(a)*sp, now);
+      }
+      if (bst.left<=0) pendingBursts.splice(i,1);
     }
     // metal slimes shed silver sparkles every ~90ms while alive, at
     // pop-burst particle scale (r 3-6) — the old r2-4 sparkles at 120ms
