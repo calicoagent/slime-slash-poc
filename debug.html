@@ -19,14 +19,21 @@ try {
   ]};
   const room = nostr.joinRoom({ appId:'slime-slash-poc-v1', rtcConfig: RTC }, 'slime-world-1');
   const peers = new Set();
-  room.onPeerJoin(id => { peers.add(id); log('NOSTR PEER JOIN ' + id + ' total=' + peers.size); });
-  room.onPeerLeave(id => { peers.delete(id); log('NOSTR PEER LEAVE ' + id + ' total=' + peers.size); });
-  const [sendPing, onPing] = room.makeAction('ping');
-  onPing((d, id) => log('NOSTR PING from ' + id + ': ' + d));
+  // 0.26 API: onPeerJoin / onPeerLeave are assignable properties, not methods
+  room.onPeerJoin = id => { peers.add(id); log('NOSTR PEER JOIN ' + id + ' total=' + peers.size); };
+  room.onPeerLeave = id => { peers.delete(id); log('NOSTR PEER LEAVE ' + id + ' total=' + peers.size); };
+  let sendPing = null;
+  try {
+    const act = room.makeAction('ping');
+    if (Array.isArray(act)) { const [s, o] = act; sendPing = s; o((d, id) => log('NOSTR PING from ' + id + ': ' + d)); }
+    else if (act && typeof act === 'object') { sendPing = act.send ? act.send.bind(act) : (typeof act === 'function' ? act : null); act.onReceive = (d, id) => log('NOSTR PING from ' + id + ': ' + JSON.stringify(d)); }
+    else if (typeof act === 'function') { sendPing = act; }
+    log('makeAction shape: ' + (Array.isArray(act) ? 'tuple' : typeof act) + ' keys=' + (act && typeof act === 'object' ? Object.keys(act).join(',') : ''));
+  } catch(e) { log('makeAction err: ' + e.message); }
   let n = 0;
   setInterval(() => {
     n++;
-    try { sendPing('hello ' + n); } catch(e) { log('ping send err ' + e.message); }
+    try { if (sendPing) { const r = sendPing('hello ' + n); if (r && r.catch) r.catch(e=>log('ping send err ' + e.message)); } } catch(e) { log('ping send err ' + e.message); }
     let socks = 'n/a';
     try {
       const s = nostr.getRelaySockets();
