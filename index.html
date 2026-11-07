@@ -236,8 +236,8 @@
     #items { left:auto; right:max(8px, env(safe-area-inset-right)); bottom:calc(var(--dockH, 196px) + 10px); gap:8px; }
     /* chunky on phones too — a later 44px override used to shrink these
        back down; the big thumb size below is the only mobile rule now */
-    .ibtn { width:68px; min-height:64px; }
-    .ibtn svg { width:32px; height:32px; }
+    .ibtn { width:84px; min-height:78px; }
+    .ibtn svg { width:40px; height:40px; }
     #interactPrompt { bottom:calc(var(--dockH, 196px) + 10px); font-size:9px; padding:9px 14px; }
     #bossBar { width:min(72vw,520px); }
     #bountyBadge b { font-size:6px; letter-spacing:0; }
@@ -300,19 +300,19 @@
      (an INN sign once covered the BOMB button) and below modal panels */
   #items { position:fixed; left:max(14px, env(safe-area-inset-left)); bottom:222px; z-index:40; display:flex; flex-direction:column; gap:10px; }
   .ibtn {
-    position:relative; width:68px; min-height:64px; border-radius:0; cursor:pointer; touch-action:manipulation;
+    position:relative; width:84px; min-height:78px; border-radius:0; cursor:pointer; touch-action:manipulation;
     border:3px solid #3a2b23; background:#fff6df; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
     display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; padding:5px 3px;
   }
-  .ibtn svg { width:30px; height:30px; }
-  .ibtn .ilabel { font-family:"VT323",monospace; font-size:16px; line-height:1; color:#3a2b23; letter-spacing:.5px; }
+  .ibtn svg { width:40px; height:40px; }
+  .ibtn .ilabel { font-family:"VT323",monospace; font-size:15px; line-height:1; color:#3a2b23; letter-spacing:.5px; }
   /* PANIC affordance: at low HP with potions in hand the POTION button
      throbs in hard pixel steps (no smooth glow) until it's used */
   @keyframes potionPanic { 0%,49% { transform:scale(1); filter:brightness(1); } 50%,100% { transform:scale(1.13); filter:brightness(1.4); } }
   .ibtn.panic { animation:potionPanic .5s steps(1,end) infinite; border-color:#e5484d; }
   .ibtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
   .ibtn .cnt {
-    position:absolute; top:-7px; right:-7px; min-width:20px; height:20px; padding:0 5px;
+    position:absolute; top:-7px; right:-7px; min-width:22px; height:22px; padding:0 5px;
     background:#3a2b23; color:#ffd94d; border-radius:0;
     font-size:16px; font-weight:700; line-height:1; display:flex; align-items:center; justify-content:center;
   }
@@ -1016,7 +1016,7 @@ let spiralEmitters = [];
 let pendingVolleys = [];   // boss 'spread': timed 5-way volleys (client-local)        // active spiral bullet emitters (client-local)
 let bossSpawnAt = Infinity;     // host: next SLIME EMPEROR spawn time
 let lastMetalAt = -1;           // host: the metal GUARANTEE clock — written ONLY inside spawnSlime at the moment a metal slime actually enters the world (plus reign init); -1 = uninitialised
-let metalNoneNearSince = 0;     // host: since when NO metal has been REACHABLE (within 1.2u of any player); 0 = a metal is reachable right now
+let metalNoneNearSince = 0;     // host: since when NO metal has been NEAR (within 0.9u of any player); 0 = a metal is near right now
 let bossFireAt = 0;             // host: next bullet-pattern volley
 let bossPatternIdx = 0;         // host: pattern rotation ring -> fan -> spiral
 let dmgFlashAt = 0;             // last time the player took damage (red vignette decay)
@@ -1074,7 +1074,7 @@ function pickKind(zone=0){
   let tot = 0;
   const ws = SLIME_KINDS.map(k=>{
     let w = k.weight;
-    if (k.kind==='metal') w = zone===2 ? 4 : 3;   // rare everywhere, a touch less rare in the Wilds (plus the host's 75s guarantee in hostTick)
+    if (k.kind==='metal') w = zone===2 ? 4 : 3;   // rare everywhere, a touch less rare in the Wilds (plus the host's 60s guarantee in hostTick)
     if (zone===2){ if (k.kind==='king' || k.kind==='tank') w *= 2; if (k.kind==='baby') w *= .5; }
     tot += w; return w;
   });
@@ -1141,14 +1141,23 @@ function hostTick(now,dt){
     let sp = k.speed*dt*60/1000, mult = 1;   // mult: steering speed multiplier, applied to hop distance
     if (s.kind==='dart') s.dir += Math.sin(now/90 + s.seed*9)*.095*(dt/16.667);   // zigzag — punchy, reads as a darter (dt-scaled: the raw per-frame += steered twice as hard at 120Hz)
     if (s.kind==='gold' || s.kind==='metal'){
-      // gold & metal slimes FLEE the nearest player — catch one if you can
+      // gold slimes FLEE the nearest player — catch one if you can
       let bx=me.x, by=me.y, bd=dist2(s.x,s.y,me.x,me.y);
       for (const p of peers.values()){
         const px=(p.tx!==undefined?p.tx:p.x), py=(p.ty!==undefined?p.ty:p.y);
         const d=dist2(s.x,s.y,px,py);
         if (d<bd){ bd=d; bx=px; by=py; }
       }
-      s.dir = Math.atan2(s.y-by, s.x-bx);
+      if (s.kind==='gold') s.dir = Math.atan2(s.y-by, s.x-bx);
+      else if (s.guaranteed && now - (s.bornAt||0) < 1500){
+        /* guaranteed metal, spawn-in shimmer: PLANTED for its first
+           1500ms — no flee, no hop translation (mult 0) — so the player
+           gets a real approach window instead of a slime that is already
+           at flee radius before the banner has faded */
+        mult = 0;
+      }
+      else if (bd < .55*.55) s.dir = Math.atan2(s.y-by, s.x-bx);   // metal flees ONLY when a player presses within 0.55u
+      else mult *= .5;   // otherwise it WANDERS at half rate on the generic turnAt steering — catchable, findable
     }
     if (s.kind==='king'){
       // the King HUNTS: it steers straight at the nearest player, faster than its wander
@@ -1213,7 +1222,16 @@ function hostTick(now,dt){
     if (Math.random()<spawnP) spawnSlime();
     if (slimes.size < target-4 && Math.random()<spawnP) spawnSlime();   // refill in pairs while well under target
   }
-  /* METAL SLIME GUARANTEE (v4): a REACHABLE metal at least every ~75s.
+  /* METAL SLIME GUARANTEE (v5): a FINDABLE metal at least every ~60s of
+     continuous none-near time (near = within 0.9u). v5 changes over v4,
+     from a headless sim of v4 (stationary player): the v4 guarantee DID
+     fire and construct the metal at 0.6u — but the old always-flee
+     steering held it on a fixed bearing at growing range (mean 2.29u,
+     in-view only 4.5% of its first 60s in a 1.78x1.00u view), so real
+     players never saw it; nothing ever culled it. v5: 60s / 0.9u clock,
+     flee only inside 0.55u, half-rate wander otherwise, a 1500ms
+     spawn-in freeze on the guaranteed metal, a screen-edge arrow while
+     it lives, a bigger minimap dot, and a denser sparkle trail.
      Why v4 (three gauntlets, 60+ min, ZERO sightings under v3): v3's
      trigger was `now - lastMetalAt > 75000` — but lastMetalAt is written
      inside spawnSlime on EVERY metal creation, including NATURAL spawns
@@ -1225,8 +1243,8 @@ function hostTick(now,dt){
      the natural-spawn clock resets at real rates, so v3 "worked" there
      and starved in the real game.
      v4 removes the whole class: (1) the trigger is a NONE-NEAR clock —
-     it runs only while no metal is within 1.2u of any player, and far
-     spawns can never reset it; (2) when it fires, the metal is built
+     it runs only while no metal is within 0.9u of any player (1.2u in
+     v4), and far spawns can never reset it; (2) when it fires, the metal is built
      DIRECTLY into the slime map at a position computed valid here —
      spawnSlime (and all its candidate logic) is not involved at all;
      (3) the spawn announces itself with the king banner and the metal
@@ -1235,10 +1253,10 @@ function hostTick(now,dt){
   const metalSpots = [{x:me.x, y:me.y}];
   for (const p of peers.values()) metalSpots.push({ x:(p.tx!==undefined?p.tx:p.x), y:(p.ty!==undefined?p.ty:p.y) });
   let metalNear = false;
-  for (const s of slimes.values()) if (s.kind==='metal' && metalSpots.some(c=>dist2(s.x,s.y,c.x,c.y) < 1.2*1.2)){ metalNear = true; break; }
+  for (const s of slimes.values()) if (s.kind==='metal' && metalSpots.some(c=>dist2(s.x,s.y,c.x,c.y) < .9*.9)){ metalNear = true; break; }
   if (metalNear) metalNoneNearSince = 0;
   else if (!metalNoneNearSince) metalNoneNearSince = now;
-  else if (now - metalNoneNearSince > 75000){
+  else if (now - metalNoneNearSince > 60000){
     metalNoneNearSince = now;
     for (const [id, s] of [...slimes]) if (s.kind==='metal') slimes.delete(id);   // every living metal is unreachable — clear it
     // position computed valid HERE: 0.6u from a random player in a random
@@ -1263,7 +1281,8 @@ function hostTick(now,dt){
     const mhp = Math.round(mk.hp * mzone.hp);
     slimes.set(mid, { id:mid, kind:'metal', hp:mhp, max:mhp, r:mk.r,
       x:mx, y:my, vx:0, vy:0, dir:rand(0,Math.PI*2), turnAt:now+rand(800,2600),
-      color:'#cfd8dc', seed:seedForId(mid), squish:0, flash:0, mul:mzone.mul, elite:false });
+      color:'#cfd8dc', seed:seedForId(mid), squish:0, flash:0, mul:mzone.mul, elite:false,
+      guaranteed:true, bornAt:now });   // guaranteed: edge arrow + 1500ms spawn-in freeze key off these (host-local flavour; the world payload doesn't carry them)
     lastMetalAt = now;   // a metal entered the world
     showKingBanner('A WILD METAL SLIME APPEARED!');
   }
@@ -1435,15 +1454,25 @@ function applyWorld(p){
 
 /* ============================================================ fx */
 function capParticles(){ if (particles.length>420) particles.splice(0, particles.length-420); }
-/* Mining chips: chunky stone shards, light greys, radius 3-7px, ~1.4s of
-   life (particle life decays at dt/480 per frame, so life 2.9 ≈ 1.4s).
-   The old chips were 5 x r2-4 x ~0.5s and two gauntlets never saw them. */
+/* Mining chips: chunky stone shards, light greys — see the unit audit
+   inside mineChips for why the previous generations were invisible. */
 function mineChips(x, y, n){
-  // bright stone chips with an UPWARD pop (negative vy = up-screen): three
-  // playtests in a row couldn't see the old small grey sideways chips, so
-  // these are bigger (4-8px), near-white, launched up and given ~1.2s of
-  // life (life 2.5 at the particles' dt/480 decay) to arc and fall
-  for (let i=0;i<n;i++) particles.push({ x:x+rand(-.03,.03), y:y+rand(-.03,.03), vx:rand(-.13,.13), vy:rand(-.24,-.08), life:2.5, color: i%2 ? '#e8ecec' : '#b9c0c2', r:rand(4,8) });
+  /* UNIT AUDIT vs the kill POP BURSTS (which ARE clearly visible): same
+     particle array, same draw — sizes are RAW CANVAS PX in both (pops
+     r 2-7, chips were r 4-8 — chips were never in a different unit space
+     and were already the bigger particle). The invisibility was the
+     VELOCITY PROFILE: pops radiate at .04-.22 in ALL directions and
+     linger around the kill point (plus an expanding ring, 22-60 count);
+     chips fired ALL their speed upward (vy -.24..-.08, up to .27 total)
+     — at dt/60 integration that is ~0.067u/frame, crossing the 1.0u-tall
+     view in ~15 frames (~0.25s), with only 5-10 pale-grey particles and
+     no ring. Gone before a screenshot — or an eye — could catch them.
+     Now: pop-scale velocities with the upward bias kept, sizes at the
+     visible end of the pop range (5-8px), and a per-particle gravity
+     multiplier (grav 5) so they ARC AND FALL at the node instead of
+     rocketing off the top of the screen. Counts unchanged (10/chunk,
+     5/hit), life unchanged (~1.2s). */
+  for (let i=0;i<n;i++) particles.push({ x:x+rand(-.03,.03), y:y+rand(-.03,.03), vx:rand(-.10,.10), vy:rand(-.16,-.05), life:2.5, grav:5, color: i%2 ? '#e8ecec' : '#b9c0c2', r:rand(5,8) });
   capParticles();
 }
 function spawnHitFx(x,y,color,n=6){ for(let i=0;i<n;i++) particles.push({x,y,vx:rand(-.12,.12),vy:rand(-.16,.02),life:1,color,r:rand(2,5)}); capParticles(); }
@@ -2835,8 +2864,9 @@ function drawMinimap(){
   g.fillStyle = '#ffffff'; g.fillRect(HOSPITAL_POS.x*S2-2.5, HOSPITAL_POS.y*S2-2.5, 5, 5);
   g.fillStyle = '#e5484d'; g.beginPath(); g.arc(HOSPITAL_POS.x*S2, HOSPITAL_POS.y*S2, 1.4, 0, 7); g.fill();
   for (const s of slimes.values()){
-    g.fillStyle = (s.kind==='king' || s.kind==='boss') ? '#ffd94d' : s.kind==='metal' ? '#eef3f7' : 'rgba(30,90,20,.55)';
-    g.beginPath(); g.arc(s.x*S2, s.y*S2, s.kind==='boss'?6 : s.kind==='king'?4.5 : s.kind==='metal'?3:2, 0, 7); g.fill();
+    g.fillStyle = (s.kind==='king' || s.kind==='boss') ? '#ffd94d' : s.kind==='metal' ? '#c3ced4' : 'rgba(30,90,20,.55)';
+    g.beginPath(); g.arc(s.x*S2, s.y*S2, s.kind==='boss'?6 : s.kind==='king'?4.5 : s.kind==='metal'?4:2, 0, 7); g.fill();
+    if (s.kind==='metal'){ g.strokeStyle = '#ffffff'; g.lineWidth = 1.5; g.beginPath(); g.arc(s.x*S2, s.y*S2, 4, 0, 7); g.stroke(); }   // silver dot, white halo — the old r3 pale dot was camouflage among 80 green dots
   }
   for (const p of peers.values()){ g.fillStyle = '#4dabff'; g.beginPath(); g.arc(p.x*S2, p.y*S2, 3, 0, 7); g.fill(); }
   g.fillStyle = '#fff'; g.strokeStyle = '#5b3a1e'; g.lineWidth = 2;
@@ -3708,26 +3738,35 @@ function drawBuildings(only){
    edges only: triangles and a diamond — no arcs, no ellipses, no
    gradients. Motes rise and fade as before. Drawn UNDER the slime. */
 function drawEliteAura(x, y, baseR, seed, t){
+  /* READABILITY FLOOR (sim + playtest finding): elites spawn at the
+     correct 8% and 3-5 are alive at once, but the aura scaled purely
+     with baseR — an elite baby (baseR ~27px) got ~51px ray tips at
+     alpha .16 over green grass and read as a plain slime in stills and
+     at a glance. The aura now has a minimum extent (34px, an elite
+     mid's baseR at full-screen scale) and stronger alphas, so every
+     elite — baby to tank — reads as an elite. Big kinds are unchanged
+     (their baseR already exceeds the floor). */
+  const aR = Math.max(baseR, 34);
   const pr = 1 + 0.07 * Math.sin(t/260 + seed * 9);   // pulse
   ctx.save();
   // ground light: diamond pool (rotated square), squashed flat. At the
   // old size (r*1.5, alpha .13) the body (halfwidth 1.04r, sitting on this
   // anchor) covered all but a hairline crescent and the crescent was too
-  // faint to see — playtests never spotted it. r*1.9 at .18 puts a clear
+  // faint to see — playtests never spotted it. r*1.9 at .22 puts a clear
   // diamond of light out from under the base on every side.
-  const rx = baseR*1.9*pr, ry = rx*.45;
-  ctx.fillStyle = 'rgba(255,183,47,.18)';
+  const rx = aR*1.9*pr, ry = rx*.45;
+  ctx.fillStyle = 'rgba(255,183,47,.22)';
   ctx.beginPath();
   ctx.moveTo(x, y - ry); ctx.lineTo(x + rx, y); ctx.lineTo(x, y + ry); ctx.lineTo(x - rx, y);
   ctx.closePath(); ctx.fill();
   // rays: 8 narrow triangles, bases at .9r, tips breathing around 1.9r
-  ctx.fillStyle = 'rgba(255,183,47,.16)';
+  ctx.fillStyle = 'rgba(255,183,47,.24)';
   const rot = t/2400 + seed;
   for (let i = 0; i < 8; i++){
     const a = rot + i * Math.PI/4;
     const ca = Math.cos(a), sa = Math.sin(a);
-    const tipR = baseR * (1.9 + 0.25 * Math.sin(t/240 + seed*7 + i));
-    const bx = x + ca*baseR*.9, by = y + sa*baseR*.9, hw = baseR*.22;
+    const tipR = aR * (1.9 + 0.25 * Math.sin(t/240 + seed*7 + i));
+    const bx = x + ca*aR*.9, by = y + sa*aR*.9, hw = aR*.22;
     ctx.beginPath();
     ctx.moveTo(bx - sa*hw, by + ca*hw);
     ctx.lineTo(x + ca*tipR, y + sa*tipR);
@@ -3738,8 +3777,8 @@ function drawEliteAura(x, y, baseR, seed, t){
   ctx.fillStyle = '#ffd54a';
   for (let k = 0; k < 3; k++){
     const phase = ((t/1400) + seed*7 + k/3) % 1;
-    const mx = x + Math.sin(seed*40 + k*2.4) * baseR * 1.2;
-    const my = y - phase * baseR * 2.6;
+    const mx = x + Math.sin(seed*40 + k*2.4) * aR * 1.2;
+    const my = y - phase * aR * 2.6;
     const ms = 2 + (k % 2);
     ctx.globalAlpha = (1 - phase) * .5;
     ctx.fillRect(mx - ms/2, my - ms/2, ms, ms);
@@ -4081,6 +4120,33 @@ function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,spinning,ext=0){
 
 /* ============================================================ main loop */
 let lastT=performance.now(), posSendAcc=0;
+/* Screen-edge arrow for the GUARANTEED metal: while it lives and is
+   off-screen, a silver diamond + chevron pins to the viewport edge
+   pointing at it. The v4 metal fled on a fixed bearing outside the
+   1.78x1.00u view and was simply never found — this is the locator.
+   It hides the moment the metal is on screen or leaves the world
+   (killed / cleared by the next guarantee fire). */
+function drawMetalArrow(now){
+  if (!started) return;
+  let m = null;
+  for (const s of slimes.values()) if (s.kind==='metal' && s.guaranteed){ m = s; break; }
+  if (!m) return;
+  const u = UNIT(), vw = W/u, vh = H/u;
+  if (m.x >= cam.x && m.x <= cam.x + vw && m.y >= cam.y && m.y <= cam.y + vh) return;   // on screen: the slime itself is the marker
+  const sx = NX(m.x), sy = NY(m.y), M = 34;
+  const cx = clamp(sx, M, W - M), cy = clamp(sy, M, H - M);
+  const a = Math.atan2(sy - H/2, sx - W/2);   // bearing from screen centre toward the metal
+  const pulse = 1 + .12 * Math.sin(now/180);
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(a);
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.moveTo(16*pulse, 0); ctx.lineTo(6*pulse, -6); ctx.lineTo(6*pulse, 6); ctx.closePath(); ctx.fill();
+  ctx.restore();
+  ctx.save(); ctx.translate(cx, cy);
+  const r = 9 * pulse;
+  ctx.fillStyle = '#dfe7ec'; ctx.strokeStyle = '#5f6f79'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, -r); ctx.lineTo(r, 0); ctx.lineTo(0, r); ctx.lineTo(-r, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
 function frame(now){
   requestAnimationFrame(frame);
   // NO frame skip (Handler: the 60 FPS gate felt like a fighting-game
@@ -4139,13 +4205,17 @@ function frame(now){
       if (bossS) for (let k=0;k<4;k++){ const a = v.aim + (k-1.5)*.18; spawnBullet(bossS.x, bossS.y, Math.cos(a)*.42, Math.sin(a)*.42, now); }
       if (v.left<=0) pendingVolleys.splice(i,1);
     }
-    // metal slimes shed a silver sparkle every ~120ms while alive — the
-    // guaranteed metal must be UNMISSABLE, not just technically present
+    // metal slimes shed silver sparkles every ~90ms while alive, at
+    // pop-burst particle scale (r 3-6) — the old r2-4 sparkles at 120ms
+    // were never once noticed in playtests. The guaranteed metal sheds
+    // an extra, larger sparkle while it sits in its spawn-in freeze.
     // (client-local: every client sparkles the metals it can see)
     for (const s of slimes.values()){
       if (s.kind!=='metal' || now < (s._sparkAt||0)) continue;
-      s._sparkAt = now + 120;
-      particles.push({ x:s.x+rand(-s.r,s.r), y:s.y+rand(-s.r,s.r), vx:rand(-.02,.02), vy:rand(-.05,-.01), life:1, color:'#eef3f7', r:rand(2,4) });
+      s._sparkAt = now + 90;
+      particles.push({ x:s.x+rand(-s.r,s.r), y:s.y+rand(-s.r,s.r), vx:rand(-.02,.02), vy:rand(-.05,-.01), life:1, color:'#eef3f7', r:rand(3,6) });
+      if (s.guaranteed && now - (s.bornAt||0) < 1500)
+        particles.push({ x:s.x+rand(-s.r*1.4,s.r*1.4), y:s.y+rand(-s.r,s.r), vx:rand(-.03,.03), vy:rand(-.07,-.02), life:1, color:'#ffffff', r:rand(4,7) });
       capParticles();
     }
     // thrown spears fly and pierce (client-local projectiles)
@@ -4198,11 +4268,12 @@ function frame(now){
   popRings = popRings.filter(r=>r.life>0);
   for (const r of popRings){ r.r+=dt*.00045; r.life-=dt/380; ctx.strokeStyle=r.color; ctx.globalAlpha=Math.max(0,r.life); ctx.lineWidth=4; ctx.beginPath(); ctx.arc(NX(r.x),NY(r.y),r.r*SCALE(),0,7); ctx.stroke(); ctx.globalAlpha=1; }
   particles = particles.filter(p=>p.life>0);
-  for (const p of particles){ p.x+=p.vx*dt/60; p.y+=p.vy*dt/60; p.vy+=.0009*dt/16; p.life-=dt/480; ctx.globalAlpha=Math.max(0,p.life); ctx.fillStyle=p.color; ctx.beginPath(); ctx.arc(NX(p.x),NY(p.y),p.r,0,7); ctx.fill(); ctx.globalAlpha=1; }
+  for (const p of particles){ p.x+=p.vx*dt/60; p.y+=p.vy*dt/60; p.vy+=.0009*dt/16*(p.grav||1); p.life-=dt/480; ctx.globalAlpha=Math.max(0,p.life); ctx.fillStyle=p.color; ctx.beginPath(); ctx.arc(NX(p.x),NY(p.y),p.r,0,7); ctx.fill(); ctx.globalAlpha=1; }
   floats = floats.filter(f=>f.life>0);
   ctx.textAlign='center';
   for (const f of floats){ f.y-=dt*.00003; f.life-=dt/(f.big?1750:950); ctx.globalAlpha=Math.max(0,f.life); ctx.font = '900 '+(f.size || (f.big?26:17))+'px "Baloo 2",sans-serif'; ctx.lineWidth = (f.big || f.size>=20) ? 6 : 4; ctx.strokeStyle='rgba(60,40,10,.8)'; ctx.strokeText(f.text,NX(f.x),NY(f.y)); ctx.fillStyle=f.color; ctx.fillText(f.text,NX(f.x),NY(f.y)); ctx.globalAlpha=1; }
   drawDmgFloats(now);   // ISW glyph damage numbers, on their own timeline
+  drawMetalArrow(now);   // edge locator for the guaranteed metal, while it lives off-screen
 
   // (boss orbs draw inside the y-sorted entity pass now — see drawOrb)
 
