@@ -211,7 +211,7 @@
   /* ---------- survival pass: HP flash / boss bar / death / items / bank & shop ---------- */
   #dmgFlash {
     position:fixed; inset:0; z-index:38; pointer-events:none; opacity:0;
-    background:radial-gradient(ellipse at center, transparent 52%, rgba(229,72,77,.55) 100%);
+    background:radial-gradient(ellipse at center, rgba(229,57,53,0) 40%, rgba(229,57,53,.78) 100%);
   }
   #bossBar {
     position:fixed; z-index:24; top:12px; left:50%; transform:translateX(-50%);
@@ -584,6 +584,7 @@ const sfx = {
   spin: ()=>beep(300,.16,'sawtooth',.045,700),
   sting: ()=>{ beep(196,.32,'sawtooth',.09,-30); setTimeout(()=>beep(392,.3,'triangle',.1,140),60); setTimeout(()=>beep(587,.38,'triangle',.09,80),130); },
   combo: ()=>beep(880,.09,'square',.07,320),
+  ting: ()=>beep(1900,.07,'sine',.09,-200),   // metal slime ping
   hurt: ()=>beep(140,.18,'square',.14,-60),
   die:  ()=>{ [392,330,262,196].forEach((f,i)=>setTimeout(()=>beep(f,.22,'triangle',.12,-40), i*130)); },
 };
@@ -726,7 +727,7 @@ let slimes = new Map();        // id -> slime (local mirror; host owns truth)
 let particles = [], floats = [], popRings = [];
 let started=false, room=null, sendPos=null, sendHit=null, sendWorld=null, sendKillFx=null, sendBoss=null;
 /* ---- survival pass state ---- */
-const CONTACT_DMG = { baby:4, dart:4, mid:6, gold:2, splitter:7, big:9, tank:13, king:16, boss:20 };
+const CONTACT_DMG = { baby:4, dart:4, mid:6, gold:2, metal:5, splitter:7, big:9, tank:13, king:16, boss:20 };
 const BANK_POS = { x: WORLD/2 - .42, y: WORLD/2 - .34 };
 const SHOP_POS = { x: WORLD/2 + .42, y: WORLD/2 - .34 };
 const HOSPITAL_POS = { x: WORLD/2, y: WORLD/2 + .44 };
@@ -755,16 +756,26 @@ const SAVE_KEY = 'slimeslash-save-v1';
 
 /* ============================================================ slimes */
 const SLIME_KINDS = [
-  { kind:'baby',  hp:12,  r:.020, coins:4,  xp:8,  speed:.014, weight:45 },
-  { kind:'mid',   hp:30,  r:.030, coins:9,  xp:16, speed:.011, weight:35 },
-  { kind:'big',   hp:75,  r:.045, coins:20, xp:34, speed:.008, weight:15 },
-  { kind:'king',  hp:260, r:.10,  coins:90, xp:120,speed:.005, weight:5  },
-  { kind:'dart',  hp:8,   r:.016, coins:5,  xp:10, speed:.030, weight:18 },
-  { kind:'tank',  hp:190, r:.062, coins:34, xp:60, speed:.005, weight:8  },
-  { kind:'splitter', hp:46, r:.040, coins:14, xp:24, speed:.010, weight:12 },
-  { kind:'gold',  hp:10,  r:.022, coins:60, xp:30, speed:.026, weight:3  },
-  { kind:'boss',  hp:1500,r:.14,  coins:800,xp:600,speed:.007, weight:0  },   // SLIME EMPEROR — timed host spawn only, never random
+  { kind:'baby',  hp:12,  r:.020, coins:4,  xp:8,  speed:.014, weight:45, hopCycle:640,  hopDist:.030 },
+  { kind:'mid',   hp:30,  r:.030, coins:9,  xp:16, speed:.011, weight:35, hopCycle:720,  hopDist:.034 },
+  { kind:'big',   hp:75,  r:.045, coins:20, xp:34, speed:.008, weight:15, hopCycle:920,  hopDist:.036 },
+  { kind:'king',  hp:260, r:.10,  coins:90, xp:120,speed:.005, weight:5,  hopCycle:1150, hopDist:.040 },
+  { kind:'dart',  hp:8,   r:.016, coins:5,  xp:10, speed:.030, weight:18, hopCycle:400,  hopDist:.034 },
+  { kind:'tank',  hp:190, r:.062, coins:34, xp:60, speed:.005, weight:8,  hopCycle:1050, hopDist:.030 },
+  { kind:'splitter', hp:46, r:.040, coins:14, xp:24, speed:.010, weight:12, hopCycle:740, hopDist:.034 },
+  { kind:'gold',  hp:10,  r:.022, coins:60, xp:30, speed:.026, weight:3,  hopCycle:540,  hopDist:.040 },
+  { kind:'metal', hp:14,  r:.024, coins:150,xp:120,speed:.002, weight:2,  hopCycle:430,  hopDist:.052 },   // METAL SLIME — exactly 1 dmg per hit, flees, rich
+  { kind:'boss',  hp:1500,r:.14,  coins:800,xp:600,speed:.007, weight:0,  hopCycle:1350, hopDist:.045 },   // SLIME EMPEROR — timed host spawn only, never random
 ];
+/* Hop phase is a pure function of (slime, now) so host and every client
+   render the same crouch/air/land timing with NO extra sync. The seed is
+   derived from the slime's id, which IS synced — random local seeds would
+   desync the phase. Windows: crouch p<.16 · air .16–.56 · land .56–.70 · rest >.70 */
+function seedForId(id){ let h=0; const str=String(id); for (let i=0;i<str.length;i++) h=(h*31 + str.charCodeAt(i))|0; return (Math.abs(h)%1000)/100; }
+function hopPhase(s, now){
+  const k = SLIME_KINDS.find(m=>m.kind===s.kind) || SLIME_KINDS[0];
+  return ((now + (s.seed||0)*9973) % k.hopCycle) / k.hopCycle;
+}
 const SLIME_COLORS = ['#7ee787','#6fd3ff','#ffb3d9','#ffe066','#c39bff','#8affd1','#ffab7a'];
 /* ---- zones: rings around the world centre — richer & deadlier outward ---- */
 const ZONES = [
@@ -781,6 +792,7 @@ function pickKind(zone=0){
   let tot = 0;
   const ws = SLIME_KINDS.map(k=>{
     let w = k.weight;
+    if (k.kind==='metal') w = zone===2 ? 3 : 2;   // rare everywhere, a touch less rare in the Wilds
     if (zone===2){ if (k.kind==='king' || k.kind==='tank') w *= 2; if (k.kind==='baby') w *= .5; }
     tot += w; return w;
   });
@@ -793,17 +805,24 @@ function spawnSlime(opts={}){
   // position FIRST: the zone (and therefore kind odds + scaling) depends on it
   let sx, sy;
   if (opts.x !== undefined){ sx = opts.x; sy = opts.y; }
-  else if (opts.nearPlayer !== false && Math.random() < .6){
-    // ~60% of spawns land near a player (within ~0.9 units) so the action
-    // finds the players instead of the field emptying out; rest spawn anywhere.
-    const spots = [{x:me.x, y:me.y}];
-    for (const p of peers.values()) spots.push({ x:(p.tx!==undefined?p.tx:p.x), y:(p.ty!==undefined?p.ty:p.y) });
-    const c = spots[Math.floor(Math.random()*spots.length)];
-    const a = rand(0,Math.PI*2), d = rand(.15,.9);
-    sx = clamp(c.x + Math.cos(a)*d, .06, WORLD-.06);
-    sy = clamp(c.y + Math.sin(a)*d, .1, WORLD-.06);
-  } else {
-    sx = rand(.06,WORLD-.06); sy = rand(.1,WORLD-.06);
+  else {
+    // TOWN SAFETY: never spawn on top of a building — re-roll a few times
+    const nearBuilding = (x,y) => [BANK_POS,SHOP_POS,HOSPITAL_POS].some(bp => dist2(x,y,bp.x,bp.y) < .38*.38);
+    for (let tries=0; tries<6; tries++){
+      if (opts.nearPlayer !== false && Math.random() < .6){
+        // ~60% of spawns land near a player (within ~0.9 units) so the action
+        // finds the players instead of the field emptying out; rest spawn anywhere.
+        const spots = [{x:me.x, y:me.y}];
+        for (const p of peers.values()) spots.push({ x:(p.tx!==undefined?p.tx:p.x), y:(p.ty!==undefined?p.ty:p.y) });
+        const c = spots[Math.floor(Math.random()*spots.length)];
+        const a = rand(0,Math.PI*2), d = rand(.15,.9);
+        sx = clamp(c.x + Math.cos(a)*d, .06, WORLD-.06);
+        sy = clamp(c.y + Math.sin(a)*d, .1, WORLD-.06);
+      } else {
+        sx = rand(.06,WORLD-.06); sy = rand(.1,WORLD-.06);
+      }
+      if (!nearBuilding(sx,sy) || tries===5) break;
+    }
   }
   const zi = zoneOf(sx, sy), zone = ZONES[zi];
   const k = opts.kind ? (SLIME_KINDS.find(m=>m.kind===opts.kind) || SLIME_KINDS[0]) : pickKind(zi);
@@ -811,10 +830,10 @@ function spawnSlime(opts={}){
   const hp = k.kind==='boss' ? k.hp : Math.round(k.hp * zone.hp);   // the Emperor keeps his true 1500 HP — no zone scaling
   const s = { id, kind:k.kind, hp, max:hp, r:k.r,
     x:sx, y:sy, vx:0, vy:0, dir:rand(0,Math.PI*2), turnAt:performance.now()+rand(800,2600),
-    color: k.kind==='gold' ? '#ffe066' : SLIME_COLORS[Math.floor(Math.random()*SLIME_COLORS.length)],
-    seed:Math.random()*10, squish:0, flash:0, mul: k.kind==='boss' ? 1.5 : zone.mul, elite:false };
-  // ELITES: rare, tougher, much richer (never kings, never the Emperor)
-  if (k.kind !== 'king' && k.kind !== 'boss' && Math.random() < .08){
+    color: k.kind==='gold' ? '#ffe066' : k.kind==='metal' ? '#cfd8dc' : SLIME_COLORS[Math.floor(Math.random()*SLIME_COLORS.length)],
+    seed:seedForId(id), squish:0, flash:0, mul: k.kind==='boss' ? 1.5 : zone.mul, elite:false };
+  // ELITES: rare, tougher, much richer (never kings, the Emperor, or metal slimes)
+  if (k.kind !== 'king' && k.kind !== 'boss' && k.kind !== 'metal' && Math.random() < .08){
     s.elite = true;
     s.hp = s.max = Math.round(s.hp * 3);
     s.r = k.r * 1.35;
@@ -827,10 +846,10 @@ function hostTick(now,dt){
   for (const s of slimes.values()){
     if (now>s.turnAt){ s.dir=rand(0,Math.PI*2); s.turnAt=now+rand(800,2600); }
     const k = SLIME_KINDS.find(k=>k.kind===s.kind);
-    let sp = k.speed*dt*60/1000;
+    let sp = k.speed*dt*60/1000, mult = 1;   // mult: steering speed multiplier, applied to hop distance
     if (s.kind==='dart') s.dir += Math.sin(now/90 + s.seed*9)*.095;   // zigzag — punchy, reads as a darter
-    if (s.kind==='gold'){
-      // gold slimes FLEE the nearest player — catch one if you can
+    if (s.kind==='gold' || s.kind==='metal'){
+      // gold & metal slimes FLEE the nearest player — catch one if you can
       let bx=me.x, by=me.y, bd=dist2(s.x,s.y,me.x,me.y);
       for (const p of peers.values()){
         const px=(p.tx!==undefined?p.tx:p.x), py=(p.ty!==undefined?p.ty:p.y);
@@ -848,7 +867,7 @@ function hostTick(now,dt){
         if (d<bd){ bd=d; bx=px; by=py; }
       }
       s.dir = Math.atan2(by-s.y, bx-s.x);
-      sp *= 1.6;
+      mult *= 1.6;
     }
     if (s.kind==='boss'){
       // the Emperor KITES like a bullet-hell boss: holds a firing band
@@ -861,11 +880,22 @@ function hostTick(now,dt){
         if (d<bd){ bd=d; bx=px; by=py; }
       }
       const d = Math.sqrt(bd), away = Math.atan2(s.y-by, s.x-bx);
-      if (d < .62){ s.dir = away; sp *= 2.1; }
-      else if (d > .85){ s.dir = away + Math.PI; sp *= 1.8; }
-      else { s.dir = away + Math.PI/2 * (s.seed > .5 ? 1 : -1); sp *= .8; }
+      if (d < .62){ s.dir = away; mult *= 2.1; }
+      else if (d > .85){ s.dir = away + Math.PI; mult *= 1.8; }
+      else { s.dir = away + Math.PI/2 * (s.seed > .5 ? 1 : -1); mult *= .8; }
     }
-    s.x += Math.cos(s.dir)*sp; s.y += Math.sin(s.dir)*sp*.7;
+    // TOWN SAFETY: kings and the Emperor never camp the heart of town —
+    // inside 0.40u of the centre they are steered straight back out.
+    if ((s.kind==='king' || s.kind==='boss') && Math.hypot(s.x-WORLD/2, s.y-WORLD/2) < .40)
+      s.dir = Math.atan2(s.y-WORLD/2, s.x-WORLD/2);
+    /* HOP LOCOMOTION: slimes never glide. Steering above only chooses s.dir;
+       translation happens ONLY inside the hop cycle's air window, at
+       hopDist per hop (steering multiplier applied). Grounded = planted. */
+    const hopP = hopPhase(s, now);
+    if (hopP >= .16 && hopP < .56){
+      const adv = k.hopDist * mult / (.40 * k.hopCycle / 1000) * (dt/1000);
+      s.x += Math.cos(s.dir)*adv; s.y += Math.sin(s.dir)*adv*.7;
+    }
     if (s.x<s.r+ .01){s.x=s.r+.01; s.dir=Math.PI-s.dir;} if (s.x>WORLD-s.r-.01){s.x=WORLD-s.r-.01; s.dir=Math.PI-s.dir;}
     if (s.y<s.r+.02){s.y=s.r+.02; s.dir=-s.dir;} if (s.y>WORLD-s.r-.03){s.y=WORLD-s.r-.03; s.dir=-s.dir;}
     s.squish = Math.max(0, s.squish - dt/160); s.flash = Math.max(0, s.flash - dt/120);
@@ -927,7 +957,7 @@ function applyWorld(p){
       const kk = SLIME_KINDS.find(m=>m.kind===old.kind); if (kk) old.r = kk.r * (elite?1.35:1);
     } else {
       const k = SLIME_KINDS.find(k=>k.kind===kind) || SLIME_KINDS[0];
-      slimes.set(id,{id,kind,hp,max,r:k.r*(elite?1.35:1),x,y,tx:x,ty:y,dir,color,seed:Math.random()*10,squish:1,flash:0,mul,elite});
+      slimes.set(id,{id,kind,hp,max,r:k.r*(elite?1.35:1),x,y,tx:x,ty:y,dir,color,seed:seedForId(id),squish:1,flash:0,mul,elite});
     }
   }
   for (const id of [...slimes.keys()]) if (!seen.has(id) && !isHost) slimes.delete(id);
@@ -1051,7 +1081,15 @@ function localHitCheck(now){
     }
   }
 }
+let lastTingAt = 0;
 function doHit(s, dmg, opts={}){
+  if (s.kind==='metal'){
+    /* METAL SLIME: exactly 1 damage from EVERY hit instance — swings, crits,
+       splash, actives, skills, bombs, waves, spears all just chip it. */
+    dmg = 1; opts = { ...opts, crit:false };
+    const nowT = performance.now();
+    if (nowT - lastTingAt > 60){ lastTingAt = nowT; sfx.ting(); }
+  }
   s.squish=1; s.flash=1; sfx.hit();
   spawnHitFx(s.x,s.y,s.color,4);
   // bigger hits print BIGGER: 19px at 20+ dmg, 23px at 40+, crits get +4px
@@ -1081,10 +1119,11 @@ function hostApplyHit(slimeId, dmg, byId){
   if (now-last < 60) return;                       // host anti-spam
   hitClaimsAt.set(key, now);
   dmg = clamp(Math.round(dmg)||1, 1, 120);         // host caps claimed damage
+  if (s.kind==='metal') dmg = 1;                   // METAL SLIME: host enforces the 1-damage rule on every claim too
   s.hp -= dmg; s.squish=1; s.flash=1;
   // splash (warhammer)
   const w = byId===me.id ? myWeapon() : WEAPONS.find(w=>w.id===(peers.get(byId)?.weaponId)) || WEAPONS[1];
-  if (w.splash){ for (const o of slimes.values()) if (o!==s && dist2(o.x,o.y,s.x,s.y) < w.splash*w.splash) o.hp -= Math.ceil(dmg*.5); }
+  if (w.splash){ for (const o of slimes.values()) if (o!==s && dist2(o.x,o.y,s.x,s.y) < w.splash*w.splash) o.hp -= o.kind==='metal' ? 1 : Math.ceil(dmg*.5); }
   if (s.hp<=0) hostKill(s, byId);
   else broadcastWorld();
 }
@@ -1109,6 +1148,7 @@ function onKillFx(f){
   spawnPopFx(f.x, f.y, f.c, f.kind==='boss' ? 60 : f.kind==='king' ? 46 : f.elite ? 34 : 22, f.r || .01);
   sfx.pop();
   if (f.elite) addFloat(f.x, f.y-.09, 'ELITE DOWN!', '#ffd94d', {big:true});
+  if (f.kind==='metal') addFloat(f.x, f.y-.09, 'METAL SLIME DOWN!', '#eef3f7', {big:true});
   if (f.kind==='king') toast('THE SLIME KING HAS FALLEN!');
   if (f.kind==='boss') toast('THE EMPEROR HAS FALLEN!');
   if (f.by===me.id){
@@ -1165,12 +1205,21 @@ function gainXp(n){
    and bullet damage are computed in frame() and funnel through here. */
 function damagePlayer(amount, now){
   if (!started || paused) return;
+  /* TOWN SAFETY — sanctuaries: no damage while a building panel, the Sphere
+     Grid or the skill tree is open, and none within 0.30u of a building.
+     (Slimes camping the spawn/bank/shop ovals caused verified death-loops.) */
+  if (!$('#bankPanel').classList.contains('hidden') || !$('#shopPanel').classList.contains('hidden') ||
+      !$('#hospitalPanel').classList.contains('hidden') || !$('#forge').classList.contains('hidden') ||
+      !$('#treePanel').classList.contains('hidden')) return;
+  for (const bp of [BANK_POS, SHOP_POS, HOSPITAL_POS])
+    if (dist2(me.x, me.y, bp.x, bp.y) < .30*.30) return;
   if (now < me.shieldUntil) return;        // Aegis Charm blocks ALL damage
   if (now <= me.invulnUntil) return;
   me.hp -= amount;
   me.invulnUntil = now + 800;
   me.lastDmgAt = now;
   dmgFlashAt = now;
+  $('#dmgFlash').style.opacity = '0.95';   // paint the flash NOW — don't wait for the decay pass
   sfx.hurt();
   if (me.hp <= 0) death();
   refreshHUD();
@@ -1299,7 +1348,7 @@ function updateInteract(){
   let nd = db, nb = 'bank';   // nearest building wins the prompt
   if (ds < nd){ nd = ds; nb = 'shop'; }
   if (dh < nd){ nd = dh; nb = 'hospital'; }
-  nearBuilding = nd < .17 ? nb : null;
+  nearBuilding = nd < .24 ? nb : null;
   const panelOpen = !$('#bankPanel').classList.contains('hidden') || !$('#shopPanel').classList.contains('hidden') || !$('#hospitalPanel').classList.contains('hidden');
   if (nearBuilding && !panelOpen){
     pr.textContent = nearBuilding==='bank' ? 'OPEN BANK' : nearBuilding==='shop' ? 'OPEN SHOP' : 'OPEN HOSPITAL';
@@ -1316,7 +1365,8 @@ function useItem(id){
   if (!started || paused) return;
   const now = performance.now();
   if (id==='potion'){
-    if (me.items.potion<=0 || me.hp>=me.maxHp) return;
+    if (me.items.potion<=0) return;
+    if (me.hp>=me.maxHp){ toast('HP FULL'); beep(160,.09,'square',.07); return; }   // never waste a potion at full HP
     me.items.potion--;
     me.hp = Math.min(me.maxHp, me.hp + 60);
     for (let i=0;i<10;i++) particles.push({ x:me.x, y:me.y, vx:rand(-.06,.06), vy:rand(-.14,-.03), life:1, color:'#57d93d', r:rand(2,5) });
@@ -1415,7 +1465,9 @@ let lastClient=null, lastMoveT=0;
 // below keep using RAW client deltas, which a constant offset never changes.
 const TOUCH_LIFT = 48;
 const ptrY = e => e.clientY - (e.pointerType==='touch' ? TOUCH_LIFT : 0);
+let uiPointer = false;   // a press that started on UI (not the canvas) must never move the sword
 addEventListener('pointermove', e=>{
+  if (uiPointer) return;
   const x=clamp(cam.x + e.clientX/UNIT(), .02, WORLD-.02), y=clamp(cam.y + ptrY(e)/UNIT(), .02, WORLD-.02);
   const now=performance.now();
   // Direction & speed from RAW CLIENT deltas: immune to camera drift, and
@@ -1445,8 +1497,9 @@ addEventListener('pointermove', e=>{
 });
 let downInfo = null;   // canvas pointerdown record for the tap-vs-drag spin gate
 addEventListener('pointerdown', e=>{
+  uiPointer = e.target !== cv;   // UI presses are for buttons/panels — flag them so pointermove ignores the drag
   if (!started) return;
-  if (e.target.closest('#hud') && !e.target.closest('#game')) { /* UI taps handled by buttons */ }
+  if (e.target.closest && e.target.closest('#hud') && !e.target.closest('#game')) { /* UI taps handled by buttons */ }
   if (e.target===cv){
     // snap the sword to the (touch-lifted) tap point so a spin centres there
     me.px=me.x; me.py=me.y;
@@ -1459,11 +1512,12 @@ addEventListener('pointerdown', e=>{
   }
 });
 addEventListener('pointerup', e=>{
+  if (uiPointer){ uiPointer = false; lastClient = null; return; }   // release of a UI press: no spin, no stale delta
   if (!downInfo) return;
   const info = downInfo; downInfo = null;
   if (performance.now() - info.t < 260 && info.travel < 14) trySpin();
 });
-addEventListener('pointercancel', ()=>{ downInfo = null; });
+addEventListener('pointercancel', ()=>{ downInfo = null; uiPointer = false; });
 addEventListener('touchmove', e=>{ e.preventDefault(); }, {passive:false});
 addEventListener('keydown', e=>{
   if (!started) return;
@@ -1878,8 +1932,8 @@ function drawMinimap(){
   g.fillStyle = '#ffffff'; g.fillRect(HOSPITAL_POS.x*S2-2.5, HOSPITAL_POS.y*S2-2.5, 5, 5);
   g.fillStyle = '#e5484d'; g.beginPath(); g.arc(HOSPITAL_POS.x*S2, HOSPITAL_POS.y*S2, 1.4, 0, 7); g.fill();
   for (const s of slimes.values()){
-    g.fillStyle = (s.kind==='king' || s.kind==='boss') ? '#ffd94d' : 'rgba(30,90,20,.55)';
-    g.beginPath(); g.arc(s.x*S2, s.y*S2, s.kind==='boss'?6 : s.kind==='king'?4.5:2, 0, 7); g.fill();
+    g.fillStyle = (s.kind==='king' || s.kind==='boss') ? '#ffd94d' : s.kind==='metal' ? '#eef3f7' : 'rgba(30,90,20,.55)';
+    g.beginPath(); g.arc(s.x*S2, s.y*S2, s.kind==='boss'?6 : s.kind==='king'?4.5 : s.kind==='metal'?3:2, 0, 7); g.fill();
   }
   for (const p of peers.values()){ g.fillStyle = '#4dabff'; g.beginPath(); g.arc(p.x*S2, p.y*S2, 3, 0, 7); g.fill(); }
   g.fillStyle = '#fff'; g.strokeStyle = '#5b3a1e'; g.lineWidth = 2;
@@ -2101,7 +2155,10 @@ $('#restartBtn').onclick = ()=>{
   if (!resetArmed){ resetArmed = true; b.textContent = 'TAP AGAIN TO ERASE EVERYTHING'; return; }
   resetArmed = false; b.textContent = 'RESET SAVE'; resetRun();
 };
-$('#interactPrompt').onclick = ()=>{ if (nearBuilding==='bank') openBank(); else if (nearBuilding==='shop') openShop(); else if (nearBuilding==='hospital') openHospital(); };
+$('#interactPrompt').addEventListener('pointerdown', e=>{
+  e.stopPropagation();   // fire on pointerDOWN so sword movement can't steal the click
+  if (nearBuilding==='bank') openBank(); else if (nearBuilding==='shop') openShop(); else if (nearBuilding==='hospital') openHospital();
+});
 $('#depBtn').onclick = ()=>{ me.banked += me.coins; me.coins = 0; sfx.buy(); updateBankPanel(); refreshHUD(); };
 $('#wdBtn').onclick = ()=>{ me.coins += me.banked; me.banked = 0; sfx.coin(); updateBankPanel(); refreshHUD(); };
 $('#bankCloseBtn').onclick = ()=>$('#bankPanel').classList.add('hidden');
@@ -2120,20 +2177,49 @@ $('#itemShield').onclick = ()=>useItem('shield');
 
 /* ============================================================ pixel slimes (generated pixel-art sprites) */
 const SLIME_IMGS = {};
-for (const n of ['pink','green','blue','yellow','purple','mint','orange','king']){
+for (const n of ['pink','green','blue','yellow','purple','mint','orange','king','metal']){
   const im=new Image(); im.src='assets/img/slime-'+n+'.png'; SLIME_IMGS[n]=im;
 }
 const COLOR2IMG = {
   '#7ee787':'green', '#8affd1':'mint', '#ffe066':'yellow', '#6fd3ff':'blue',
   '#ffb3d9':'pink', '#ffab7a':'orange', '#c39bff':'purple',
 };
+/* ---- pixel world art: grass tile, decor and building sprites ---- */
+const WORLD_IMGS = {};
+for (const n of ['tile-grass','decor-tree','decor-rock','decor-pond','bld-bank','bld-shop','bld-hospital']){
+  const im=new Image(); im.src='assets/img/'+n+'.png'; WORLD_IMGS[n]=im;
+}
+const imgOk = im => !!(im && im.complete && im.naturalWidth);
 function drawVideoSlime(s,t,baseR){
-  const img = (s.kind==='king' || s.kind==='boss') ? SLIME_IMGS.king : SLIME_IMGS[COLOR2IMG[s.color]||'pink'];
-  if (!img || !img.complete || !img.naturalWidth) return false;
-  const wob = Math.sin(t/280 + s.seed*7)*0.055;
-  const sq = 1 + wob - s.squish*.30;
-  const dw = baseR*2*(2-sq)*1.04, dh = dw*0.88*sq;
-  ctx.save(); ctx.translate(NX(s.x), NY(s.y) + baseR*.92);
+  const img = (s.kind==='king' || s.kind==='boss') ? SLIME_IMGS.king : s.kind==='metal' ? SLIME_IMGS.metal : SLIME_IMGS[COLOR2IMG[s.color]||'pink'];
+  if (!imgOk(img)) return false;
+  /* HOP LIFE — squash & stretch driven by the shared hop phase (same phase
+     the host moves by, so the crouch/air/land you SEE is the hop that
+     MOVES it). Lift is visual only: hit tests always use ground x,y.
+     Breathing jiggle and hit squash multiply in, all bottom-anchored. */
+  const p = hopPhase(s, t);
+  let psx = 1, psy = 1;
+  if (p < .16){ psx = 1.16; psy = .80; }                                          // crouch
+  else if (p < .36){ psx = .92; psy = 1.13; }                                     // air, first half: stretched tall
+  else if (p < .56){ const e = (p-.36)/.20; psx = .92 + .08*e; psy = 1.13 - .13*e; }   // air, second half: ease back
+  else if (p < .70){ const e = (p-.56)/.14; psx = 1.25 - .25*e; psy = .72 + .28*e; }   // land squash recovering
+  const liftW = (p >= .16 && p < .56) ? Math.sin((p-.16)/.40 * Math.PI) * s.r * 1.15 : 0;
+  const liftN = liftW / (s.r * 1.15);   // 0..1 normalised hop height
+  const bScaleY = 1 + Math.sin(t/(270 + s.r*1600) + s.seed*7) * .05;   // breathing (period grows with radius)
+  const bScaleX = 1 - (bScaleY - 1) * .8;
+  const sqX = psx * bScaleX * (1 + s.squish * .28);
+  const sqY = psy * bScaleY * (1 - s.squish * .35);
+  const dw = baseR*2*1.04, dh = dw*0.88;   // rest footprint
+  const gx = NX(s.x), gy = NY(s.y) + baseR*.92;
+  // soft ground shadow: shrinks and fades as the slime leaves the ground
+  ctx.save();
+  ctx.globalAlpha = .16 * (1 - liftN*.35);
+  ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.ellipse(gx, gy - baseR*.06, dw*.40*(1 - liftN*.22), baseR*.20, 0, 0, 7); ctx.fill();
+  ctx.restore();
+  ctx.save();
+  ctx.translate(gx, gy - liftW * UNIT());   // bottom anchor, raised by the hop arc
+  ctx.scale(sqX, sqY);
   try{ ctx.filter = s.flash>0 ? 'brightness(1.9)' : 'none'; }catch(e){}
   ctx.drawImage(img, -dw/2, -dh, dw, dh);
   ctx.restore();
@@ -2170,16 +2256,35 @@ function drawDecor(){
     if (d.x<cam.x-.4 || d.x>cam.x+vw+.4 || d.y<cam.y-.4 || d.y>cam.y+vh+.4) continue;   // view-culled
     const x = NX(d.x), y = NY(d.y);
     if (d.t === 'pond'){
+      const img = WORLD_IMGS['decor-pond'];
+      if (imgOk(img)){   // pixel pond sprite, centred on the spot
+        const w = d.r*2.2*u, h = w * img.naturalHeight/img.naturalWidth;
+        ctx.drawImage(img, x-w/2, y-h/2, w, h);
+        continue;
+      }
       const r = d.r*u;
       ctx.fillStyle = '#4da3e0'; ctx.beginPath(); ctx.ellipse(x, y, r, r*.62, 0, 0, 7); ctx.fill();
       ctx.fillStyle = '#7cc0f2'; ctx.beginPath(); ctx.ellipse(x-r*.12, y-r*.08, r*.68, r*.4, 0, 0, 7); ctx.fill();
       ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.beginPath(); ctx.ellipse(x-r*.3, y-r*.16, r*.2, r*.07, -.4, 0, 7); ctx.fill();
     } else if (d.t === 'rock'){
+      const img = WORLD_IMGS['decor-rock'];
+      if (imgOk(img)){   // pixel boulder, centred on the spot
+        const w = .17*u*d.s, h = w * img.naturalHeight/img.naturalWidth;
+        ctx.drawImage(img, x-w/2, y-h/2, w, h);
+        continue;
+      }
       const r = .035*u*d.s;
       ctx.fillStyle = '#9aa0a3'; ctx.beginPath(); ctx.ellipse(x, y, r, r*.75, 0, 0, 7); ctx.fill();
       ctx.fillStyle = '#b9bfc2'; ctx.beginPath(); ctx.ellipse(x-r*.25, y-r*.22, r*.55, r*.4, 0, 0, 7); ctx.fill();
       ctx.fillStyle = '#7e858a'; ctx.beginPath(); ctx.ellipse(x+r*.4, y+r*.18, r*.4, r*.3, 0, 0, 7); ctx.fill();
-    } else {   // tree: brown trunk + layered green canopy
+    } else {   // tree
+      const img = WORLD_IMGS['decor-tree'];
+      if (imgOk(img)){   // pixel tree sprite, bottom-anchored on the spot
+        const w = .36*u*d.s, h = w * img.naturalHeight/img.naturalWidth;
+        ctx.drawImage(img, x-w/2, y + .03*u - h, w, h);
+        continue;
+      }
+      // vector fallback: brown trunk + layered green canopy
       const s = d.s, tw = .016*u*s, th = .05*u*s, cr = .085*u*s;
       ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.beginPath(); ctx.ellipse(x, y+th*.4, cr*.9, cr*.28, 0, 0, 7); ctx.fill();
       ctx.fillStyle = '#7a4d16'; ctx.fillRect(x-tw/2, y-th, tw, th);
@@ -2192,16 +2297,30 @@ function drawDecor(){
   }
 }
 function drawField(t){
-  const g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#8fd06e'); g.addColorStop(1,'#69b84e');
-  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
   const u=UNIT(), vw=W/u, vh=H/u;
-  // mowed stripes, one world unit wide
-  ctx.fillStyle='rgba(255,255,255,.05)';
-  for (let wx=Math.floor(cam.x); wx<cam.x+vw+1; wx++) if (((wx%2)+2)%2===0) ctx.fillRect(NX(wx),0,u,H);
-  // flowers (only those in view)
+  // ground: pixel grass tile repeated over the viewport on a 0.55u grid,
+  // aligned to world coordinates so it scrolls with the camera
+  const tile = WORLD_IMGS['tile-grass'];
+  if (imgOk(tile)){
+    const ts = .55*u;
+    const tx0 = Math.floor(cam.x/.55), ty0 = Math.floor(cam.y/.55);
+    const tx1 = Math.floor((cam.x+vw)/.55), ty1 = Math.floor((cam.y+vh)/.55);
+    for (let tx=tx0; tx<=tx1; tx++)
+      for (let ty=ty0; ty<=ty1; ty++)
+        ctx.drawImage(tile, NX(tx*.55), NY(ty*.55), ts+1, ts+1);   // +1px kills seams
+  } else {
+    const g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#8fd06e'); g.addColorStop(1,'#69b84e');
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    // mowed stripes, one world unit wide
+    ctx.fillStyle='rgba(255,255,255,.05)';
+    for (let wx=Math.floor(cam.x); wx<cam.x+vw+1; wx++) if (((wx%2)+2)%2===0) ctx.fillRect(NX(wx),0,u,H);
+  }
+  // flowers (only those in view): tiny pixel squares, not circles
   for (const f of FLOWERS){
     if (f.x<cam.x-.1 || f.x>cam.x+vw+.1 || f.y<cam.y-.1 || f.y>cam.y+vh+.1) continue;
-    ctx.fillStyle=f.c; ctx.beginPath(); ctx.arc(NX(f.x), NY(f.y), f.s, 0, 7); ctx.fill();
+    const fs = f.s*1.5, fx = NX(f.x), fy = NY(f.y);
+    ctx.fillStyle=f.c; ctx.fillRect(fx-fs/2, fy-fs/2, fs, fs);
+    ctx.fillStyle='rgba(176,120,20,.9)'; ctx.fillRect(fx-.8, fy-.8, 1.6, 1.6);   // pollen centre pixel
   }
   // zone rings: the WILDS side darkens out past r=2.1, the MEADOW glows warm inside r=1.1
   ctx.fillStyle='rgba(40,80,40,.10)';
@@ -2210,11 +2329,25 @@ function drawField(t){
   ctx.beginPath(); ctx.arc(NX(WORLD/2), NY(WORLD/2), 1.1*u, 0, 7); ctx.fill();
   // trees / rocks / ponds (under slimes)
   drawDecor();
-  // world border fence
-  ctx.strokeStyle='#7a4d16'; ctx.lineWidth=12;
-  ctx.strokeRect(NX(0), NY(0), WORLD*u, WORLD*u);
-  ctx.strokeStyle='#a06a35'; ctx.lineWidth=5;
-  ctx.strokeRect(NX(0), NY(0), WORLD*u, WORLD*u);
+  // world border fence: chunky pixel posts + twin rails
+  {
+    const x0=NX(0), y0=NY(0), x1=NX(WORLD), y1=NY(WORLD), rail=6;
+    ctx.fillStyle='#a06a35';
+    ctx.fillRect(x0-rail/2, y0-rail/2, x1-x0+rail, rail);
+    ctx.fillRect(x0-rail/2, y1-rail/2, x1-x0+rail, rail);
+    ctx.fillRect(x0-rail/2, y0-rail/2, rail, y1-y0+rail);
+    ctx.fillRect(x1-rail/2, y0-rail/2, rail, y1-y0+rail);
+    ctx.fillStyle='#7a4d16';
+    const ps=Math.max(6, .03*u);
+    for (let wx=0; wx<=WORLD+.001; wx+=.09){
+      ctx.fillRect(NX(wx)-ps/2, y0-ps/2, ps, ps);
+      ctx.fillRect(NX(wx)-ps/2, y1-ps/2, ps, ps);
+    }
+    for (let wy=.09; wy<WORLD; wy+=.09){
+      ctx.fillRect(x0-ps/2, NY(wy)-ps/2, ps, ps);
+      ctx.fillRect(x1-ps/2, NY(wy)-ps/2, ps, ps);
+    }
+  }
 }
 /* Bank & shop buildings in the Meadow near spawn — chunky canvas landmarks
    (~.3 units wide) with ground pads, drawn after decor, before slimes. */
@@ -2235,8 +2368,17 @@ function drawBuildings(){
     ctx.fillText(text, x, y + 1);
     ctx.textBaseline = 'alphabetic';
   };
+  // pixel building sprite on its ground pad + a cream name board above it
+  const drawBld = (pos, img, name, sbg, sfg)=>{
+    pad(pos.x, pos.y);
+    const w = .36*u, h = w * img.naturalHeight/img.naturalWidth;
+    const x = NX(pos.x), yBot = NY(pos.y) + .10*u;
+    ctx.drawImage(img, x-w/2, yBot-h, w, h);
+    sign(x, yBot - h - .040*u, name, sbg, sfg);
+  };
   // ---- BANK: cream walls, brown roof, gold coin sign ----
-  {
+  if (imgOk(WORLD_IMGS['bld-bank'])) drawBld(BANK_POS, WORLD_IMGS['bld-bank'], 'BANK', '#fff8e7', '#5b3a1e');
+  else {
     const x = NX(BANK_POS.x), y = NY(BANK_POS.y), w = .30*u, h = .19*u;
     pad(BANK_POS.x, BANK_POS.y);
     ctx.fillStyle = '#fff3d0'; roundRect(x-w/2, y-h/2, w, h, 6); ctx.fill();
@@ -2258,7 +2400,8 @@ function drawBuildings(){
     sign(x, y-h/2-.052*u, 'BANK', '#5b3a1e', '#ffd94d');
   }
   // ---- SHOP: wooden stall, red/white striped awning ----
-  {
+  if (imgOk(WORLD_IMGS['bld-shop'])) drawBld(SHOP_POS, WORLD_IMGS['bld-shop'], 'SHOP', '#fff8e7', '#5b3a1e');
+  else {
     const x = NX(SHOP_POS.x), y = NY(SHOP_POS.y), w = .30*u;
     pad(SHOP_POS.x, SHOP_POS.y);
     // posts
@@ -2286,7 +2429,8 @@ function drawBuildings(){
     sign(x, y-.155*u, 'SHOP', '#c0392b', '#ffffff');
   }
   // ---- HOSPITAL: white walls, red roof, big red cross ----
-  {
+  if (imgOk(WORLD_IMGS['bld-hospital'])) drawBld(HOSPITAL_POS, WORLD_IMGS['bld-hospital'], 'HOSPITAL', '#fff8e7', '#5b3a1e');
+  else {
     const x = NX(HOSPITAL_POS.x), y = NY(HOSPITAL_POS.y), w = .30*u, h = .19*u;
     pad(HOSPITAL_POS.x, HOSPITAL_POS.y);
     ctx.fillStyle = '#f7fafc'; roundRect(x-w/2, y-h/2, w, h, 6); ctx.fill();
@@ -2544,10 +2688,11 @@ function frame(now){
     if (me.hp < me.maxHp && now - me.lastDmgAt > 6000) me.hp = Math.min(me.maxHp, me.hp + 1.6*dt/1000);
     if (me.mp < me.maxMp) me.mp = Math.min(me.maxMp, me.mp + 7*dt/1000);   // MP regen +7/s
   }
-  // red damage vignette decay
+  // red damage vignette: hold full strength ~150ms, then fade over ~400ms
   if (dmgFlashAt){
-    const a = clamp(1-(now-dmgFlashAt)/420, 0, 1);
-    $('#dmgFlash').style.opacity = (a*.85).toFixed(3);
+    const el = now - dmgFlashAt;
+    const a = el < 150 ? 1 : clamp(1-(el-150)/400, 0, 1);
+    $('#dmgFlash').style.opacity = (a*.95).toFixed(3);
     if (a<=0){ dmgFlashAt = 0; $('#dmgFlash').style.opacity = 0; }
   }
 
@@ -2560,6 +2705,7 @@ function frame(now){
     cam.x += (tx - cam.x) * k; cam.y += (ty - cam.y) * k;
   }
 
+  if (started) updateInteract();   // every frame — the OPEN prompt and panel auto-close must never lag
   drawField(now);
   drawBuildings();
   // slimes sorted by y for fake depth
@@ -2632,14 +2778,14 @@ function frame(now){
           myTrail.push({ x:tipX, y:tipY, t:now });
         }
       }
-      if (myTrail.length > 26) myTrail.splice(0, myTrail.length-26);
-      myTrail = myTrail.filter(p => now - p.t < 380);
+      if (myTrail.length > 34) myTrail.splice(0, myTrail.length-34);
+      myTrail = myTrail.filter(p => now - p.t < 470);
       if (myTrail.length > 1){
         // SMOOTHED ribbon: Catmull-Rom resample the tip path into a dense
         // centreline (~9px steps), taper the width on a smooth curve so the
         // tail melts to a point instead of a flat cut, and draw the white
         // core as ONE continuous curve — no segment steps anywhere.
-        const raw = myTrail.map(p => ({ x:NX(p.x), y:NY(p.y), age: clamp(1-(now-p.t)/380, 0, 1) }));
+        const raw = myTrail.map(p => ({ x:NX(p.x), y:NY(p.y), age: clamp(1-(now-p.t)/470, 0, 1) }));
         const pts = [];
         const P = i => raw[clamp(i, 0, raw.length-1)];
         for (let i=0; i<raw.length-1; i++){
@@ -2679,9 +2825,10 @@ function frame(now){
             ctx.closePath(); ctx.fill();
           }
         };
-        saberLayer(2.3, me.color, .16);    // (1) OUTER GLOW
-        saberLayer(1.0, me.color, .5);     // (2) BLADE BODY
-        saberLayer(.38, '#ffffff', .95);   // (3) WHITE-HOT CORE
+        saberLayer(2.6, me.color, .30);    // (1) OUTER GLOW
+        saberLayer(1.0, me.color, .8);     // (2) BLADE BODY
+        saberLayer(.5, me.color, .85);     // (3) SATURATED COLOUR CORE — keeps the saber readable on bright grass
+        saberLayer(.34, '#ffffff', .95);   // (4) WHITE-HOT CORE
         // bloomed centre line — shadow on this ONE stroke only, for perf
         ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.globalAlpha = .9;
         ctx.shadowColor = me.color; ctx.shadowBlur = 14;
@@ -2719,7 +2866,7 @@ function frame(now){
   }
 
   // scoreboard refresh (cheap, 2/s)
-  if (started && now-(frame._b||0)>500){ frame._b=now; refreshHUD(); refreshPeers(); checkZone(); updateInteract(); }
+  if (started && now-(frame._b||0)>500){ frame._b=now; refreshHUD(); refreshPeers(); checkZone(); }
 }
 requestAnimationFrame(frame);
 // title-screen ambient slimes (solo sim before joining)
