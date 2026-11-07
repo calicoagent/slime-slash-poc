@@ -467,7 +467,13 @@
   }
   @keyframes pulse { 0%,100% { transform:scale(1); } 50% { transform:scale(1.05); } }
   #playBtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
-  #howto { color:#fff; font-size:20px; text-shadow:2px 2px 0 rgba(0,0,0,.4); text-align:center; max-width:520px; line-height:1.35; background:rgba(24,30,18,.78); border:3px solid #3a2b23; box-shadow:4px 4px 0 rgba(30,45,20,.55); padding:12px 16px; }
+  #howto { color:#fff; font-size:20px; text-shadow:2px 2px 0 rgba(0,0,0,.4); text-align:center; max-width:520px; line-height:1.35; background:rgba(24,30,18,.78); border:3px solid #3a2b23; box-shadow:4px 4px 0 rgba(30,45,20,.55); padding:12px 16px; margin-bottom:auto; }
+  #howtoBtn { font-size:11px; color:#3a2b23; background:#fff6df; padding:11px 24px; cursor:pointer; }
+  /* auto margins keep the centred column centred when it fits, and
+     top-anchored + scrollable (never clipped) when the open HOW TO
+     panel makes it taller than the screen */
+  #title { overflow-y:auto; }
+  #logo { margin-top:auto; }
   @media (max-width:640px) {
     .wcard { width:min(56px,15vw); padding:6px 1px 5px; border-width:3px; border-radius:0; }
     .wcard svg { width:26px; height:26px; } .wcard .wn { font-family:"VT323",monospace; font-size:13px; font-weight:700; }
@@ -664,8 +670,9 @@
     <div><label>YOUR NAME</label><input id="nameIn" maxlength="12" autocomplete="off"></div>
   </div>
   <button id="playBtn" class="px-btn">PLAY</button>
+  <button id="howtoBtn" class="px-btn">HOW TO PLAY <span id="howtoChev">▼</span></button>
   <button id="titleReset" class="hidden">RESET SAVE</button>
-  <div id="howto">Move mouse / drag finger to swing your sword through slimes.<br>Tap or click for a SPIN SLASH. Sphere Points come from level-ups, bounties, and the Bank exchange (300c) — spend them on the SPHERE GRID for stats, passives and active skills.<br>There is only ONE world — send the link to friends and they drop straight into it with you. No rooms, no codes, no sign-up.<br>B — BANK / SHOP / INN (in town)</div>
+  <div id="howto" class="hidden">Move mouse / drag finger to swing your sword through slimes.<br>Tap or click for a SPIN SLASH. Sphere Points come from level-ups, bounties, and the Bank exchange (300c) — spend them on the SPHERE GRID for stats, passives and active skills.<br>There is only ONE world — send the link to friends and they drop straight into it with you. No rooms, no codes, no sign-up.<br>B — BANK / SHOP / INN (in town)</div>
 </div>
 
 <script type="module">
@@ -3852,6 +3859,13 @@ $('#titleReset').onclick = ()=>{
   if (!titleResetArmed){ titleResetArmed = true; b.textContent = 'TAP AGAIN — ERASE EVERYTHING?'; return; }
   try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
   location.reload();
+};
+/* HOW TO PLAY: the instruction panel starts collapsed on every load;
+   session-only state — nothing is persisted */
+$('#howtoBtn').onclick = ()=>{
+  const nowHidden = $('#howto').classList.toggle('hidden');
+  $('#howtoChev').textContent = nowHidden ? '▼' : '▲';   // text glyphs, not emoji
+  beep(nowHidden ? 500 : 700, .05, 'triangle', .06);
 };
 $('#playBtn').onclick = ()=>{
   me.name = cleanName($('#nameIn').value);
