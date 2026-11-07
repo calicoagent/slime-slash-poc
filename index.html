@@ -134,19 +134,42 @@
   .upg button:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
   .upg button:disabled { filter:grayscale(.6); opacity:.6; cursor:default; }
 
-  /* ---------- ANNOUNCEMENT TOP LANE ----------
-     Handler: 'All announcements to top.' Every banner/toast lives in a
-     fixed slot of one centred lane under the boss bar — slot 1 kingBanner
-     56px, then +52px per slot: deathBanner, zoneBanner, streakBanner,
-     toast. Elements keep their own show/fade timing; an idle slot just
-     leaves a gap. The <=640px and portrait blocks re-space the lane. */
-  #toast {
-    position:fixed; z-index:40; top:264px; left:50%; transform:translateX(-50%);
-    background:#3a2b23; color:#ffd94d; font-family:"Press Start 2P",monospace; font-size:11px; line-height:1.7; text-align:center;
-    padding:10px 20px; border-radius:0; border:3px solid #ffd94d;
-    box-shadow:5px 5px 0 rgba(0,0,0,.35); animation:pop .2s cubic-bezier(.2,2.2,.4,1); pointer-events:none;
-    max-width:92vw;
+  /* ---------- NOTIFICATIONS — Sonner-style stack, pixel plates ----------
+     Handler: 'Use sonner for notification from top. All.' ONE stack at the
+     top replaces every banner/toast: notify() prepends, the newest toast
+     sits on top at full strength and older ones peek behind it (scale and
+     opacity step down by stack position), each type auto-dismisses, hard
+     cap 4. Announcements NEVER catch taps: container and toasts are
+     pointer-events:none (the dead-zone rule beats Sonner interactivity).
+     When the boss bar is up (body.boss-on) the stack slides under it. */
+  #toaster {
+    position:fixed; z-index:41; top:10px; left:50%; transform:translateX(-50%);
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+    width:max-content; max-width:min(92vw, 430px); pointer-events:none;
   }
+  body.boss-on #toaster { top:54px; }
+  .toastN {
+    pointer-events:none; text-align:center; border:3px solid #3a2b23; border-radius:0;
+    background:#fff6df; color:#3a2b23; font-family:"Press Start 2P",monospace;
+    font-size:11px; line-height:1.55; padding:9px 16px; max-width:100%; box-sizing:border-box;
+    overflow-wrap:break-word;
+    box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 4px 4px 0 rgba(0,0,0,.30);
+    transition:transform .26s cubic-bezier(.2,1.4,.4,1), opacity .26s ease;
+  }
+  .toastN .tsub { display:block; font-family:"VT323",monospace; font-size:17px; line-height:1.25; color:#97754a; margin-top:2px; }
+  .toastN.enter { animation:toastIn .26s cubic-bezier(.2,1.6,.4,1); }
+  @keyframes toastIn { from { opacity:0; transform:translateY(-10px) scale(.96); } }
+  .toastN.behind1 { transform:scale(.97); opacity:.85; }
+  .toastN.behind2 { transform:scale(.94); opacity:.7; }
+  .toastN.behind3 { transform:scale(.92); opacity:.55; }
+  .toastN.leave { opacity:0; transform:translateY(-8px) scale(.94); }
+  .toastN.t-king { background:#ffd94d; font-size:16px; line-height:1.5; padding:12px 20px; }
+  .toastN.t-zone { font-size:12px; }
+  .toastN.t-death { background:#40121d; color:#ffd9d9; border-color:#e5484d; font-size:13px; padding:12px 20px; }
+  .toastN.t-death .tsub { color:#e8a0a5; }
+  .toastN.t-streak { background:#ffb52e; font-size:10px; padding:6px 12px; }
+  .toastN.t-success { background:#dcf2cb; }
+  .toastN.t-info { font-size:10px; }
   #bubble {
     position:fixed; z-index:25; pointer-events:none; background:#fff; color:#3a2b23; font-size:20px; font-weight:700;
     padding:6px 14px; border:3px solid #3a2b23; border-radius:0; transform:translate(-50%,-130%);
@@ -154,7 +177,7 @@
   }
   #bubble:after { content:""; position:absolute; left:50%; bottom:-10px; transform:translateX(-50%); border:6px solid transparent; border-top:8px solid #3a2b23; border-bottom:0; }
 
-  /* ---------- polish pass: combo / hint / king banner / pause ----------
+  /* ---------- polish pass: combo / hint / pause ----------
      (the BOUNTY readout lives in the menu's MORE tab now — #bountyText /
      #bountyProg below are its lines) */
   #bountyText { font-size:20px; line-height:1.2; }
@@ -175,30 +198,6 @@
     box-shadow:4px 4px 0 rgba(0,0,0,.30); animation:hintBob 1s ease-in-out infinite;
   }
   @keyframes hintBob { 0%,100% { transform:translateX(-50%) translateY(0); } 50% { transform:translateX(-50%) translateY(-5px); } }
-  #kingBanner {
-    position:fixed; z-index:35; top:56px; left:50%; transform:translateX(-50%);
-    font-family:"Press Start 2P",monospace; font-size:clamp(18px, 7.2vw, 40px); line-height:1.45; color:#ffd94d; text-align:center;
-    max-width:100vw; box-sizing:border-box; padding:0 8px;
-    -webkit-text-stroke:2px #8a5a12; text-shadow:4px 4px 0 #8a5a12, 8px 8px 0 rgba(0,0,0,.25);
-    pointer-events:none; white-space:nowrap;
-  }
-  #kingBanner.show { animation:kingIn 2.5s ease forwards; }
-  #streakBanner {
-    position:fixed; z-index:35; top:212px; left:50%; transform:translateX(-50%);
-    font-family:"Press Start 2P",monospace; font-size:clamp(13px, 5.5vw, 20px); line-height:1.45; color:#ff8a2e; text-align:center;
-    max-width:100vw; box-sizing:border-box; padding:0 8px;
-    -webkit-text-stroke:1.5px #8a4a12; text-shadow:3px 3px 0 #8a4a12, 6px 6px 0 rgba(0,0,0,.25);
-    pointer-events:none; white-space:nowrap;
-  }
-  #streakBanner.show { animation:kingIn 1.6s ease forwards; }
-  #zoneBanner {
-    position:fixed; z-index:34; top:160px; left:50%; transform:translateX(-50%);
-    background:#fff6df; border:3px solid #3a2b23; border-radius:0; padding:8px 22px;
-    color:#3a2b23; font-family:"Press Start 2P",monospace; font-size:12px; line-height:1.6; text-align:center;
-    box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 4px 4px 0 rgba(0,0,0,.30); pointer-events:none;
-  }
-  #zoneBanner small { display:block; font-family:"VT323",monospace; font-size:17px; color:#97754a; line-height:1.2; }
-  @keyframes kingIn { 0% { opacity:0; transform:translateX(-50%) scale(.6); } 12% { opacity:1; transform:translateX(-50%) scale(1.08); } 20% { transform:translateX(-50%) scale(1); } 80% { opacity:1; } 100% { opacity:0; transform:translateX(-50%) scale(1); } }
   #pauseBtn {
     position:fixed; z-index:21; left:14px; bottom:400px; width:46px; height:46px; border-radius:0;
     background:#fff6df; border:3px solid #3a2b23; color:#3a2b23; cursor:pointer;
@@ -269,12 +268,6 @@
     .abtn { width:48px; height:48px; font-size:7px; border-width:3px; }
     #comboBadge { right:auto; left:8px; bottom:calc(var(--dockH, 92px) + 142px); font-size:9px; padding:7px 10px; border-width:3px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
     #hint { bottom:calc(var(--dockH, 92px) + 12px); font-size:8px; max-width:72vw; white-space:normal; text-align:center; padding:7px 10px; }
-    /* announcement lane, phone spacing: starts 60px, slots +46px */
-    #kingBanner { top:60px; }
-    #deathBanner { top:106px; }
-    #streakBanner { top:198px; }
-    #toast { top:244px; font-size:9px; padding:8px 14px; border-width:3px; }
-    #zoneBanner { top:152px; font-size:10px; padding:6px 14px; max-width:94vw; }
   }
 
   /* ---------- survival pass: HP flash / boss bar / death / items / bank & shop ---------- */
@@ -291,13 +284,6 @@
   #bossTrack { height:13px; background:#2a0a12; border:2px solid #ffd94d; border-radius:0; overflow:hidden; position:relative; }
   #bossHp { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:"Press Start 2P",monospace; font-size:8px; line-height:1; color:#fff; text-shadow:1px 1px 0 rgba(0,0,0,.7); pointer-events:none; }
   #bossFill { height:100%; width:100%; background-color:#e5484d; background-image:repeating-linear-gradient(90deg, rgba(0,0,0,0) 0 6px, rgba(0,0,0,.18) 6px 8px); transition:width .25s; }
-  #deathBanner {
-    position:fixed; z-index:42; top:108px; left:50%; transform:translateX(-50%);
-    background:#40121d; color:#ffd9d9; border:3px solid #e5484d; border-radius:0;
-    padding:20px 30px; font-family:"Press Start 2P",monospace; font-size:clamp(12px, 3.8vw, 15px); line-height:1.8; text-align:center; max-width:88vw; box-sizing:border-box;
-    box-shadow:5px 5px 0 rgba(0,0,0,.35); pointer-events:none;
-    animation:pop .18s cubic-bezier(.2,2.2,.4,1);
-  }
   #interactPrompt {
     position:fixed; z-index:23; bottom:calc(var(--dockH, 123px) + 10px); left:50%; transform:translateX(-50%);
     font-family:"Press Start 2P",monospace; font-size:11px; cursor:pointer;
@@ -668,15 +654,9 @@
     #pauseBtn { width:36px; height:36px; }
     /* interact prompt (OPEN INN etc.) */
     #interactPrompt { font-size:13px; padding:8px 14px; }
-    /* announcement lane, portrait: starts below the stat cluster
-       (safe-area + 148px), slots +44px. This supersedes the old round-3
-       zoneBanner perch — every banner takes its lane slot. */
-    #kingBanner { top:calc(env(safe-area-inset-top) + 148px); white-space:normal; letter-spacing:0; width:100vw; }
-    #deathBanner { top:calc(env(safe-area-inset-top) + 192px); }
-    #zoneBanner { top:calc(env(safe-area-inset-top) + 236px); font-size:13px; padding:6px 12px; max-width:72vw; }
-    #zoneBanner small { font-size:10px; }
-    #streakBanner { top:calc(env(safe-area-inset-top) + 280px); white-space:normal; letter-spacing:0; max-width:100vw; }
-    #toast { top:calc(env(safe-area-inset-top) + 324px); }
+    /* notification stack, portrait: below the stat cluster */
+    #toaster, body.boss-on #toaster { top:calc(env(safe-area-inset-top) + 132px); max-width:78vw; }
+    .toastN.t-king { font-size:15px; }
   }
 </style>
 </head>
@@ -719,12 +699,8 @@
 </div>
 
 <div id="dmgFlash"></div>
-<div id="deathBanner" class="hidden"></div>
-<div id="toast" class="hidden"></div>
+<div id="toaster"></div>
 <div id="bubble" class="hidden"></div>
-<div id="kingBanner" class="hidden">THE SLIME KING HAS APPEARED!</div>
-<div id="streakBanner" class="hidden"></div>
-<div id="zoneBanner" class="hidden"></div>
 <div id="hint" class="hidden"></div>
 <div id="pauseMenu" class="hidden">
   <div class="pauseCard px-panel">
@@ -1165,7 +1141,6 @@ let myTrail=[];                            // slash trail: full blade segments {
 let hintsSeen = { slash:false, spin:false, sphere:false };
 const seenKings = new Set();               // king ids already announced by the banner
 let startedAt = 0;                         // when PLAY was pressed (banner suppression window)
-let kingBannerPending = false;             // king banner queued behind a visible toast
 const SAVE_KEY = 'slimeslash-save-v1';
 
 /* ============================================================ slimes */
@@ -1434,7 +1409,7 @@ function hostTick(now,dt){
       color:'#cfd8dc', seed:seedForId(mid), squish:0, flash:0, mul:mzone.mul, elite:false,
       guaranteed:true, bornAt:now });   // guaranteed: edge arrow + 1500ms spawn-in freeze key off these (host-local flavour; the world payload doesn't carry them)
     lastMetalAt = now;   // a metal entered the world
-    showKingBanner('A WILD METAL SLIME APPEARED!');
+    notify('A WILD METAL SLIME APPEARED!', { type:'king' });
   }
   /* ---- SLIME EMPEROR: timed spawn + bullet-hell volleys (host decides,
      every client sims the bullets locally from the 'boss' events) ---- */
@@ -1756,7 +1731,47 @@ function drawDmgFloats(now){
     ctx.restore();
   }
 }
-function toast(msg,ms=2200){ const t=$('#toast'); t.textContent=msg; t.classList.remove('hidden'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.add('hidden'),ms); }
+/* ---------- notifications: ONE Sonner-style stack for ALL announcements ----------
+   notify(text, { type, sub, ms }) — the newest toast enters at the TOP of
+   #toaster and pushes older ones down; stack position sets the Sonner
+   peek (behind1/2/3 = scale .97/.94/.92, opacity .85/.7/.55). Each type
+   has its own auto-dismiss; the stack is hard-capped at 4 — beyond that
+   the oldest is dismissed on the spot. King-class events also sting. */
+const TOAST_MS = { king:2800, zone:2400, death:3200, streak:1700, success:2600, info:2400 };
+const TOAST_CAP = 4;
+function notify(text, opts = {}){
+  const type = opts.type || 'info';
+  const box = $('#toaster');
+  const el = document.createElement('div');
+  el.className = 'toastN t-' + type + ' enter';
+  el.textContent = text;
+  if (opts.sub){
+    const s = document.createElement('span');
+    s.className = 'tsub'; s.textContent = opts.sub;
+    el.appendChild(s);
+  }
+  box.prepend(el);
+  if (type === 'king') sfx.sting();
+  while (box.children.length > TOAST_CAP) dismissToast(box.lastElementChild, true);
+  restackToasts();
+  el._h = setTimeout(() => dismissToast(el), opts.ms || TOAST_MS[type] || 2400);
+}
+function dismissToast(el, now){
+  if (!el || el._gone) return;
+  el._gone = true;
+  clearTimeout(el._h);
+  if (now){ el.remove(); restackToasts(); return; }
+  el.classList.add('leave');
+  setTimeout(() => { el.remove(); restackToasts(); }, 240);
+}
+function restackToasts(){
+  const kids = $('#toaster').children;
+  for (let i = 0; i < kids.length; i++){
+    kids[i].classList.toggle('behind1', i === 1);
+    kids[i].classList.toggle('behind2', i === 2);
+    kids[i].classList.toggle('behind3', i >= 3);
+  }
+}
 let bubbleTimer=null;
 function bubble(text,x,y,ms=1600){ const b=$('#bubble'); b.textContent=text; b.style.left=NX(x)+'px'; b.style.top=NY(y)+'px'; b.classList.remove('hidden'); clearTimeout(bubbleTimer); bubbleTimer=setTimeout(()=>b.classList.add('hidden'),ms); }
 
@@ -1785,11 +1800,11 @@ function bossEvent(d){
   } else if (d.p==='burst'){
     pendingBursts.push({ left: 3, nextAt: now, sm });   // volleys fired by the frame loop, aim re-picked per volley
   } else if (d.p==='enrage'){
-    showKingBanner('THE EMPEROR IS ENRAGED!');
+    notify('THE EMPEROR IS ENRAGED!', { type:'king' });
   } else if (d.p==='guard'){
-    showKingBanner('ROYAL GUARD!');
+    notify('ROYAL GUARD!', { type:'king' });
   } else if (d.p==='fury'){
-    showKingBanner('FINAL FURY!');
+    notify('FINAL FURY!', { type:'king' });
   } else if (d.p==='summon'){
     addFloat(d.x, d.y-.16, 'THE EMPEROR CALLS!', '#ff8a7a', { big:true });
   }
@@ -1892,7 +1907,7 @@ function localHitCheck(now){
       else if (sendMine) sendMine(claim);
     } else {
       addFloat(n.x, n.y-.09, 'CLINK', '#cfd8dc');
-      if (now - lastPickToastAt > 3000){ lastPickToastAt = now; toast('You need the PICKAXE to mine ore — press 7'); }
+      if (now - lastPickToastAt > 3000){ lastPickToastAt = now; notify('You need the PICKAXE to mine ore — press 7'); }
     }
   }
 }
@@ -1971,8 +1986,8 @@ function onKillFx(f){
   sfx.pop();
   if (f.elite) addFloat(f.x, f.y-.09, 'ELITE DOWN!', '#ffd94d', {big:true});
   if (f.kind==='metal') addFloat(f.x, f.y-.09, 'METAL SLIME DOWN!', '#eef3f7', {big:true});
-  if (f.kind==='king') toast('THE SLIME KING HAS FALLEN!');
-  if (f.kind==='boss') toast('THE EMPEROR HAS FALLEN!');
+  if (f.kind==='king') notify('THE SLIME KING HAS FALLEN!', { type:'king' });
+  if (f.kind==='boss') notify('THE EMPEROR HAS FALLEN!', { type:'king' });
   if (f.by===me.id){
     const now = performance.now();
     let cg = Math.round(f.coins * (1 + S.coin));
@@ -1997,15 +2012,15 @@ function onKillFx(f){
     comboUntil = now + 3000 * (1 + S.comboWin);
     updateComboBadge(true);
     if ([5,10,15,20,25,30,50].includes(combo)){ addFloat(f.x, f.y-.06, 'COMBO x'+combo, '#ff8a2e', {big:true}); sfx.combo(); }
-    if (STREAKS[combo]) showStreak(STREAKS[combo]);
-    if (combo===15) toast('ON FIRE! +15% damage while the combo lives!');
+    if (STREAKS[combo]) notify(STREAKS[combo], { type:'streak' });
+    if (combo===15) notify('ON FIRE! +15% damage while the combo lives!', { type:'streak' });
     // bounty progress (my kills only, matched by colour or kind)
     if (bounty && ((bounty.type==='color' && f.c===bounty.key) || (bounty.type==='kind' && f.kind===bounty.key))){
       bounty.have++;
       if (bounty.have >= bounty.need){
         const payout = Math.round(bounty.reward * (1 + S.bounty));   // Bounty Hunter passive
         me.coins += payout; me.sp += 1;
-        toast('BOUNTY COMPLETE! +'+payout+' coins +1 SP');
+        notify('BOUNTY COMPLETE! +' + payout + ' coins +1 SP', { type:'success' });
         sfx.buy();
         rollBounty();
       }
@@ -2025,10 +2040,10 @@ function gainXp(n){
     me.hp += me.maxHp - maxBefore;   // top up by the capacity gained (+10/level) — never a free full heal
     let spMsg = '+1 Sphere Point';
     if (me.level % 3 === 0){ me.sp++; spMsg = '+2 Sphere Points (every-3rd-level bonus!)'; }
-    toast('LEVEL '+me.level+'! '+spMsg+' — press F');
+    notify('LEVEL ' + me.level + '! ' + spMsg + ' — press F', { type:'success' });
     bubble('LEVEL UP!', me.x, me.y);
     const w = WEAPONS.find(w=>w.unlock===me.level);
-    if (w) setTimeout(()=>toast('UNLOCKED: '+w.name.toUpperCase()+' — check the rack!'), 900);
+    if (w) setTimeout(() => notify('UNLOCKED: ' + w.name.toUpperCase() + ' — check the rack!', { type:'success' }), 900);
     buildRack();
   }
   refreshHUD();
@@ -2075,10 +2090,7 @@ function death(){
   combo = 0; comboUntil = 0; updateComboBadge(false);
   me.invulnUntil = now + 3000;
   me.trailBreak = true; myTrail.length = 0;
-  const b = $('#deathBanner');
-  b.textContent = 'YOU DIED! The slimes took ' + lost + ' coins — banked coins are safe.';
-  b.classList.remove('hidden');
-  clearTimeout(b._h); b._h = setTimeout(()=>b.classList.add('hidden'), 2800);
+  notify('YOU DIED!', { type:'death', sub:'The slimes took ' + lost + ' coins — banked coins are safe.' });
   sfx.die();
   refreshHUD();
 }
@@ -2097,7 +2109,7 @@ function buySpherePoint(){
   if (me.banked + me.coins < SP_EXCHANGE_COST) return;
   const fromBank = Math.min(me.banked, SP_EXCHANGE_COST);   // banked coins are spent first, carried covers the rest
   me.banked -= fromBank; me.coins -= (SP_EXCHANGE_COST - fromBank);
-  me.sp++; sfx.buy(); toast('SPHERE POINT BOUGHT!');
+  me.sp++; sfx.buy(); notify('SPHERE POINT BOUGHT!', { type:'success' });
   updateBankPanel(); refreshHUD(); saveGame();
 }
 const SHOP_ITEMS = [
@@ -2157,7 +2169,7 @@ function craftWeapon(i){
   if (!cost || me.owned.has(i) || !canAfford(cost)) return;
   payCost(cost); me.owned.add(i); wxpOf(i);
   sfx.buy(); updateShopPanel(); buildRack(); refreshHUD(); saveGame();
-  toast(WEAPONS[i].name.toUpperCase()+' CRAFTED! Press '+(i+1)+' to wield it');
+  notify(WEAPONS[i].name.toUpperCase() + ' CRAFTED! Press ' + (i+1) + ' to wield it', { type:'success' });
 }
 function breakthroughWeapon(i){
   const wp = wxpOf(i);
@@ -2166,7 +2178,7 @@ function breakthroughWeapon(i){
   if (!canAfford(cost)) return;
   payCost(cost); wp.lv++; wp.xp = 0;   // through the gate — XP flows again from 0
   sfx.buy(); updateShopPanel(); buildRack(); refreshHUD(); saveGame();
-  toast('BREAKTHROUGH! '+WEAPONS[i].name.toUpperCase()+' LV '+wp.lv);
+  notify('BREAKTHROUGH! ' + WEAPONS[i].name.toUpperCase() + ' LV ' + wp.lv, { type:'success' });
 }
 function buildWeaponRows(wrap){
   const head = document.createElement('div');
@@ -2258,7 +2270,7 @@ function buyInn(id){
     me.hp = me.maxHp;
     // respawn at the inn door: just north of the sprite, toward the plaza centre
     me.spawnAt = { x: HOSPITAL_POS.x, y: HOSPITAL_POS.y - .28 };
-    toast('SPAWN SAVED AT THE INN');
+    notify('SPAWN SAVED AT THE INN', { type:'success' });
   } else {
     const price = fullHealPrice();
     if (me.hp >= me.maxHp || me.coins < price) return;
@@ -2309,7 +2321,7 @@ function useItem(id){
   const now = performance.now();
   if (id==='potion'){
     if (me.items.potion<=0) return;
-    if (me.hp>=me.maxHp){ toast('HP FULL'); beep(160,.09,'square',.07); return; }   // never waste a potion at full HP
+    if (me.hp>=me.maxHp){ notify('HP FULL'); beep(160,.09,'square',.07); return; }   // never waste a potion at full HP
     me.items.potion--;
     me.hp = Math.min(me.maxHp, me.hp + 60);
     for (let i=0;i<10;i++) particles.push({ x:me.x, y:me.y, vx:rand(-.06,.06), vy:rand(-.14,-.03), life:1, color:'#57d93d', r:rand(2,5) });
@@ -2347,7 +2359,7 @@ function electHost(){
     if (slimes.size===0){ for(let i=0;i<50;i++) spawnSlime(); }
     for (const s of slimes.values()){ s.tx=undefined; }
     broadcastWorld();
-    if (started) toast(peers.size? 'You are now the WORLD HOST' : 'Solo world — invite friends!', 1800);
+    if (started) notify(peers.size ? 'You are now the WORLD HOST' : 'Solo world — invite friends!', { ms:1800 });
   }
 }
 let worldTimer=null;
@@ -2623,7 +2635,7 @@ function buildRack(){
 }
 function equip(i){
   const w=WEAPONS[i];
-  if (!me.owned.has(i)){ toast('Craft the '+w.name+' at the FORGE — in the SHOP'); return; }
+  if (!me.owned.has(i)){ notify('Craft the ' + w.name + ' at the FORGE — in the SHOP'); return; }
   if (window.innerWidth <= 640) rackCollapsed = true;   // phone: picking a card folds the rack away (applies via buildRack → syncRackUI)
   me.weapon=i; me.lastHitAt.clear(); buildRack(); beep(600,.06,'triangle',.08); refreshHUD(); saveGame();
   bubble(w.name.toUpperCase()+'!', me.x, me.y, 900);
@@ -3019,46 +3031,21 @@ function scanKings(){
   if (!started) return;
   const fresh = performance.now() - startedAt >= 3000;   // never banner in the first 3s after PLAY
   for (const s of slimes.values()){
-    if (s.kind==='king' && !seenKings.has(s.id) && fresh){ seenKings.add(s.id); showKingBanner(); }
-    if (s.kind==='boss' && !seenBosses.has(s.id) && fresh){ seenBosses.add(s.id); showKingBanner('THE SLIME EMPEROR HAS AWAKENED!'); }
+    if (s.kind==='king' && !seenKings.has(s.id) && fresh){ seenKings.add(s.id); notify('THE SLIME KING HAS APPEARED!', { type:'king' }); }
+    if (s.kind==='boss' && !seenBosses.has(s.id) && fresh){ seenBosses.add(s.id); notify('THE SLIME EMPEROR HAS AWAKENED!', { type:'king' }); }
   }
   for (const id of [...seenKings]) if (!slimes.has(id)) seenKings.delete(id);
   for (const id of [...seenBosses]) if (!slimes.has(id)) seenBosses.delete(id);
 }
-let kingBannerText = 'THE SLIME KING HAS APPEARED!';
-function showKingBanner(text){
-  // queued: the banner never overlaps a toast — it waits until the toast hides
-  kingBannerText = text || 'THE SLIME KING HAS APPEARED!';
-  kingBannerPending = true;
-  tryKingBanner();
-}
-function tryKingBanner(){
-  if (!kingBannerPending) return;
-  if (!$('#toast').classList.contains('hidden')){ setTimeout(tryKingBanner, 300); return; }
-  kingBannerPending = false;
-  const b = $('#kingBanner');
-  b.textContent = kingBannerText;
-  b.classList.remove('hidden'); b.classList.remove('show'); void b.offsetWidth; b.classList.add('show');
-  sfx.sting();
-  clearTimeout(b._h); b._h = setTimeout(()=>b.classList.add('hidden'), 2600);
-}
-function showStreak(text){
-  const b = $('#streakBanner');
-  b.textContent = text;
-  b.classList.remove('hidden'); b.classList.remove('show'); void b.offsetWidth; b.classList.add('show');
-  clearTimeout(b._h); b._h = setTimeout(()=>b.classList.add('hidden'), 1600);
-}
-/* zone banner: fires when the PLAYER crosses into a different ring */
+/* zone toast: fires when the PLAYER crosses into a different ring */
 function checkZone(){
   if (!started) return;
   const z = zoneOf(me.x, me.y);
   if (myZone === -1){ myZone = z; return; }   // entering the world sets the zone silently
   if (z === myZone) return;
   myZone = z;
-  const zn = ZONES[z], b = $('#zoneBanner');
-  b.innerHTML = zn.name + '<small>' + zn.blurb + '</small>';
-  b.classList.remove('hidden');
-  clearTimeout(b._h); b._h = setTimeout(()=>b.classList.add('hidden'), 2200);
+  const zn = ZONES[z];
+  notify(zn.name, { type:'zone', sub: zn.blurb });
 }
 
 /* ---------- tutorial hints (one at a time, in sequence) ---------- */
@@ -3099,7 +3086,7 @@ function resetRun(){
   rollBounty();
   buildRack(); buildActives(); buildSphere(); refreshHUD(); updateHint();
   togglePause(false);
-  toast('Fresh run — good luck, slayer!');
+  notify('Fresh run — good luck, slayer!');
 }
 
 /* ---------- persistence ---------- */
@@ -3279,9 +3266,9 @@ function castWeaponSkill(){
   if (!started || paused) return;
   const now = performance.now();
   const sk = WSKILLS[me.weapon]; if (!sk) return;
-  if (!unlocked.has(sk.node)){ toast('Unlock ' + sk.name + ' in the SKILLS tree (key K)'); return; }
+  if (!unlocked.has(sk.node)){ notify('Unlock ' + sk.name + ' in the SKILLS tree (key K)'); return; }
   if (now < me.wSkillCdUntil) return;
-  if (me.mp < sk.mp){ toast('Not enough MP!'); return; }
+  if (me.mp < sk.mp){ notify('Not enough MP!'); return; }
   me.mp -= sk.mp; me.wSkillCdUntil = now + sk.cd;
   const dmg = myDamage(), ang = bladeAt(now).ang, wcol = myWeapon().color;
   if (me.weapon===0){          // DAGGER — SHADOW STAB: dash along the blade, cutting the path
@@ -3399,8 +3386,8 @@ function renderTreeDetail(){
 }
 $('#shareBtn').onclick = async ()=>{
   const url = location.href;
-  try{ await navigator.clipboard.writeText(url); toast('Invite link copied! Send it to your friends.'); }
-  catch(e){ toast('Copy this page address and send it to friends!'); }
+  try{ await navigator.clipboard.writeText(url); notify('Invite link copied! Send it to your friends.', { type:'success' }); }
+  catch(e){ notify('Copy this page address and send it to friends!'); }
   if (navigator.share){ try{ await navigator.share({title:'Slime Slash!', url}); }catch(e){} }
 };
 $('#pauseBtn').onclick = ()=>togglePause();
@@ -4882,8 +4869,8 @@ $('#playBtn').onclick = ()=>{
   if (!bounty) rollBounty();
   updateHint();
   try { joinWorld(WORLD_ID); }
-  catch(e){ toast('Multiplayer failed to start — playing solo. ('+e.message+')', 4000); isHost=true; hostId=me.id; if(slimes.size===0) for(let i=0;i<50;i++) spawnSlime(); }
-  toast('Slash the slimes! One world — everyone with the link is in it.', 2600);
+  catch(e){ notify('Multiplayer failed to start — playing solo. (' + e.message + ')', { ms:4000 }); isHost=true; hostId=me.id; if(slimes.size===0) for(let i=0;i<50;i++) spawnSlime(); }
+  notify('Slash the slimes! One world — everyone with the link is in it.', { ms:2600 });
   beep(660,.1,'triangle',.1);
 };
 // Enter key starts
