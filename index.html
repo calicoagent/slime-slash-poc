@@ -1714,7 +1714,14 @@ function notify(text, opts = {}){
   el._h = setTimeout(() => dismissToast(el), opts.ms || TOAST_MS[type] || 2400);
 }
 function dismissToast(el, now){
-  if (!el || el._gone) return;
+  if (!el) return;
+  /* A toast mid-fade (_gone, still in the DOM for its 240ms exit) must be
+     removable on demand: notify()'s cap loop dismisses lastElementChild
+     until the stack fits, and when that child was ALREADY fading the old
+     early-return removed nothing — the while loop spun forever and froze
+     the tab (4 toasts up, the oldest auto-dismisses, a 5th arrives within
+     240ms: routine mid-fight with streak / level / SP toasts). */
+  if (el._gone){ if (now){ el.remove(); restackToasts(); } return; }
   el._gone = true;
   clearTimeout(el._h);
   if (now){ el.remove(); restackToasts(); return; }
