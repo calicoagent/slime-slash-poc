@@ -95,6 +95,54 @@
   }
   #bubble:after { content:""; position:absolute; left:50%; bottom:-10px; transform:translateX(-50%); border:6px solid transparent; border-top:8px solid #5b3a1e; border-bottom:0; }
 
+  /* ---------- sphere grid ---------- */
+  #forge { width:min(92vw,404px); }
+  #spBar { text-align:center; font-weight:900; color:#5b3a1e; font-size:16px; margin-bottom:8px; }
+  #spBar b { background:#5b3a1e; color:#ffd94d; border-radius:99px; padding:2px 14px; margin-left:6px; font-size:18px; }
+  #sphereBoard {
+    position:relative; width:min(84vw,356px); aspect-ratio:1; margin:0 auto;
+    background:radial-gradient(circle at 50% 42%, #2b3a6e 0%, #1b2450 55%, #12173a 100%);
+    border:4px solid #0d1030; border-radius:50%;
+    box-shadow:inset 0 0 44px rgba(120,170,255,.35), 0 6px 18px rgba(0,0,0,.3);
+    overflow:hidden;
+  }
+  #sphereLines { position:absolute; inset:0; width:100%; height:100%; }
+  .snode {
+    position:absolute; width:46px; height:46px; margin:-23px 0 0 -23px; border-radius:50%;
+    border:3px solid rgba(255,255,255,.35); background:#39406e; color:#cfd8ff;
+    font-family:inherit; font-weight:900; font-size:11px; cursor:pointer; z-index:2;
+    display:flex; align-items:center; justify-content:center; letter-spacing:.5px;
+    box-shadow:0 3px 8px rgba(0,0,0,.45); transition:transform .12s;
+  }
+  .snode small { position:absolute; bottom:-15px; font-size:9px; color:#ffe9bd; text-shadow:0 1px 2px #000; white-space:nowrap; }
+  .snode.avail { border-color:#ffd94d; color:#fff; animation:nodePulse 1.2s ease-in-out infinite; }
+  @keyframes nodePulse { 0%,100% { box-shadow:0 0 0 0 rgba(255,217,77,.55);} 50% { box-shadow:0 0 0 9px rgba(255,217,77,0);} }
+  .snode.owned { color:#fff; border-color:#fff; }
+  .snode.sel { transform:scale(1.22); border-color:#fff; z-index:3; }
+  .snode.center { background:radial-gradient(circle,#ffe9a8,#ffb52e); color:#5b3a1e; border-color:#fff2c9; font-size:10px; cursor:default; }
+  #nodeCard { margin-top:10px; background:#fff; border:3px solid #5b3a1e; border-radius:16px; padding:10px 12px; }
+  #nodeCard b { color:#5b3a1e; font-size:16px; display:block; }
+  #nodeCard .ntype { font-size:11px; font-weight:900; letter-spacing:1px; }
+  #nodeCard p { color:#7a5c33; font-weight:700; font-size:13px; margin:3px 0 8px; line-height:1.35; }
+  #nodeCard button {
+    font-family:inherit; font-weight:800; font-size:15px; cursor:pointer; width:100%;
+    background:#ffd94d; border:3px solid #5b3a1e; border-radius:12px; padding:8px; color:#5b3a1e; box-shadow:0 3px 0 #5b3a1e;
+  }
+  #nodeCard button:active { transform:translateY(2px); box-shadow:0 1px 0 #5b3a1e; }
+  #nodeCard button:disabled { filter:grayscale(1); opacity:.55; cursor:default; }
+
+  /* ---------- active skill buttons ---------- */
+  #actives { position:fixed; right:14px; bottom:92px; z-index:21; display:flex; flex-direction:column; gap:10px; }
+  .abtn {
+    position:relative; width:58px; height:58px; border-radius:50%; cursor:pointer; overflow:hidden;
+    border:3.5px solid #5b3a1e; background:#fff8e7; color:#5b3a1e;
+    font-family:inherit; font-weight:900; font-size:11px; box-shadow:0 4px 0 #5b3a1e;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; line-height:1.05;
+  }
+  .abtn .k { font-size:9px; color:#97754a; }
+  .abtn .cdov { position:absolute; left:0; right:0; bottom:0; background:rgba(30,30,60,.45); pointer-events:none; }
+  .abtn:active { transform:translateY(3px); box-shadow:0 1px 0 #5b3a1e; }
+
   /* ---------- title screen ---------- */
   #title {
     position:fixed; inset:0; z-index:50; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px;
@@ -155,15 +203,21 @@
   <div class="badge" id="boardBadge"><b>TOP SLAYERS</b><div id="board"></div></div>
 
   <div id="rack"></div>
+  <div id="actives"></div>
   <button id="shareBtn">INVITE LINK</button>
-  <button id="forgeBtn">FORGE</button>
+  <button id="forgeBtn">SPHERE</button>
 
   <div id="forge" class="hidden">
-    <h3>THE FORGE</h3>
-    <div class="upg"><div class="info"><b>Damage +2</b><span id="upgDmgInfo"></span></div><button id="upgDmg"></button></div>
-    <div class="upg"><div class="info"><b>Reach +12%</b><span id="upgReachInfo"></span></div><button id="upgReach"></button></div>
-    <div class="upg"><div class="info"><b>Swift Hands</b><span id="upgHasteInfo">Hit again faster</span></div><button id="upgHaste"></button></div>
-    <div style="text-align:center;color:#97754a;font-weight:700;font-size:12px;">Keys 1-5 switch weapons</div>
+    <h3>SPHERE GRID</h3>
+    <div id="spBar">SPHERE POINTS <b id="spCount">0</b></div>
+    <div id="sphereBoard"><svg id="sphereLines" viewBox="0 0 100 100" preserveAspectRatio="none"></svg><div id="sphereNodes"></div></div>
+    <div id="nodeCard" class="hidden">
+      <span class="ntype" id="ncType"></span>
+      <b id="ncName"></b>
+      <p id="ncDesc"></p>
+      <button id="ncBtn"></button>
+    </div>
+    <div style="text-align:center;color:#97754a;font-weight:700;font-size:12px;margin-top:8px;">Level up &amp; slay Kings to earn Sphere Points. Follow a glowing path!</div>
   </div>
 </div>
 
@@ -178,7 +232,7 @@
     <div><label>YOUR NAME</label><input id="nameIn" maxlength="12" autocomplete="off"></div>
   </div>
   <button id="playBtn">PLAY</button>
-  <div id="howto">Move mouse / drag finger to swing your sword through slimes.<br>Tap or click for a SPIN SLASH. Earn coins, level up, unlock bigger weapons in the rack.<br>There is only ONE world — send the link to friends and they drop straight into it with you. No rooms, no codes, no sign-up.</div>
+  <div id="howto">Move mouse / drag finger to swing your sword through slimes.<br>Tap or click for a SPIN SLASH. Level up to earn Sphere Points — spend them on the SPHERE GRID for stats, passives and active skills.<br>There is only ONE world — send the link to friends and they drop straight into it with you. No rooms, no codes, no sign-up.</div>
 </div>
 
 <script type="module">
@@ -254,7 +308,7 @@ const me = {
   id: selfId, name:'Knight', color:`hsl(${hashHue(selfId)} 80% 55%)`,
   x:.5, y:.6, px:.5, py:.6, angle:-Math.PI/4, speed:0,
   weapon:1, coins:0, xp:0, level:1, kills:0,
-  upg:{ dmg:0, reach:0, haste:0 },
+  sp:0, actCd:{ wave:0, meteor:0, frenzy:0 }, frenzyUntil:0,
   lastHitAt:new Map(), spinUntil:0, spinCdUntil:0, trail:[],
   swingT0:0, swingDir:1,
 };
@@ -344,9 +398,9 @@ function bubble(text,x,y,ms=1600){ const b=$('#bubble'); b.textContent=text; b.s
 
 /* ============================================================ combat */
 function myWeapon(){ return WEAPONS[me.weapon]; }
-function myDamage(){ return myWeapon().dmg + me.upg.dmg*2 + (me.level-1); }
-function myReach(){ return myWeapon().reach * (1 + me.upg.reach*.12); }
-function myCd(){ return Math.max(50, myWeapon().cd * Math.pow(.88, me.upg.haste)); }
+function myDamage(){ return myWeapon().dmg + S.dmg + (me.level-1); }
+function myReach(){ return myWeapon().reach * (1 + S.reach); }
+function myCd(){ return Math.max(50, myWeapon().cd * (1 + S.cd)) * (performance.now()<me.frenzyUntil ? .55 : 1); }
 
 function localHitCheck(now){
   // blade = segment from hand (pointer) to tip along the sword's CURRENT
@@ -366,20 +420,33 @@ function localHitCheck(now){
       const cx=s.x, cy=s.y*(H/W);
       const dx=bx-ax, dy=by-ay, L2=dx*dx+dy*dy||1e-6;
       const t=clamp(((cx-ax)*dx+(cy-ay)*dy)/L2,0,1);
-      hit = dist2(ax+dx*t, ay+dy*t, cx, cy) < (s.r*(H/W)+.012)**2;
+      hit = dist2(ax+dx*t, ay+dy*t, cx, cy) < (s.r*(H/W)+.012+S.arcWide)**2;
     }
     if (hit){
       me.lastHitAt.set(s.id, now);
-      doHit(s, myDamage());
+      let dmg = myDamage();
+      if (now < me.frenzyUntil) dmg *= 1.5;
+      if (s.kind==='king') dmg *= (1 + S.kingBane);
+      let crit = false;
+      if (Math.random() < S.crit){ dmg *= 2; crit = true; }
+      doHit(s, Math.round(dmg), { crit });
     }
   }
 }
-function doHit(s, dmg){
+function doHit(s, dmg, opts={}){
   s.squish=1; s.flash=1; sfx.hit();
   spawnHitFx(s.x,s.y,s.color,4);
-  addFloat(s.x+rand(-.01,.01), s.y-s.r-.015, '-'+dmg, '#fff');
+  addFloat(s.x+rand(-.01,.01), s.y-s.r-.015, (opts.crit?'CRIT ':'')+'-'+dmg, opts.crit?'#ffd94d':'#fff');
   if (isHost) hostApplyHit(s.id, dmg, me.id);
   else if (sendHit) sendHit({ id:s.id, d:dmg });
+  if (!opts.noSplash && S.splash>0){
+    for (const o of slimes.values())
+      if (o!==s && dist2(o.x,o.y,s.x,s.y) < S.splash*S.splash)
+        setTimeout(()=>{ if (slimes.get(o.id)===o) doHit(o, Math.max(1,Math.ceil(dmg*.5)), {noSplash:true}); }, 40);
+  }
+  if (!opts.noDouble && S.double>0 && Math.random()<S.double){
+    setTimeout(()=>{ if (slimes.get(s.id)===s) doHit(s, Math.max(1,Math.ceil(dmg*.6)), {noSplash:true, noDouble:true}); }, 100);
+  }
 }
 function hostApplyHit(slimeId, dmg, byId){
   const s = slimes.get(slimeId); if (!s) return;
@@ -408,19 +475,20 @@ function onKillFx(f){
   spawnPopFx(f.x,f.y,f.c); sfx.pop();
   if (f.kind==='king') toast('THE SLIME KING HAS FALLEN!');
   if (f.by===me.id){
-    me.coins += f.coins; me.kills++;
+    const cg = Math.round(f.coins * (1 + S.coin));
+    me.coins += cg; me.kills++;
     gainXp(f.xp); sfx.coin();
-    addFloat(f.x, f.y-.04, '+'+f.coins+' coins', '#ffd94d');
+    addFloat(f.x, f.y-.04, '+'+cg+' coins', '#ffd94d');
+    if (f.kind==='king'){ me.sp++; bubble('KING SLAYER! +1 SP', me.x, me.y); setTimeout(()=>toast('KING BONUS: +1 Sphere Point!'), 600); }
     refreshHUD();
-    if (f.kind==='king') bubble('KING SLAYER!', me.x, me.y);
   }
 }
 function gainXp(n){
-  me.xp += n;
+  me.xp += Math.round(n * (1 + S.xp));
   const need = me.level*100;
   if (me.xp >= need){
-    me.xp -= need; me.level++; sfx.lvl();
-    toast('LEVEL '+me.level+'!');
+    me.xp -= need; me.level++; me.sp++; sfx.lvl();
+    toast('LEVEL '+me.level+'! +1 Sphere Point — press F');
     bubble('LEVEL UP!', me.x, me.y);
     const w = WEAPONS.find(w=>w.unlock===me.level);
     if (w) setTimeout(()=>toast('UNLOCKED: '+w.name.toUpperCase()+' — check the rack!'), 900);
@@ -517,11 +585,15 @@ addEventListener('keydown', e=>{
   if (n>=1 && n<=WEAPONS.length) equip(n-1);
   if (e.key===' ') { e.preventDefault(); trySpin(); }
   if (e.key==='f'||e.key==='F') toggleForge();
+  const lk = e.key.toLowerCase();
+  if (lk==='q') castActive('wave');
+  if (lk==='e') castActive('meteor');
+  if (lk==='r') castActive('frenzy');
 });
 function trySpin(){
   const now=performance.now();
   if (now < me.spinCdUntil) return;
-  me.spinUntil = now+260; me.spinCdUntil = now+900;
+  me.spinUntil = now+260; me.spinCdUntil = now + 900*(1 + S.spinCd);
   sfx.spin();
 }
 
@@ -534,13 +606,9 @@ function refreshHUD(){
   // scoreboard
   const rows = Object.entries(scores).sort((a,b)=>b[1].kills-a[1].kills).slice(0,5);
   $('#board').innerHTML = rows.length ? rows.map(([id,s])=>`<div class="row ${id===me.id?'me':''}"><span>${esc(s.name)}</span><b>${s.kills}</b></div>`).join('') : '<div class="row"><span>No kills yet</span></div>';
-  // forge prices
-  const cd=20+me.upg.dmg*25, cr=30+me.upg.reach*35, ch=30+me.upg.haste*35;
-  $('#upgDmgInfo').textContent = 'Now: '+myDamage()+' dmg per hit';
-  $('#upgReachInfo').textContent = 'Now: '+Math.round(myReach()/WEAPONS[me.weapon].reach*100)+'% of base';
-  $('#upgDmg').textContent = cd+' coins';  $('#upgDmg').disabled = me.coins<cd;
-  $('#upgReach').textContent = cr+' coins'; $('#upgReach').disabled = me.coins<cr || me.upg.reach>=8;
-  $('#upgHaste').textContent = ch+' coins'; $('#upgHaste').disabled = me.coins<ch || me.upg.haste>=8;
+  // sphere points
+  $('#spCount').textContent = me.sp;
+  $('#forgeBtn').textContent = me.sp>0 ? 'SPHERE ('+me.sp+')' : 'SPHERE';
 }
 let joinedAt = 0;
 function refreshPeers(){
@@ -567,15 +635,180 @@ function equip(i){
   me.weapon=i; me.lastHitAt.clear(); buildRack(); beep(600,.06,'triangle',.08);
   bubble(w.name.toUpperCase()+'!', me.x, me.y, 900);
 }
-function toggleForge(){ $('#forge').classList.toggle('hidden'); refreshHUD(); }
+function toggleForge(){ $('#forge').classList.toggle('hidden'); buildSphere(); refreshHUD(); }
 $('#forgeBtn').onclick = toggleForge;
-$('#upgDmg').onclick = ()=>buy('dmg');
-$('#upgReach').onclick = ()=>buy('reach');
-$('#upgHaste').onclick = ()=>buy('haste');
-function buy(k){
-  const cost = k==='dmg'? 20+me.upg.dmg*25 : k==='reach'? 30+me.upg.reach*35 : 30+me.upg.haste*35;
-  if (me.coins<cost) return;
-  me.coins-=cost; me.upg[k]++; sfx.buy(); refreshHUD(); bubble('UPGRADED!', me.x, me.y, 900);
+
+/* ============================================================ SPHERE GRID (FFX-style)
+   Three branches from a centre node. Walk a path: a node unlocks when the
+   node before it on its branch is yours. Stats / Passives / Active skills. */
+const BRANCHES = [
+  { name:'POWER',   color:'#ff6b5e', ang:-90 },
+  { name:'FINESSE', color:'#57d93d', ang:150 },
+  { name:'ARCANE',  color:'#5eb2ff', ang:30  },
+];
+const NODES = [
+  {id:'p1', b:0, t:'stat',    icon:'ATK', name:'Power +2',      desc:'Damage +2 on every hit.', cost:1, fx:{dmg:2}},
+  {id:'p2', b:0, t:'stat',    icon:'ATK', name:'Power +3',      desc:'Damage +3 on every hit.', cost:1, fx:{dmg:3}},
+  {id:'p3', b:0, t:'stat',    icon:'RCH', name:'Long Arm',      desc:'Reach +10%.', cost:1, fx:{reach:.10}},
+  {id:'p4', b:0, t:'passive', icon:'SPL', name:'Splash Pact',   desc:'PASSIVE: your hits splash slimes near the target for half damage.', cost:2, fx:{splash:.06}},
+  {id:'p5', b:0, t:'passive', icon:'BANE',name:'King Bane',     desc:'PASSIVE: +50% damage to Slime Kings.', cost:2, fx:{kingBane:.5}},
+  {id:'p6', b:0, t:'active',  icon:'MET', name:'METEOR CHOP',   desc:'ACTIVE SKILL (key E): a giant chop crashes down on your sword — huge damage in a big circle.', cost:2, fx:{active:'meteor'}},
+  {id:'f1', b:1, t:'stat',    icon:'SPD', name:'Quick Hands',   desc:'Hit again 10% faster.', cost:1, fx:{cd:-.10}},
+  {id:'f2', b:1, t:'stat',    icon:'CRT', name:'Keen Eye',      desc:'+8% crit chance. Crits deal DOUBLE damage.', cost:1, fx:{crit:.08}},
+  {id:'f3', b:1, t:'stat',    icon:'RCH', name:'Long Arm',      desc:'Reach +10%.', cost:1, fx:{reach:.10}},
+  {id:'f4', b:1, t:'passive', icon:'DBL', name:'Double Strike', desc:'PASSIVE: 15% chance a hit strikes a second time.', cost:2, fx:{double:.15}},
+  {id:'f5', b:1, t:'passive', icon:'ARC', name:'Wide Arc',      desc:'PASSIVE: your swing arc is wider — it clips slimes much more easily.', cost:2, fx:{arcWide:.014}},
+  {id:'f6', b:1, t:'active',  icon:'WAV', name:'BLADE WAVE',    desc:'ACTIVE SKILL (key Q): send a crescent wave flying in your sword direction, cutting everything it passes.', cost:2, fx:{active:'wave'}},
+  {id:'a1', b:2, t:'stat',    icon:'XP',  name:'Scholar',       desc:'+20% XP from every kill.', cost:1, fx:{xp:.20}},
+  {id:'a2', b:2, t:'stat',    icon:'GLD', name:'Greed',         desc:'+20% coins from every kill.', cost:1, fx:{coin:.20}},
+  {id:'a3', b:2, t:'stat',    icon:'SPD', name:'Quick Hands',   desc:'Hit again 10% faster.', cost:1, fx:{cd:-.10}},
+  {id:'a4', b:2, t:'passive', icon:'SPN', name:'Swift Spin',    desc:'PASSIVE: Spin Slash recharges 40% faster.', cost:2, fx:{spinCd:-.40}},
+  {id:'a5', b:2, t:'stat',    icon:'ATK', name:'Power +3',      desc:'Damage +3 on every hit.', cost:1, fx:{dmg:3}},
+  {id:'a6', b:2, t:'active',  icon:'FRZ', name:'FRENZY',        desc:'ACTIVE SKILL (key R): 5 seconds of +50% damage and much faster hits.', cost:2, fx:{active:'frenzy'}},
+];
+const nodePos = n => {
+  const idx = NODES.filter(m=>m.b===n.b).indexOf(n);
+  const a = BRANCHES[n.b].ang * Math.PI/180;
+  const dist = 15 + idx*6.4;                                   // % of board from centre
+  const perp = (idx===0 ? 0 : (idx%2 ? 4.2 : -4.2)) * Math.PI/180;
+  const x = 50 + Math.cos(a+perp)*dist*1.55, y = 50 + Math.sin(a+perp)*dist*1.55;
+  return { x, y, idx };
+};
+const unlocked = new Set();
+let S = null;
+function recalc(){
+  S = { dmg:0, reach:0, cd:0, crit:0, coin:0, xp:0, splash:0, kingBane:0, double:0, arcWide:0, spinCd:0, actives:new Set() };
+  for (const n of NODES) if (unlocked.has(n.id)){
+    const f = n.fx;
+    for (const k of ['dmg','reach','cd','crit','coin','xp','kingBane','double','arcWide','spinCd']) if (f[k]) S[k]+=f[k];
+    if (f.splash) S.splash = Math.max(S.splash, f.splash);
+    if (f.active) S.actives.add(f.active);
+  }
+}
+recalc();
+const nodeAvail = n => {
+  if (unlocked.has(n.id)) return false;
+  const { idx } = nodePos(n);
+  return idx===0 || unlocked.has(NODES.filter(m=>m.b===n.b)[idx-1].id);
+};
+let selNode = null;
+function buildSphere(){
+  const lines = $('#sphereLines'), wrap = $('#sphereNodes');
+  let lh = '<circle cx="50" cy="50" r="2.6" fill="#ffd94d"/>';
+  for (const br of BRANCHES){
+    let prev = {x:50, y:50};
+    for (const n of NODES.filter(m=>m.b===BRANCHES.indexOf(br))){
+      const p = nodePos(n);
+      lh += `<line x1="${prev.x}" y1="${prev.y}" x2="${p.x}" y2="${p.y}" stroke="${unlocked.has(n.id)?'#ffd94d':'rgba(255,255,255,.28)'}" stroke-width="${unlocked.has(n.id)?1.6:.9}"/>`;
+      prev = p;
+    }
+  }
+  lines.innerHTML = lh;
+  wrap.innerHTML = '<div class="snode center" style="left:50%;top:50%">START</div>';
+  for (const n of NODES){
+    const p = nodePos(n), br = BRANCHES[n.b];
+    const d = document.createElement('button');
+    d.className = 'snode' + (unlocked.has(n.id)?' owned':'') + (nodeAvail(n)?' avail':'') + (selNode===n.id?' sel':'');
+    d.style.left = p.x+'%'; d.style.top = p.y+'%';
+    if (unlocked.has(n.id)) d.style.background = br.color;
+    else if (nodeAvail(n)) d.style.background = '#5563a8';
+    d.innerHTML = n.icon + `<small>${n.cost} SP</small>`;
+    d.title = n.name;
+    d.onclick = ()=>{ selNode = n.id; buildSphere(); };
+    wrap.appendChild(d);
+  }
+  // detail card
+  const card = $('#nodeCard');
+  const n = NODES.find(m=>m.id===selNode);
+  if (!n){ card.classList.add('hidden'); return; }
+  card.classList.remove('hidden');
+  $('#ncType').textContent = (n.t==='stat'?'STAT':n.t==='passive'?'PASSIVE':'ACTIVE SKILL') + ' · ' + BRANCHES[n.b].name;
+  $('#ncType').style.color = BRANCHES[n.b].color;
+  $('#ncName').textContent = n.name;
+  $('#ncDesc').textContent = n.desc;
+  const btn = $('#ncBtn');
+  if (unlocked.has(n.id)){ btn.textContent = 'UNLOCKED'; btn.disabled = true; }
+  else if (!nodeAvail(n)){ btn.textContent = 'REACH THIS NODE FIRST'; btn.disabled = true; }
+  else if (me.sp < n.cost){ btn.textContent = 'NEED '+n.cost+' SP — YOU HAVE '+me.sp; btn.disabled = true; }
+  else { btn.textContent = 'UNLOCK — '+n.cost+' SP'; btn.disabled = false; }
+  btn.onclick = ()=>{
+    if (me.sp < n.cost || !nodeAvail(n)) return;
+    me.sp -= n.cost; unlocked.add(n.id); recalc(); sfx.buy();
+    bubble(n.name.toUpperCase()+'!', me.x, me.y, 1000);
+    buildSphere(); buildActives(); refreshHUD();
+  };
+  $('#spCount').textContent = me.sp;
+}
+
+/* ============================================================ active skills */
+let waves = [], meteors = [];
+const ACTIVES = {
+  wave:   { icon:'WAV', label:'WAVE',   key:'Q', cd:9000  },
+  meteor: { icon:'MET', label:'METEOR', key:'E', cd:16000 },
+  frenzy: { icon:'FRZ', label:'FRENZY', key:'R', cd:22000 },
+};
+function buildActives(){
+  const wrap = $('#actives'); wrap.innerHTML = '';
+  for (const [id, a] of Object.entries(ACTIVES)){
+    if (!S.actives.has(id)) continue;
+    const b = document.createElement('button');
+    b.className = 'abtn'; b.id = 'abtn-'+id;
+    b.innerHTML = `<span>${a.icon}</span><span class="k">${a.label} · ${a.key}</span><div class="cdov" style="height:0%"></div>`;
+    b.onclick = ()=>castActive(id);
+    wrap.appendChild(b);
+  }
+}
+function castActive(id){
+  const now = performance.now(), a = ACTIVES[id];
+  if (!a || !S.actives.has(id) || now < me.actCd[id] || !started) return;
+  me.actCd[id] = now + a.cd;
+  if (id==='wave'){ waves.push({ x:me.x, y:me.y, ang:swordAngleAt(now), t0:now, hit:new Set() }); beep(300,.18,'sawtooth',.06,900); }
+  if (id==='meteor'){ meteors.push({ x:me.x, y:me.y, at:now+380 }); beep(160,.25,'square',.08,60); }
+  if (id==='frenzy'){ me.frenzyUntil = now+5000; bubble('FRENZY!', me.x, me.y, 900); sfx.lvl(); }
+}
+function tickActives(now, dt){
+  // waves fly and cut
+  waves = waves.filter(w => now - w.t0 < 780);
+  for (const w of waves){
+    w.x += Math.cos(w.ang)*dt*.00042; w.y += Math.sin(w.ang)*dt*.00042;
+    for (const s of slimes.values()){
+      if (w.hit.has(s.id)) continue;
+      if (dist2(w.x,w.y,s.x,s.y) < (s.r+.035)**2){ w.hit.add(s.id); doHit(s, Math.round(myDamage()*1.2)); }
+    }
+    ctx.save(); ctx.translate(NX(w.x), NY(w.y)); ctx.rotate(w.ang);
+    ctx.strokeStyle = '#bfe9ff'; ctx.globalAlpha = .9; ctx.lineWidth = 7; ctx.lineCap='round';
+    ctx.beginPath(); ctx.arc(0, 0, SCALE()*.045, -.9, .9); ctx.stroke();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(0, 0, SCALE()*.045, -.9, .9); ctx.stroke();
+    ctx.restore(); ctx.globalAlpha = 1;
+  }
+  // meteors: warning ring, then BOOM
+  meteors = meteors.filter(m => now < m.at + 60);
+  for (const m of meteors){
+    const R = SCALE()*.13;
+    if (now < m.at){
+      const p = 1 - (m.at-now)/380;
+      ctx.save(); ctx.translate(NX(m.x), NY(m.y));
+      ctx.strokeStyle = 'rgba(255,80,60,.85)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(0,0,R,0,7); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0,0,R*p,0,7); ctx.stroke();
+      ctx.restore();
+    } else if (!m.boomed){
+      m.boomed = true; sfx.pop();
+      popRings.push({ x:m.x, y:m.y, r:.02, life:1, color:'#ff8a5e' });
+      spawnHitFx(m.x, m.y, '#ffb52e', 16);
+      for (const s of [...slimes.values()])
+        if (dist2(m.x,m.y,s.x,s.y) < (.13+s.r)**2) doHit(s, 70 + myDamage());
+    }
+  }
+  // cooldown overlays
+  for (const [id, a] of Object.entries(ACTIVES)){
+    const b = document.getElementById('abtn-'+id); if (!b) continue;
+    const left = clamp((me.actCd[id]-now)/a.cd*100, 0, 100);
+    b.querySelector('.cdov').style.height = left+'%';
+    if (id==='frenzy' && now<me.frenzyUntil) b.style.background = '#ffd94d';
+    else if (id==='frenzy') b.style.background = '#fff8e7';
+  }
 }
 $('#shareBtn').onclick = async ()=>{
   const url = location.href;
@@ -766,6 +999,8 @@ function frame(now){
   drawField(now);
   // slimes sorted by y for fake depth
   [...slimes.values()].sort((a,b)=>a.y-b.y).forEach(s=>drawSlime(s,now));
+
+  if (started) tickActives(now, dt);
 
   // particles & rings & floats
   popRings = popRings.filter(r=>r.life>0);
