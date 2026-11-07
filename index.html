@@ -33,15 +33,15 @@
   /* weapon rack */
   #rack { position:fixed; z-index:20; bottom:14px; left:50%; transform:translateX(-50%); display:flex; gap:10px; }
   .wcard {
-    width:74px; padding:8px 4px 6px; text-align:center; cursor:pointer; position:relative;
+    width:82px; padding:8px 4px 6px; text-align:center; cursor:pointer; position:relative;
     background:#fff8e7; border:4px solid #5b3a1e; border-radius:18px;
     box-shadow:0 5px 0 #5b3a1e; transition:transform .08s;
   }
   .wcard:active { transform:translateY(4px); box-shadow:0 1px 0 #5b3a1e; }
   .wcard.sel { background:#ffd94d; transform:translateY(-8px) scale(1.07); box-shadow:0 10px 0 #5b3a1e; }
   .wcard.locked { filter:grayscale(.9); opacity:.65; }
-  .wcard svg { width:38px; height:38px; }
-  .wcard .wn { font-size:12px; font-weight:800; color:#5b3a1e; line-height:1.05; }
+  .wcard svg { width:34px; height:34px; }
+  .wcard .wn { font-size:10px; font-weight:800; color:#5b3a1e; line-height:1.05; white-space:nowrap; }
   .wcard .wl { position:absolute; top:-10px; right:-8px; background:#5b3a1e; color:#ffd94d; font-size:11px; font-weight:800; border-radius:99px; padding:2px 8px; }
   .wcard .key { position:absolute; top:-10px; left:-8px; background:#fff; border:2px solid #5b3a1e; color:#5b3a1e; font-size:11px; font-weight:800; border-radius:8px; padding:1px 6px; }
 
@@ -121,7 +121,7 @@
   }
   @keyframes hintBob { 0%,100% { transform:translateX(-50%) translateY(0); } 50% { transform:translateX(-50%) translateY(-5px); } }
   #kingBanner {
-    position:fixed; z-index:35; top:15%; left:50%; transform:translateX(-50%);
+    position:fixed; z-index:35; top:34%; left:50%; transform:translateX(-50%);
     font-size:min(8vw,44px); font-weight:900; color:#ffd94d; letter-spacing:1px; text-align:center;
     -webkit-text-stroke:2px #8a5a12; text-shadow:0 4px 0 #8a5a12, 0 10px 24px rgba(0,0,0,.4);
     pointer-events:none; white-space:nowrap;
@@ -250,7 +250,7 @@
   #playBtn:active { transform:translateY(6px); box-shadow:0 4px 0 #1e6410; }
   #howto { color:#fff; font-weight:700; font-size:15px; text-shadow:0 2px 0 rgba(0,0,0,.4); text-align:center; max-width:520px; line-height:1.5; }
   @media (max-width:640px) {
-    .wcard { width:58px; } .wcard svg { width:30px; height:30px; } .wcard .wn { font-size:10px; }
+    .wcard { width:58px; padding:8px 2px 6px; } .wcard svg { width:30px; height:30px; } .wcard .wn { font-size:9px; }
     #shareBtn { display:none; } #boardBadge { display:none; }
     #forge { right:50%; transform:translateX(50%); bottom:84px; width:94vw; padding:12px;
              max-height:calc(100dvh - 150px); overflow-y:auto; }
@@ -382,7 +382,7 @@ const WEAPON_IMGS = {};
 for (const w of WEAPONS){ const im=new Image(); im.src='assets/weapons/'+w.id+'.png'; WEAPON_IMGS[w.id]=im; }
 const weaponSVG = (w,locked)=> locked
  ? `<svg viewBox="0 0 40 40"><path d="M13 18v-3a7 7 0 0114 0v3h3v14H10V18h3zm7 4a3.2 3.2 0 00-2 5.4V30h4v-2.6a3.2 3.2 0 00-2-5.4z" fill="#8d6e63"/></svg>`
- : `<img src="assets/weapons/${w.id}.png" alt="${w.name}" style="width:40px;height:40px;object-fit:contain;transform:rotate(-38deg)">`;
+ : `<img src="assets/weapons/${w.id}.png" alt="${w.name}" style="width:34px;height:34px;object-fit:contain;transform:rotate(-38deg)">`;
 const weaponSVG_unused = (w,locked)=>`
 <svg viewBox="0 0 40 40">${locked
  ? '<path d="M13 18v-3a7 7 0 0114 0v3h3v14H10V18h3zm7 4a3.2 3.2 0 00-2 5.4V30h4v-2.6a3.2 3.2 0 00-2-5.4z" fill="#8d6e63"/>'
@@ -455,9 +455,11 @@ const hitClaimsAt = new Map(); // host-side rate limiting
 let combo=0, comboUntil=0;                 // kill-chain combo (2.5s window)
 let bounty=null;                           // current bounty objective (session scope)
 let paused=false;
-let myTrail=[];                            // slash trail points {x,y,t} in world coords
+let myTrail=[];                            // slash trail ribbon points {bx,by (hand), tx,ty (tip), t} in world coords
 let hintsSeen = { slash:false, spin:false, sphere:false };
 const seenKings = new Set();               // king ids already announced by the banner
+let startedAt = 0;                         // when PLAY was pressed (banner suppression window)
+let kingBannerPending = false;             // king banner queued behind a visible toast
 const SAVE_KEY = 'slimeslash-save-v1';
 
 /* ============================================================ slimes */
@@ -476,8 +478,21 @@ let slimeSeq = 1;
 function spawnSlime(){
   const k = pickKind();
   const id = (hostId||me.id).slice(0,4)+'-'+(slimeSeq++);
+  // ~60% of spawns land near a player (within ~0.9 units) so the action
+  // finds the players instead of the field emptying out; rest spawn anywhere.
+  let sx, sy;
+  if (Math.random() < .6){
+    const spots = [{x:me.x, y:me.y}];
+    for (const p of peers.values()) spots.push({ x:(p.tx!==undefined?p.tx:p.x), y:(p.ty!==undefined?p.ty:p.y) });
+    const c = spots[Math.floor(Math.random()*spots.length)];
+    const a = rand(0,Math.PI*2), d = rand(.15,.9);
+    sx = clamp(c.x + Math.cos(a)*d, .06, WORLD-.06);
+    sy = clamp(c.y + Math.sin(a)*d, .1, WORLD-.06);
+  } else {
+    sx = rand(.06,WORLD-.06); sy = rand(.1,WORLD-.06);
+  }
   const s = { id, kind:k.kind, hp:k.hp, max:k.hp, r:k.r,
-    x:rand(.06,WORLD-.06), y:rand(.1,WORLD-.06), vx:0, vy:0, dir:rand(0,Math.PI*2), turnAt:performance.now()+rand(800,2600),
+    x:sx, y:sy, vx:0, vy:0, dir:rand(0,Math.PI*2), turnAt:performance.now()+rand(800,2600),
     color:SLIME_COLORS[Math.floor(Math.random()*SLIME_COLORS.length)], seed:Math.random()*10, squish:0, flash:0 };
   slimes.set(id,s); return s;
 }
@@ -486,14 +501,28 @@ function hostTick(now,dt){
   for (const s of slimes.values()){
     if (now>s.turnAt){ s.dir=rand(0,Math.PI*2); s.turnAt=now+rand(800,2600); }
     const k = SLIME_KINDS.find(k=>k.kind===s.kind);
-    const sp = k.speed*dt*60/1000;
+    let sp = k.speed*dt*60/1000;
+    if (s.kind==='king'){
+      // the King HUNTS: it steers straight at the nearest player, faster than its wander
+      let bx=me.x, by=me.y, bd=dist2(s.x,s.y,me.x,me.y);
+      for (const p of peers.values()){
+        const px=(p.tx!==undefined?p.tx:p.x), py=(p.ty!==undefined?p.ty:p.y);
+        const d=dist2(s.x,s.y,px,py);
+        if (d<bd){ bd=d; bx=px; by=py; }
+      }
+      s.dir = Math.atan2(by-s.y, bx-s.x);
+      sp *= 1.6;
+    }
     s.x += Math.cos(s.dir)*sp; s.y += Math.sin(s.dir)*sp*.7;
     if (s.x<s.r+ .01){s.x=s.r+.01; s.dir=Math.PI-s.dir;} if (s.x>WORLD-s.r-.01){s.x=WORLD-s.r-.01; s.dir=Math.PI-s.dir;}
     if (s.y<s.r+.02){s.y=s.r+.02; s.dir=-s.dir;} if (s.y>WORLD-s.r-.03){s.y=WORLD-s.r-.03; s.dir=-s.dir;}
     s.squish = Math.max(0, s.squish - dt/160); s.flash = Math.max(0, s.flash - dt/120);
   }
-  const target = 34 + Math.min(10, peers.size*3);
-  if (slimes.size < target && Math.random()<.25) spawnSlime();
+  const target = Math.min(64, 40 + peers.size*4);
+  if (slimes.size < target){
+    if (Math.random()<.55) spawnSlime();
+    if (slimes.size < target-4 && Math.random()<.55) spawnSlime();   // refill in pairs while well under target
+  }
 }
 function worldPayload(){
   return { s:[...slimes.values()].map(s=>[s.id, +s.x.toFixed(3), +s.y.toFixed(3), Math.ceil(s.hp), s.max, s.kind, s.color, +s.dir.toFixed(2)]),
@@ -522,7 +551,14 @@ function applyWorld(p){
 function capParticles(){ if (particles.length>420) particles.splice(0, particles.length-420); }
 function spawnHitFx(x,y,color,n=6){ for(let i=0;i<n;i++) particles.push({x,y,vx:rand(-.12,.12),vy:rand(-.16,.02),life:1,color,r:rand(2,5)}); capParticles(); }
 function spawnPopFx(x,y,color){ for(let i=0;i<22;i++){ const a=rand(0,Math.PI*2),v=rand(.04,.22); particles.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-.05,life:1,color,r:rand(2,7)});} capParticles(); popRings.push({x,y,r:.01,life:1,color}); }
-function addFloat(x,y,text,color){ floats.push({x,y,text,color,life:1}); if (floats.length>48) floats.splice(0, floats.length-48); }
+function addFloat(x,y,text,color,opts={}){
+  const now = performance.now();
+  // dedupe: an identical float already alive at (nearly) the same spot is enough
+  for (const f of floats)
+    if (f.text===text && now-(f.t||0)<300 && dist2(f.x,f.y,x,y) < .03*.03) return;
+  floats.push({x,y,text,color,life:1,big:!!opts.big,t:now});
+  if (floats.length>48) floats.splice(0, floats.length-48);
+}
 function toast(msg,ms=2200){ const t=$('#toast'); t.textContent=msg; t.classList.remove('hidden'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.add('hidden'),ms); }
 let bubbleTimer=null;
 function bubble(text,x,y,ms=1600){ const b=$('#bubble'); b.textContent=text; b.style.left=NX(x)+'px'; b.style.top=NY(y)+'px'; b.classList.remove('hidden'); clearTimeout(bubbleTimer); bubbleTimer=setTimeout(()=>b.classList.add('hidden'),ms); }
@@ -629,7 +665,7 @@ function onKillFx(f){
     combo = (now < comboUntil) ? combo+1 : 1;
     comboUntil = now + 2500;
     updateComboBadge(true);
-    if (combo===5 || combo===10 || combo===15 || combo===25){ addFloat(me.x, me.y-.07, 'COMBO x'+combo, '#ff8a2e'); sfx.combo(); }
+    if (combo===5 || combo===10 || combo===15 || combo===25){ addFloat(f.x, f.y-.06, 'COMBO x'+combo, '#ff8a2e', {big:true}); sfx.combo(); }
     if (combo===15) toast('ON FIRE! +15% damage while the combo lives!');
     // bounty progress (my kills only, matched by colour or kind)
     if (bounty && ((bounty.type==='color' && f.c===bounty.key) || (bounty.type==='kind' && f.kind===bounty.key))){
@@ -741,6 +777,7 @@ addEventListener('pointermove', e=>{
     const dtm=Math.max(1, now-lastMoveT);
     spd=Math.hypot(cdx,cdy)/dtm*1000;
     if (Math.hypot(cdx,cdy)>1.5) me.angle=Math.atan2(cdy,cdx);
+    if (downInfo) downInfo.travel += Math.hypot(cdx,cdy);   // tap-vs-drag tracking for the spin gate
   }
   lastClient={x:e.clientX, y:e.clientY}; lastMoveT=now;
   me.speed = spd;
@@ -756,17 +793,26 @@ addEventListener('pointermove', e=>{
   }
   me.px=me.x; me.py=me.y; me.x=x; me.y=y;
 });
+let downInfo = null;   // canvas pointerdown record for the tap-vs-drag spin gate
 addEventListener('pointerdown', e=>{
   if (!started) return;
   if (e.target.closest('#hud') && !e.target.closest('#game')) { /* UI taps handled by buttons */ }
   if (e.target===cv){
-    // snap the sword to the (touch-lifted) tap point so the spin centres there
+    // snap the sword to the (touch-lifted) tap point so a spin centres there
     me.px=me.x; me.py=me.y;
     me.x=clamp(cam.x + e.clientX/UNIT(), .02, WORLD-.02);
     me.y=clamp(cam.y + ptrY(e)/UNIT(), .02, WORLD-.02);
-    trySpin();
+    // spin fires on pointerUP, and only for a genuine tap (see pointerup) —
+    // releasing a drag must NOT spin
+    downInfo = { t:performance.now(), travel:0 };
   }
 });
+addEventListener('pointerup', e=>{
+  if (!downInfo) return;
+  const info = downInfo; downInfo = null;
+  if (performance.now() - info.t < 260 && info.travel < 14) trySpin();
+});
+addEventListener('pointercancel', ()=>{ downInfo = null; });
 addEventListener('touchmove', e=>{ e.preventDefault(); }, {passive:false});
 addEventListener('keydown', e=>{
   if (!started) return;
@@ -784,6 +830,7 @@ function trySpin(){
   const now=performance.now();
   if (now < me.spinCdUntil) return;
   me.spinUntil = now+260; me.spinCdUntil = now + 900*(1 + S.spinCd);
+  popRings.push({ x:me.x, y:me.y, r:.02, life:1, color:myWeapon().color });   // visible spin-start ring
   sfx.spin();
   if (!hintsSeen.spin){ hintsSeen.spin = true; updateHint(); }
 }
@@ -794,8 +841,13 @@ function refreshHUD(){
   $('#lvl').textContent = me.level;
   $('#kills').textContent = me.kills+' kills';
   $('#xpFill').style.width = clamp(me.xp/(me.level*100)*100,0,100)+'%';
-  // scoreboard
-  const rows = Object.entries(scores).sort((a,b)=>b[1].kills-a[1].kills).slice(0,5);
+  // scoreboard — my own row always shows LIVE me.kills/me.name (local kills are
+  // credited in a path that does not write into scores, so the table lagged)
+  const sEntries = Object.entries(scores);
+  if (!sEntries.some(([id])=>id===me.id)) sEntries.push([me.id, { name:me.name, kills:me.kills }]);
+  const rows = sEntries
+    .map(([id,s])=> id===me.id ? [id, { name:me.name, kills:me.kills }] : [id, s])
+    .sort((a,b)=>b[1].kills-a[1].kills).slice(0,5);
   $('#board').innerHTML = rows.length ? rows.map(([id,s])=>`<div class="row ${id===me.id?'me':''}"><span>${esc(s.name)}</span><b>${s.kills}</b></div>`).join('') : '<div class="row"><span>No kills yet</span></div>';
   // sphere points
   $('#spCount').textContent = me.sp;
@@ -982,11 +1034,20 @@ function updateBountyUI(){
 /* ---------- king banner ---------- */
 function scanKings(){
   if (!started) return;
+  const fresh = performance.now() - startedAt >= 3000;   // never banner in the first 3s after PLAY
   for (const s of slimes.values())
-    if (s.kind==='king' && !seenKings.has(s.id)){ seenKings.add(s.id); showKingBanner(); }
+    if (s.kind==='king' && !seenKings.has(s.id) && fresh){ seenKings.add(s.id); showKingBanner(); }
   for (const id of [...seenKings]) if (!slimes.has(id)) seenKings.delete(id);
 }
 function showKingBanner(){
+  // queued: the banner never overlaps a toast — it waits until the toast hides
+  kingBannerPending = true;
+  tryKingBanner();
+}
+function tryKingBanner(){
+  if (!kingBannerPending) return;
+  if (!$('#toast').classList.contains('hidden')){ setTimeout(tryKingBanner, 300); return; }
+  kingBannerPending = false;
   const b = $('#kingBanner');
   b.classList.remove('hidden'); b.classList.remove('show'); void b.offsetWidth; b.classList.add('show');
   sfx.sting();
@@ -1035,7 +1096,8 @@ function saveGame(){
   try{
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       level:me.level, xp:me.xp, coins:me.coins, kills:me.kills, sp:me.sp,
-      unlocked:[...unlocked], weapon:me.weapon, name:me.name, muted, hintsSeen
+      unlocked:[...unlocked], weapon:me.weapon, name:me.name, muted, hintsSeen,
+      bounty: bounty ? { type:bounty.type, key:bounty.key, label:bounty.label, need:bounty.need, have:bounty.have, reward:bounty.reward } : null
     }));
   }catch(e){}
 }
@@ -1056,6 +1118,11 @@ function loadGame(){
   me.weapon = wi;
   if (d.name){ me.name = cleanName(d.name); $('#nameIn').value = me.name; }
   if (d.hintsSeen) hintsSeen = { slash:!!d.hintsSeen.slash, spin:!!d.hintsSeen.spin, sphere:!!d.hintsSeen.sphere };
+  if (d.bounty && d.bounty.key && (d.bounty.type==='color' || d.bounty.type==='kind')){
+    bounty = { type:d.bounty.type, key:d.bounty.key, label:String(d.bounty.label||'').slice(0,16) || 'SLIME',
+               need:Math.max(1, d.bounty.need|0 || 8), have:Math.max(0, d.bounty.have|0), reward:Math.max(0, d.bounty.reward|0 || 40) };
+    updateBountyUI();
+  }
   setMuted(!!d.muted);
 }
 
@@ -1180,6 +1247,52 @@ function drawVideoSlime(s,t,baseR){
 
 /* ============================================================ drawing */
 const FLOWERS = Array.from({length:460},(_,i)=>({x:(Math.sin(i*127.1)*.5+.5)*WORLD, y:(Math.cos(i*311.7)*.5+.5)*WORLD, c:['#fff','#ffd1e8','#fff3a0'][i%3], s:2+(i%3)}));
+/* Deterministic world dressing (seeded RNG, same for every player): trees,
+   rocks and ponds scattered over the world, kept off the spawn-centre clearing.
+   Visual only — no collision. */
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+const DECOR = (()=>{
+  const rng = mulberry32(20261107);
+  const items = [], cx = WORLD/2, cy = WORLD/2 + .1;
+  const place = minC => {
+    for (let i=0;i<40;i++){
+      const x = .12 + rng()*(WORLD-.24), y = .14 + rng()*(WORLD-.24);
+      if (Math.hypot(x-cx, y-cy) > minC) return { x, y };
+    }
+    return { x:.2, y:.2 };
+  };
+  for (let i=0;i<3;i++){ const p = place(.65); items.push({ t:'pond', x:p.x, y:p.y, r:.17 + rng()*.12 }); }
+  for (let i=0;i<26;i++){ const p = place(.45); items.push({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }); }
+  for (let i=0;i<14;i++){ const p = place(.45); items.push({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }); }
+  return items;
+})();
+function drawDecor(){
+  const u = UNIT(), vw = W/u, vh = H/u;
+  for (const d of DECOR){
+    if (d.x<cam.x-.4 || d.x>cam.x+vw+.4 || d.y<cam.y-.4 || d.y>cam.y+vh+.4) continue;   // view-culled
+    const x = NX(d.x), y = NY(d.y);
+    if (d.t === 'pond'){
+      const r = d.r*u;
+      ctx.fillStyle = '#4da3e0'; ctx.beginPath(); ctx.ellipse(x, y, r, r*.62, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = '#7cc0f2'; ctx.beginPath(); ctx.ellipse(x-r*.12, y-r*.08, r*.68, r*.4, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.beginPath(); ctx.ellipse(x-r*.3, y-r*.16, r*.2, r*.07, -.4, 0, 7); ctx.fill();
+    } else if (d.t === 'rock'){
+      const r = .035*u*d.s;
+      ctx.fillStyle = '#9aa0a3'; ctx.beginPath(); ctx.ellipse(x, y, r, r*.75, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = '#b9bfc2'; ctx.beginPath(); ctx.ellipse(x-r*.25, y-r*.22, r*.55, r*.4, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = '#7e858a'; ctx.beginPath(); ctx.ellipse(x+r*.4, y+r*.18, r*.4, r*.3, 0, 0, 7); ctx.fill();
+    } else {   // tree: brown trunk + layered green canopy
+      const s = d.s, tw = .016*u*s, th = .05*u*s, cr = .085*u*s;
+      ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.beginPath(); ctx.ellipse(x, y+th*.4, cr*.9, cr*.28, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = '#7a4d16'; ctx.fillRect(x-tw/2, y-th, tw, th);
+      ctx.fillStyle = '#2e7d32'; ctx.beginPath(); ctx.arc(x, y-th-cr*.55, cr, 0, 7); ctx.fill();
+      ctx.fillStyle = '#43a047';
+      ctx.beginPath(); ctx.arc(x-cr*.45, y-th-cr*.25, cr*.62, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(x+cr*.45, y-th-cr*.25, cr*.62, 0, 7); ctx.fill();
+      ctx.fillStyle = '#66bb6a'; ctx.beginPath(); ctx.arc(x-cr*.22, y-th-cr*.85, cr*.42, 0, 7); ctx.fill();
+    }
+  }
+}
 function drawField(t){
   const g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#8fd06e'); g.addColorStop(1,'#69b84e');
   ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
@@ -1192,6 +1305,8 @@ function drawField(t){
     if (f.x<cam.x-.1 || f.x>cam.x+vw+.1 || f.y<cam.y-.1 || f.y>cam.y+vh+.1) continue;
     ctx.fillStyle=f.c; ctx.beginPath(); ctx.arc(NX(f.x), NY(f.y), f.s, 0, 7); ctx.fill();
   }
+  // trees / rocks / ponds (under slimes)
+  drawDecor();
   // world border fence
   ctx.strokeStyle='#7a4d16'; ctx.lineWidth=12;
   ctx.strokeRect(NX(0), NY(0), WORLD*u, WORLD*u);
@@ -1372,7 +1487,7 @@ function frame(now){
   for (const p of particles){ p.x+=p.vx*dt/60; p.y+=p.vy*dt/60; p.vy+=.0009*dt/16; p.life-=dt/480; ctx.globalAlpha=Math.max(0,p.life); ctx.fillStyle=p.color; ctx.beginPath(); ctx.arc(NX(p.x),NY(p.y),p.r,0,7); ctx.fill(); ctx.globalAlpha=1; }
   floats = floats.filter(f=>f.life>0);
   ctx.textAlign='center';
-  for (const f of floats){ f.y-=dt*.00003; f.life-=dt/950; ctx.globalAlpha=Math.max(0,f.life); ctx.font='900 17px "Baloo 2",sans-serif'; ctx.lineWidth=4; ctx.strokeStyle='rgba(60,40,10,.8)'; ctx.strokeText(f.text,NX(f.x),NY(f.y)); ctx.fillStyle=f.color; ctx.fillText(f.text,NX(f.x),NY(f.y)); ctx.globalAlpha=1; }
+  for (const f of floats){ f.y-=dt*.00003; f.life-=dt/(f.big?1750:950); ctx.globalAlpha=Math.max(0,f.life); ctx.font = f.big ? '900 26px "Baloo 2",sans-serif' : '900 17px "Baloo 2",sans-serif'; ctx.lineWidth = f.big?6:4; ctx.strokeStyle='rgba(60,40,10,.8)'; ctx.strokeText(f.text,NX(f.x),NY(f.y)); ctx.fillStyle=f.color; ctx.fillText(f.text,NX(f.x),NY(f.y)); ctx.globalAlpha=1; }
 
   // other players' swords
   for (const [id,p] of peers){
@@ -1391,26 +1506,46 @@ function frame(now){
       if (attacking){
         const ang = spinningNow ? (now/38)%(Math.PI*2) : bl.ang;
         const reach = myReach() * (spinningNow?1.15:1) * (1 + bl.ext);
-        myTrail.push({ x: me.x + Math.cos(ang)*reach, y: me.y + Math.sin(ang)*reach, t: now });
-        if (myTrail.length > 14) myTrail.splice(0, myTrail.length-14);
+        myTrail.push({ bx:me.x, by:me.y, tx: me.x + Math.cos(ang)*reach, ty: me.y + Math.sin(ang)*reach, t: now });
+        if (myTrail.length > 16) myTrail.splice(0, myTrail.length-16);
       }
-      myTrail = myTrail.filter(p => now - p.t < 140);
+      myTrail = myTrail.filter(p => now - p.t < 240);
       if (myTrail.length > 1){
         ctx.save(); ctx.lineCap='round'; ctx.lineJoin='round';
+        // FILLED ribbon: one quad per segment between hand (base) and blade tip,
+        // weapon colour at alpha ~.5, tapering as the segment ages
         for (let i=1; i<myTrail.length; i++){
           const p0 = myTrail[i-1], p1 = myTrail[i];
-          const a = 1 - (now - p1.t)/140;
-          ctx.strokeStyle = myWeapon().color; ctx.globalAlpha = .45*a;
-          ctx.lineWidth = 2 + 11*a;
-          ctx.beginPath(); ctx.moveTo(NX(p0.x), NY(p0.y)); ctx.lineTo(NX(p1.x), NY(p1.y)); ctx.stroke();
-          ctx.strokeStyle = '#ffffff'; ctx.globalAlpha = .5*a;
-          ctx.lineWidth = (2 + 11*a)*.45;
-          ctx.beginPath(); ctx.moveTo(NX(p0.x), NY(p0.y)); ctx.lineTo(NX(p1.x), NY(p1.y)); ctx.stroke();
+          const age = 1 - (now - p1.t)/240;
+          ctx.globalAlpha = .5*age;
+          ctx.fillStyle = myWeapon().color;
+          ctx.beginPath();
+          ctx.moveTo(NX(p0.bx), NY(p0.by));
+          ctx.lineTo(NX(p0.tx), NY(p0.ty));
+          ctx.lineTo(NX(p1.tx), NY(p1.ty));
+          ctx.lineTo(NX(p1.bx), NY(p1.by));
+          ctx.closePath(); ctx.fill();
+        }
+        // bright white core along the blade edge so the sweep reads on green grass
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3;
+        for (let i=1; i<myTrail.length; i++){
+          const p0 = myTrail[i-1], p1 = myTrail[i];
+          const age = 1 - (now - p1.t)/240;
+          ctx.globalAlpha = .85*age;
+          ctx.beginPath(); ctx.moveTo(NX(p0.tx), NY(p0.ty)); ctx.lineTo(NX(p1.tx), NY(p1.ty)); ctx.stroke();
         }
         ctx.restore(); ctx.globalAlpha = 1;
       }
     }
     drawSword(NX(me.x),NY(me.y),bl.ang,me.weapon,me.color, started?me.name:'', true, now, now<me.spinUntil, bl.ext);
+  }
+
+  // pause guarantee: with dt frozen at 0 the trail vanishes and the sword can
+  // end up hidden under the centred pause card — redraw my sword explicitly as
+  // the LAST canvas op while paused so it always stays visible under the overlay
+  if (paused && started){
+    const bl = bladeAt(now);
+    drawSword(NX(me.x),NY(me.y),bl.ang,me.weapon,me.color, me.name, true, now, false, bl.ext);
   }
 
   // scoreboard refresh (cheap, 2/s)
@@ -1434,7 +1569,7 @@ $('#playBtn').onclick = ()=>{
   scores[me.id]={name:me.name,kills:0};
   $('#title').classList.add('hidden');
   $('#hud').classList.remove('hidden');
-  started=true;
+  started=true; startedAt = performance.now();
   buildRack(); refreshHUD(); refreshPeers();
   if (!bounty) rollBounty();
   updateHint();
