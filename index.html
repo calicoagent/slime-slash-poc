@@ -749,10 +749,12 @@ const CONTACT_DMG = { baby:4, dart:4, mid:6, gold:2, metal:5, splitter:7, big:9,
 const BANK_POS = { x: WORLD/2 - .42, y: WORLD/2 - .34 };
 const SHOP_POS = { x: WORLD/2 + .42, y: WORLD/2 - .34 };
 const HOSPITAL_POS = { x: WORLD/2, y: WORLD/2 + .44 };
+const TOWN_R = 0.75;   // safe-zone radius around the town centre — covers all three buildings + the plaza; NO enemies inside, NO damage inside
 let bullets = [];               // boss bullet-hell orbs (client-local sim, never networked)
 let spiralEmitters = [];
 let pendingVolleys = [];   // boss 'spread': timed 5-way volleys (client-local)        // active spiral bullet emitters (client-local)
 let bossSpawnAt = Infinity;     // host: next SLIME EMPEROR spawn time
+let lastMetalAt = -1;           // host: last time a metal slime spawned (75s spawn guarantee; -1 = uninitialised)
 let bossFireAt = 0;             // host: next bullet-pattern volley
 let bossPatternIdx = 0;         // host: pattern rotation ring -> fan -> spiral
 let dmgFlashAt = 0;             // last time the player took damage (red vignette decay)
@@ -782,7 +784,7 @@ const SLIME_KINDS = [
   { kind:'tank',  hp:190, r:.062, coins:34, xp:60, speed:.005, weight:8,  hopCycle:1050, hopDist:.030 },
   { kind:'splitter', hp:46, r:.040, coins:14, xp:24, speed:.010, weight:12, hopCycle:740, hopDist:.034 },
   { kind:'gold',  hp:10,  r:.022, coins:60, xp:30, speed:.026, weight:3,  hopCycle:540,  hopDist:.040 },
-  { kind:'metal', hp:14,  r:.024, coins:150,xp:120,speed:.002, weight:2,  hopCycle:430,  hopDist:.052 },   // METAL SLIME — exactly 1 dmg per hit, flees, rich
+  { kind:'metal', hp:14,  r:.024, coins:150,xp:120,speed:.002, weight:3,  hopCycle:430,  hopDist:.052 },   // METAL SLIME — exactly 1 dmg per hit, flees, rich
   { kind:'boss',  hp:1500,r:.14,  coins:800,xp:600,speed:.007, weight:0,  hopCycle:1350, hopDist:.045 },   // SLIME EMPEROR — timed host spawn only, never random
 ];
 /* Hop phase is a pure function of (slime, now) so host and every client
@@ -810,7 +812,7 @@ function pickKind(zone=0){
   let tot = 0;
   const ws = SLIME_KINDS.map(k=>{
     let w = k.weight;
-    if (k.kind==='metal') w = zone===2 ? 3 : 2;   // rare everywhere, a touch less rare in the Wilds
+    if (k.kind==='metal') w = zone===2 ? 4 : 3;   // rare everywhere, a touch less rare in the Wilds (plus the host's 75s guarantee in hostTick)
     if (zone===2){ if (k.kind==='king' || k.kind==='tank') w *= 2; if (k.kind==='baby') w *= .5; }
     tot += w; return w;
   });
@@ -824,8 +826,10 @@ function spawnSlime(opts={}){
   let sx, sy;
   if (opts.x !== undefined){ sx = opts.x; sy = opts.y; }
   else {
-    // TOWN SAFETY: never spawn on top of a building — re-roll a few times
-    const nearBuilding = (x,y) => [BANK_POS,SHOP_POS,HOSPITAL_POS].some(bp => dist2(x,y,bp.x,bp.y) < .38*.38);
+    // TOWN SAFE ZONE: never spawn inside TOWN_R + .10 of the centre (in
+    // EITHER branch) — re-roll, and if every roll lands in town, shove
+    // the final point radially out past the boundary.
+    const inTown = (x,y) => dist2(x,y,WORLD/2,WORLD/2) < (TOWN_R+.10)*(TOWN_R+.10);
     for (let tries=0; tries<6; tries++){
       if (opts.nearPlayer !== false && Math.random() < .6){
         // ~60% of spawns land near a player (within ~0.9 units) so the action
@@ -839,7 +843,12 @@ function spawnSlime(opts={}){
       } else {
         sx = rand(.06,WORLD-.06); sy = rand(.1,WORLD-.06);
       }
-      if (!nearBuilding(sx,sy) || tries===5) break;
+      if (!inTown(sx,sy)) break;
+      if (tries===5){
+        const dx = sx-WORLD/2, dy = sy-WORLD/2, dd = Math.hypot(dx,dy) || 1e-4;
+        sx = clamp(WORLD/2 + dx/dd*(TOWN_R+.15), .06, WORLD-.06);
+        sy = clamp(WORLD/2 + dy/dd*(TOWN_R+.15), .1, WORLD-.06);
+      }
     }
   }
   const zi = zoneOf(sx, sy), zone = ZONES[zi];
@@ -850,6 +859,7 @@ function spawnSlime(opts={}){
     x:sx, y:sy, vx:0, vy:0, dir:rand(0,Math.PI*2), turnAt:performance.now()+rand(800,2600),
     color: k.kind==='gold' ? '#ffe066' : k.kind==='metal' ? '#cfd8dc' : SLIME_COLORS[Math.floor(Math.random()*SLIME_COLORS.length)],
     seed:seedForId(id), squish:0, flash:0, mul: k.kind==='boss' ? 1.5 : zone.mul, elite:false };
+  if (k.kind==='metal') lastMetalAt = performance.now();   // any metal spawn (natural or guaranteed) restarts the 75s guarantee timer
   // ELITES: rare, tougher, much richer (never kings, the Emperor, or metal slimes)
   if (k.kind !== 'king' && k.kind !== 'boss' && k.kind !== 'metal' && Math.random() < .08){
     s.elite = true;
@@ -902,10 +912,19 @@ function hostTick(now,dt){
       else if (d > .85){ s.dir = away + Math.PI; mult *= 1.8; }
       else { s.dir = away + Math.PI/2 * (s.seed > .5 ? 1 : -1); mult *= .8; }
     }
-    // TOWN SAFETY: kings and the Emperor never camp the heart of town —
-    // inside 0.40u of the centre they are steered straight back out.
-    if ((s.kind==='king' || s.kind==='boss') && Math.hypot(s.x-WORLD/2, s.y-WORLD/2) < .40)
+    /* TOWN SAFE ZONE — NO enemies in town, of ANY kind: inside
+       TOWN_R + .05 of the centre, whatever a slime was doing (hunting,
+       fleeing, kiting), it turns and hops radially OUT. One found deeper
+       than TOWN_R - .12 (spawn glitch, knockback) is hard-corrected out
+       to that line — a rare positional push, not movement. */
+    const townD = Math.hypot(s.x-WORLD/2, s.y-WORLD/2);
+    if (townD < TOWN_R + .05){
       s.dir = Math.atan2(s.y-WORLD/2, s.x-WORLD/2);
+      if (townD < TOWN_R - .12){
+        const push = (TOWN_R - .12) / (townD || 1e-4);
+        s.x = WORLD/2 + (s.x-WORLD/2)*push; s.y = WORLD/2 + (s.y-WORLD/2)*push;
+      }
+    }
     /* HOP LOCOMOTION: slimes never glide. Steering above only chooses s.dir;
        translation happens ONLY inside the hop cycle's air window, at
        hopDist per hop (steering multiplier applied). Grounded = planted. */
@@ -922,6 +941,31 @@ function hostTick(now,dt){
   if (slimes.size < target){
     if (Math.random()<.55) spawnSlime();
     if (slimes.size < target-4 && Math.random()<.55) spawnSlime();   // refill in pairs while well under target
+  }
+  /* METAL SLIME GUARANTEE: at least one every ~75s of a host's reign.
+     Random odds alone starved it (0 seen in 284 gauntlet kills), so if
+     none is alive and the timer has lapsed, this spawn IS a metal — at
+     hunting distance (0.5-0.9u) from a random player, outside town.
+     Natural spawns and metal deaths also reset the timer (spawnSlime /
+     hostKill), so the guarantee only tops up a truly dry spell. */
+  if (lastMetalAt < 0) lastMetalAt = now;   // timer starts when this host's reign does
+  if (now - lastMetalAt > 75000 && ![...slimes.values()].some(s=>s.kind==='metal')){
+    let mx = null, my = null;
+    for (let tries=0; tries<20 && mx===null; tries++){
+      const spots = [{x:me.x, y:me.y}];
+      for (const p of peers.values()) spots.push({ x:(p.tx!==undefined?p.tx:p.x), y:(p.ty!==undefined?p.ty:p.y) });
+      const c = spots[Math.floor(Math.random()*spots.length)];
+      const a = rand(0,Math.PI*2), d = rand(.5,.9);
+      const x = clamp(c.x + Math.cos(a)*d, .06, WORLD-.06), y = clamp(c.y + Math.sin(a)*d, .1, WORLD-.06);
+      if (Math.hypot(x-WORLD/2, y-WORLD/2) > TOWN_R + .10){ mx = x; my = y; }
+    }
+    if (mx===null){   // players camped in/near town: drop it on a ring just outside the boundary instead
+      const a = rand(0,Math.PI*2);
+      mx = clamp(WORLD/2 + Math.cos(a)*(TOWN_R+.35), .06, WORLD-.06);
+      my = clamp(WORLD/2 + Math.sin(a)*(TOWN_R+.35), .1, WORLD-.06);
+    }
+    spawnSlime({ kind:'metal', x:mx, y:my });
+    lastMetalAt = now;
   }
   /* ---- SLIME EMPEROR: timed spawn + bullet-hell volleys (host decides,
      every client sims the bullets locally from the 'boss' events) ---- */
@@ -1147,6 +1191,7 @@ function hostApplyHit(slimeId, dmg, byId){
 }
 function hostKill(s, byId){
   slimes.delete(s.id);
+  if (s.kind==='metal') lastMetalAt = performance.now();   // a slain metal restarts the guarantee timer too
   const k = SLIME_KINDS.find(k=>k.kind===s.kind);
   const coins = Math.round(k.coins * (s.mul||1)), xp = Math.round(k.xp * (s.mul||1));   // zone/elite reward scaling
   scores[byId] = scores[byId] || { name: byId===me.id?me.name:(peers.get(byId)?.name||'Knight'), kills:0 };
@@ -1223,14 +1268,15 @@ function gainXp(n){
    and bullet damage are computed in frame() and funnel through here. */
 function damagePlayer(amount, now){
   if (!started || paused) return;
-  /* TOWN SAFETY — sanctuaries: no damage while a building panel, the Sphere
-     Grid or the skill tree is open, and none within 0.30u of a building.
-     (Slimes camping the spawn/bank/shop ovals caused verified death-loops.) */
+  /* TOWN SAFE ZONE — sanctuaries: no damage while a building panel, the
+     Sphere Grid or the skill tree is open, and NO damage anywhere inside
+     TOWN_R of the town centre (contact AND boss bullets funnel through
+     here, so orb fire over town is harmless too). Enemies can't be in
+     town at all, but the check stands on its own regardless. */
   if (!$('#bankPanel').classList.contains('hidden') || !$('#shopPanel').classList.contains('hidden') ||
       !$('#hospitalPanel').classList.contains('hidden') || !$('#forge').classList.contains('hidden') ||
       !$('#treePanel').classList.contains('hidden')) return;
-  for (const bp of [BANK_POS, SHOP_POS, HOSPITAL_POS])
-    if (dist2(me.x, me.y, bp.x, bp.y) < .30*.30) return;
+  if (dist2(me.x, me.y, WORLD/2, WORLD/2) < TOWN_R*TOWN_R) return;
   if (now < me.shieldUntil) return;        // Aegis Charm blocks ALL damage
   if (now <= me.invulnUntil) return;
   me.hp -= amount;
@@ -1942,6 +1988,9 @@ function drawMinimap(){
   const c = $('#minimap'); if (!c || !started) return;
   const g = c.getContext('2d'), S2 = c.width / WORLD;
   g.fillStyle = '#79c25f'; g.fillRect(0,0,c.width,c.height);
+  // town safe zone: sandy disc at the map centre, under every dot
+  g.fillStyle = '#ecd9a2';
+  g.beginPath(); g.arc(WORLD/2*S2, WORLD/2*S2, TOWN_R*S2, 0, 7); g.fill();
   g.strokeStyle = 'rgba(255,255,255,.8)'; g.lineWidth = 1.5;
   g.strokeRect(cam.x*S2, cam.y*S2, (W/UNIT())*S2, (H/UNIT())*S2);
   // building markers: BANK gold, SHOP red, HOSPITAL white with a red centre dot
@@ -2071,7 +2120,7 @@ function castWeaponSkill(){
     waves.push({ x:me.x, y:me.y, ang, t0:now, hit:new Set(), dmgMul:2.2, spd:.00065, life:1150, col:'#f8bbd0' });
     beep(300,.18,'sawtooth',.06,1200);
   } else if (me.weapon===3){   // SPEAR — THROW SPEAR: piercing projectile along the blade
-    shots.push({ x:me.x, y:me.y, vx:Math.cos(ang)*2.6, vy:Math.sin(ang)*2.6, dmg:Math.round(dmg*2.5), until:now+620, hitSet:new Set() });
+    shots.push({ x:me.x, y:me.y, vx:Math.cos(ang)*1.8, vy:Math.sin(ang)*1.8, dmg:Math.round(dmg*2.5), until:now+900, hitSet:new Set(), sparkAt:0 });
     beep(500,.12,'triangle',.08,300);
   } else if (me.weapon===4){   // GREATSWORD — EARTHSHAKER
     for (const s of [...slimes.values()]) if (dist2(s.x,s.y,me.x,me.y) < .30*.30) doHit(s, Math.round(dmg*2.2));
@@ -2316,6 +2365,7 @@ function drawTufts(t){
   const u = UNIT(), vw = W/u, vh = H/u, asp = img.naturalHeight/img.naturalWidth;
   for (const g of TUFTS){
     if (g.x<cam.x-.1 || g.x>cam.x+vw+.1 || g.y<cam.y-.1 || g.y>cam.y+vh+.1) continue;   // view-culled
+    if (Math.hypot(g.x-WORLD/2, g.y-WORLD/2) < TOWN_R + .02) continue;   // no grass grows on the town plaza
     const w = .055*u*g.s, h = w*asp;
     ctx.save();
     ctx.translate(NX(g.x), NY(g.y));
@@ -2433,13 +2483,42 @@ function drawField(t){
     ctx.fillStyle=f.c; ctx.fillRect(fx-fs/2, fy-fs/2, fs, fs);
     ctx.fillStyle='rgba(176,120,20,.9)'; ctx.fillRect(fx-.8, fy-.8, 1.6, 1.6);   // pollen centre pixel
   }
-  // grass tufts over the flowers, swaying in the same wind
-  drawTufts(t);
   // zone rings: the WILDS side darkens out past r=2.1, the MEADOW glows warm inside r=1.1
   ctx.fillStyle='rgba(40,80,40,.10)';
   ctx.beginPath(); ctx.arc(NX(WORLD/2), NY(WORLD/2), 2.1*u, 0, 7); ctx.fill();
   ctx.fillStyle='rgba(255,255,220,.07)';
   ctx.beginPath(); ctx.arc(NX(WORLD/2), NY(WORLD/2), 1.1*u, 0, 7); ctx.fill();
+  /* TOWN PLAZA: a sandy disc (r = TOWN_R) under the town — seeded pixel
+     speckles (hash of the 0.06u grid cell, one jittered square per cell)
+     and a boundary ring of two-tone stone blocks every ~0.085u, so the
+     safe zone reads at a glance. Drawn over the grass + zone tints. */
+  {
+    const cx = NX(WORLD/2), cy = NY(WORLD/2), R = TOWN_R*u;
+    ctx.fillStyle = '#ecd9a2';
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.fill();
+    const cell = .06, ss = Math.max(2, Math.round(u*.0035));   // speckle square ~2-4px
+    const gx0 = Math.max(0, Math.floor((WORLD/2 - TOWN_R)/cell)), gx1 = Math.min(WORLD/cell, Math.ceil((WORLD/2 + TOWN_R)/cell));
+    const gy0 = Math.max(0, Math.floor((WORLD/2 - TOWN_R)/cell)), gy1 = Math.min(WORLD/cell, Math.ceil((WORLD/2 + TOWN_R)/cell));
+    for (let gx=gx0; gx<gx1; gx++) for (let gy=gy0; gy<gy1; gy++){
+      const wx = (gx+.5)*cell, wy = (gy+.5)*cell;
+      if (wx < cam.x-.1 || wx > cam.x+vw+.1 || wy < cam.y-.1 || wy > cam.y+vh+.1) continue;   // view cull
+      const hs = Math.sin(gx*127.1 + gy*311.7)*43758.5453, hf = hs - Math.floor(hs);
+      if (hf > .85) continue;   // most cells get a speckle, a few stay clean
+      const jx = (hf*7.13 - Math.floor(hf*7.13) - .5)*cell*.7, jy = (hf*3.71 - Math.floor(hf*3.71) - .5)*cell*.7;
+      if (Math.hypot(wx+jx - WORLD/2, wy+jy - WORLD/2) > TOWN_R - .02) continue;   // keep speckles on the disc
+      ctx.fillStyle = hf < .42 ? '#ddc78c' : '#f6e7ba';
+      ctx.fillRect(NX(wx+jx)-ss/2, NY(wy+jy)-ss/2, ss, ss);
+    }
+    const nb = Math.round(2*Math.PI*TOWN_R/.085), bs = .045*u;
+    for (let i=0; i<nb; i++){
+      const a = i/nb*Math.PI*2, bx = WORLD/2 + Math.cos(a)*TOWN_R, by = WORLD/2 + Math.sin(a)*TOWN_R;
+      if (bx < cam.x-.1 || bx > cam.x+vw+.1 || by < cam.y-.1 || by > cam.y+vh+.1) continue;
+      ctx.fillStyle = i%2 ? '#a89f92' : '#c2bab0';
+      ctx.fillRect(NX(bx)-bs/2, NY(by)-bs/2, bs, bs);
+    }
+  }
+  // grass tufts over the flowers, swaying in the same wind (never on the plaza)
+  drawTufts(t);
   // ponds only -- flat ground decals (trees/rocks live in the y-sorted entity pass)
   drawPonds(t);
   // world border fence: chunky pixel posts + twin rails
@@ -2884,6 +2963,13 @@ function frame(now){
       const sh = shots[i];
       sh.x += sh.vx*dt/1000; sh.y += sh.vy*dt/1000;
       if (now > sh.until || sh.x<0 || sh.x>WORLD || sh.y<0 || sh.y>WORLD){ shots.splice(i,1); continue; }
+      // sparkle trail: two small sparks every 60ms of flight, so the throw reads in motion AND in stills
+      if (now >= (sh.sparkAt||0)){
+        sh.sparkAt = now + 60;
+        particles.push({ x:sh.x, y:sh.y, vx:rand(-.04,.04), vy:rand(-.04,.04), life:1, color:'#ffffff', r:rand(1.5,3) });
+        particles.push({ x:sh.x, y:sh.y, vx:rand(-.04,.04), vy:rand(-.04,.04), life:1, color:'#ffd94d', r:rand(1.5,3) });
+        capParticles();
+      }
       for (const s of slimes.values()){
         if (sh.hitSet.has(s.id)) continue;
         if (dist2(sh.x,sh.y,s.x,s.y) < .05*.05){ sh.hitSet.add(s.id); doHit(s, sh.dmg); }
@@ -2935,15 +3021,19 @@ function frame(now){
     ctx.fillStyle='#ffffff'; ctx.beginPath(); ctx.arc(bx,by,.005*u,0,7); ctx.fill();
   }
 
-  // thrown spears in flight: the spear sprite along its velocity + a white streak
+  // thrown spears in flight: the spear sprite along its velocity + a white
+  // motion streak from (pos - vel*0.055) to pos, drawn UNDER the sprite.
+  // (Render order confirmed: this block runs after drawEntities, so spears
+  // draw over slimes, and before the swords.)
   for (const sh of shots){
     const sx = NX(sh.x), sy = NY(sh.y), sa = Math.atan2(sh.vy, sh.vx), u = UNIT();
     ctx.save(); ctx.translate(sx, sy); ctx.rotate(sa);
-    ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 3; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(-.17*u, 0); ctx.lineTo(-.03*u, 0); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    const tail = Math.hypot(sh.vx, sh.vy) * .055;   // streak length = speed * 55ms of travel
+    ctx.beginPath(); ctx.moveTo(-tail*u, 0); ctx.lineTo(0, 0); ctx.stroke();
     const simg = WEAPON_IMGS.spear;
     if (simg && simg.complete && simg.naturalWidth){
-      const iw = .24*u, ih = iw * (simg.naturalHeight/simg.naturalWidth);
+      const iw = .32*u, ih = iw * (simg.naturalHeight/simg.naturalWidth);
       ctx.drawImage(simg, -iw*.86, -ih/2, iw, ih);   // tip lands on the hit point
     }
     ctx.restore();
@@ -2955,10 +3045,10 @@ function frame(now){
     p.x += (p.tx-p.x)*.4; p.y += (p.ty-p.y)*.4;
     drawSword(NX(p.x),NY(p.y),p.angle,p.weapon,p.color,p.name,false,now,p.spinning,p.ext||0);
   }
-  // my sword on top, with the slash trail: a bold TIP-PATH RIBBON. The blade
-  // tip's own recent path is recorded EVERY frame it moves >6px on screen —
-  // any fast wielded motion counts (drag, flick, swing, stab, spin) — and
-  // drawn as a tapering polygon strip along that path, NOT hand-to-tip quads.
+  // my sword on top, with the slash trail: the blade tip's own recent path
+  // is recorded EVERY frame it moves >6px on screen — any fast wielded
+  // motion counts (drag, flick, swing, stab, spin) — and drawn as
+  // multi-pass strokes along that path (see LIGHTSABER streak v3 below).
   {
     const bl = bladeAt(now);
     if (started){
@@ -2985,10 +3075,9 @@ function frame(now){
       if (myTrail.length > 34) myTrail.splice(0, myTrail.length-34);
       myTrail = myTrail.filter(p => now - p.t < 470);
       if (myTrail.length > 1){
-        // SMOOTHED ribbon: Catmull-Rom resample the tip path into a dense
-        // centreline (~9px steps), taper the width on a smooth curve so the
-        // tail melts to a point instead of a flat cut, and draw the white
-        // core as ONE continuous curve — no segment steps anywhere.
+        // Catmull-Rom resample the tip path into a dense centreline
+        // (~9px steps) carrying each point's ageFade (1 = live tip);
+        // the stroke passes below taper width+alpha along it.
         const raw = myTrail.map(p => ({ x:NX(p.x), y:NY(p.y), age: clamp(1-(now-p.t)/470, 0, 1) }));
         const pts = [];
         const P = i => raw[clamp(i, 0, raw.length-1)];
@@ -3005,43 +3094,39 @@ function frame(now){
           }
         }
         pts.push({ ...raw[raw.length-1] });
-        // LIGHTSABER streak: additive-blended layers over the same tapered
-        // edge geometry — wide faint glow, coloured blade body, white-hot
-        // core — in the player's own saber colour, melting to a point.
-        const edgeFor = f => pts.map((p,i)=>{
-          const a = pts[Math.max(0,i-1)], b = pts[Math.min(pts.length-1,i+1)];
-          let dx = b.x-a.x, dy = b.y-a.y; const L = Math.hypot(dx,dy)||1; dx/=L; dy/=L;
-          const hw = (.8 + 14*Math.pow(p.age, 1.6)) * f;   // smooth melt: ~15px*f at the blade, <1px at the tail tip
-          return { lx:p.x-dy*hw, ly:p.y+dx*hw, rx:p.x+dy*hw, ry:p.y-dx*hw };
-        });
+        /* LIGHTSABER streak v3 — multi-pass polyline STROKES over the
+           resampled tip path. Two gauntlets found the ribbon-quad versions
+           faint/thin both in motion and in stills, so the technique
+           changes: each pass strokes the dense centreline segment by
+           segment (round caps/joins — smooth at any speed), per-segment
+           alpha = pass alpha * ageFade, per-segment width scaled by
+           ageTaper (0.25 at the tail tip -> 1 at the live blade).
+           p.age here is ageFade: 1 = newest, 0 = 470ms old. */
+        const hw = clamp(myReach() * SCALE() * (1 + bl.ext) * .16, 9, 26);   // saber halfwidth follows weapon reach, as drawSword computes it
         ctx.save(); ctx.lineCap='round'; ctx.lineJoin='round';
         ctx.globalCompositeOperation = 'lighter';   // additive light blending
-        const saberLayer = (f, style, alpha)=>{
-          const e = edgeFor(f);
-          ctx.fillStyle = style;
+        const saberStroke = (wMul, style, aMul)=>{
+          ctx.strokeStyle = style;
           for (let i=1; i<pts.length; i++){
-            ctx.globalAlpha = alpha * Math.pow(pts[i].age, 1.15);
-            ctx.beginPath();
-            ctx.moveTo(e[i-1].lx, e[i-1].ly);
-            ctx.lineTo(e[i].lx, e[i].ly);
-            ctx.lineTo(e[i].rx, e[i].ry);
-            ctx.lineTo(e[i-1].rx, e[i-1].ry);
-            ctx.closePath(); ctx.fill();
+            const p0 = pts[i-1], p1 = pts[i], ageFade = (p0.age + p1.age)/2;
+            if (ageFade <= .01) continue;
+            ctx.globalAlpha = aMul * ageFade;
+            ctx.lineWidth = Math.max(1, hw * wMul * (.25 + .75*ageFade));
+            ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
           }
         };
-        saberLayer(2.6, me.color, .30);    // (1) OUTER GLOW
-        saberLayer(1.0, me.color, .8);     // (2) BLADE BODY
-        saberLayer(.5, me.color, .85);     // (3) SATURATED COLOUR CORE — keeps the saber readable on bright grass
-        saberLayer(.34, '#ffffff', .95);   // (4) WHITE-HOT CORE
-        // bloomed centre line — shadow on this ONE stroke only, for perf
-        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.globalAlpha = .9;
-        ctx.shadowColor = me.color; ctx.shadowBlur = 14;
-        ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
-        for (let i=1; i<pts.length-1; i++){
-          const mx = (pts[i].x + pts[i+1].x)/2, my = (pts[i].y + pts[i+1].y)/2;
-          ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
-        }
-        ctx.lineTo(pts[pts.length-1].x, pts[pts.length-1].y); ctx.stroke();
+        saberStroke(3.2, me.color, .15);   // A: wide faint halo
+        saberStroke(1.7, me.color, .8);    // B: saturated blade body
+        saberStroke(.8, '#ffffff', .95);   // C: white-hot core
+        /* HEAD GLOW at the live tip — the saber's head must read even in
+           a frozen screenshot: colour bloom disc + white-hot core with a
+           real shadowBlur in the player's colour. */
+        const tipP = pts[pts.length-1];
+        ctx.globalAlpha = .35; ctx.fillStyle = me.color;
+        ctx.beginPath(); ctx.arc(tipP.x, tipP.y, hw*1.5, 0, 7); ctx.fill();
+        ctx.globalAlpha = .95; ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = me.color; ctx.shadowBlur = 18;
+        ctx.beginPath(); ctx.arc(tipP.x, tipP.y, hw*.9, 0, 7); ctx.fill();
         ctx.restore(); ctx.globalAlpha = 1;
       }
     }
