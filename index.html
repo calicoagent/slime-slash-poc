@@ -416,6 +416,7 @@ const me = {
   weapon:1, coins:0, xp:0, level:1, kills:0,
   sp:0, actCd:{ wave:0, meteor:0, frenzy:0 }, frenzyUntil:0,
   stabT0:0, stabAng:0,
+  ptrSpeedPx:0,   // latest pointer speed (px/s, max of recent events, decayed per frame) — an idle blade must not cut
   lastHitAt:new Map(), spinUntil:0, spinCdUntil:0, trail:[],
   swingT0:0, swingDir:1,
 };
@@ -455,7 +456,7 @@ const hitClaimsAt = new Map(); // host-side rate limiting
 let combo=0, comboUntil=0;                 // kill-chain combo (2.5s window)
 let bounty=null;                           // current bounty objective (session scope)
 let paused=false;
-let myTrail=[];                            // slash trail ribbon points {bx,by (hand), tx,ty (tip), t} in world coords
+let myTrail=[];                            // slash trail: blade TIP path points {x, y (world), t} — drawn as a tapering ribbon
 let hintsSeen = { slash:false, spin:false, sphere:false };
 const seenKings = new Set();               // king ids already announced by the banner
 let startedAt = 0;                         // when PLAY was pressed (banner suppression window)
@@ -572,7 +573,18 @@ function myDamage(){
 function myReach(){ return myWeapon().reach * (1 + S.reach); }
 function myCd(){ return Math.max(50, myWeapon().cd * (1 + S.cd)) * (performance.now()<me.frenzyUntil ? .55 : 1); }
 
+// The blade only cuts while it is being WIELDED: spinning, mid-swing-arc
+// (same 190ms window swordAngleAt animates), mid-stab-lunge (same 150ms
+// window bladeAt animates), or the pointer itself moving fast right now.
+// A parked sword is scenery — slimes that wander into it must NOT die.
+function bladeLive(now){
+  if (now < me.spinUntil) return true;
+  if (myWeapon().motion==='stab') { if (me.stabT0 && now-me.stabT0<150) return true; }
+  else if (me.swingT0 && now-me.swingT0<190) return true;
+  return (me.ptrSpeedPx||0) > 240;
+}
 function localHitCheck(now){
+  if (!bladeLive(now)) return;   // idle/AFK sword cuts nothing — no free kills
   // blade = segment from hand (pointer) to tip along the sword's CURRENT
   // angle; SWING weapons also test the swept arc since last frame so fast
   // arcs can't tunnel through slimes between frames; spin = full circle
@@ -781,6 +793,7 @@ addEventListener('pointermove', e=>{
   }
   lastClient={x:e.clientX, y:e.clientY}; lastMoveT=now;
   me.speed = spd;
+  me.ptrSpeedPx = Math.max(me.ptrSpeedPx||0, spd);   // decayed per frame in frame(); gates idle-blade hits
   // a fast flick attacks: SWING weapons arc (direction follows the swipe),
   // STAB weapons lunge straight along it
   if (started && now>=me.spinUntil){
@@ -1455,6 +1468,7 @@ function frame(now){
   if (now - lastFrameAt < 15.9) return;              // hard cap: 60 FPS
   lastFrameAt = now;
   const dt = paused ? 0 : Math.min(50, now-lastT); lastT=now;   // pause freezes local dt only; world/netcode keep running
+  me.ptrSpeedPx *= Math.exp(-dt/110);   // pointer-speed memory decays fast — a stopped hand stops cutting within ~a few hundred ms
   ctx.setTransform(DPR,0,0,DPR,0,0);
 
   // remote slime interpolation
@@ -1495,44 +1509,52 @@ function frame(now){
     p.x += (p.tx-p.x)*.4; p.y += (p.ty-p.y)*.4;
     drawSword(NX(p.x),NY(p.y),p.angle,p.weapon,p.color,p.name,false,now,p.spinning,p.ext||0);
   }
-  // my sword on top, with a fading slash trail recorded while an attack is live
+  // my sword on top, with the slash trail: a bold TIP-PATH RIBBON. The blade
+  // tip's own recent path is recorded EVERY frame it moves >6px on screen —
+  // any fast wielded motion counts (drag, flick, swing, stab, spin) — and
+  // drawn as a tapering polygon strip along that path, NOT hand-to-tip quads.
   {
     const bl = bladeAt(now);
     if (started){
       const spinningNow = now < me.spinUntil;
-      const attacking = spinningNow
-        || (myWeapon().motion==='swing' && me.swingT0 && now-me.swingT0<190)
-        || (myWeapon().motion==='stab'  && me.stabT0  && now-me.stabT0<150);
-      if (attacking){
-        const ang = spinningNow ? (now/38)%(Math.PI*2) : bl.ang;
-        const reach = myReach() * (spinningNow?1.15:1) * (1 + bl.ext);
-        myTrail.push({ bx:me.x, by:me.y, tx: me.x + Math.cos(ang)*reach, ty: me.y + Math.sin(ang)*reach, t: now });
-        if (myTrail.length > 16) myTrail.splice(0, myTrail.length-16);
+      const ang = spinningNow ? (now/38)%(Math.PI*2) : bl.ang;
+      const reach = myReach() * (spinningNow?1.15:1) * (1 + bl.ext);
+      const tipX = me.x + Math.cos(ang)*reach, tipY = me.y + Math.sin(ang)*reach;
+      const lastP = myTrail[myTrail.length-1];
+      const movedPx = lastP ? Math.hypot((tipX-lastP.x)*UNIT(), (tipY-lastP.y)*UNIT()) : Infinity;
+      if (movedPx > UNIT()*.45) myTrail.length = 0;        // teleport/tap-snap: don't streak across the screen
+      if (!lastP || movedPx > 6){
+        myTrail.push({ x:tipX, y:tipY, t:now });
+        if (myTrail.length > 22) myTrail.splice(0, myTrail.length-22);
       }
-      myTrail = myTrail.filter(p => now - p.t < 240);
+      myTrail = myTrail.filter(p => now - p.t < 300);
       if (myTrail.length > 1){
+        // screen-space points, each with age 1 (fresh) -> 0 (300ms old)
+        const pts = myTrail.map(p => ({ x:NX(p.x), y:NY(p.y), age: clamp(1-(now-p.t)/300, 0, 1) }));
+        // perpendicular offset per point: half-width tapers 15px (newest) -> 2px (oldest)
+        const edge = pts.map((p,i)=>{
+          const a = pts[Math.max(0,i-1)], b = pts[Math.min(pts.length-1,i+1)];
+          let dx = b.x-a.x, dy = b.y-a.y; const L = Math.hypot(dx,dy)||1; dx/=L; dy/=L;
+          const hw = 2 + 13*p.age;
+          return { lx:p.x-dy*hw, ly:p.y+dx*hw, rx:p.x+dy*hw, ry:p.y-dx*hw };
+        });
         ctx.save(); ctx.lineCap='round'; ctx.lineJoin='round';
-        // FILLED ribbon: one quad per segment between hand (base) and blade tip,
-        // weapon colour at alpha ~.5, tapering as the segment ages
-        for (let i=1; i<myTrail.length; i++){
-          const p0 = myTrail[i-1], p1 = myTrail[i];
-          const age = 1 - (now - p1.t)/240;
-          ctx.globalAlpha = .5*age;
-          ctx.fillStyle = myWeapon().color;
+        // coloured ribbon body in the player's colour, alpha up to .55
+        ctx.fillStyle = me.color;
+        for (let i=1; i<pts.length; i++){
+          ctx.globalAlpha = .55 * pts[i].age;
           ctx.beginPath();
-          ctx.moveTo(NX(p0.bx), NY(p0.by));
-          ctx.lineTo(NX(p0.tx), NY(p0.ty));
-          ctx.lineTo(NX(p1.tx), NY(p1.ty));
-          ctx.lineTo(NX(p1.bx), NY(p1.by));
+          ctx.moveTo(edge[i-1].lx, edge[i-1].ly);
+          ctx.lineTo(edge[i].lx, edge[i].ly);
+          ctx.lineTo(edge[i].rx, edge[i].ry);
+          ctx.lineTo(edge[i-1].rx, edge[i-1].ry);
           ctx.closePath(); ctx.fill();
         }
-        // bright white core along the blade edge so the sweep reads on green grass
+        // white core line down the centre of the path so the sweep pops on grass
         ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3;
-        for (let i=1; i<myTrail.length; i++){
-          const p0 = myTrail[i-1], p1 = myTrail[i];
-          const age = 1 - (now - p1.t)/240;
-          ctx.globalAlpha = .85*age;
-          ctx.beginPath(); ctx.moveTo(NX(p0.tx), NY(p0.ty)); ctx.lineTo(NX(p1.tx), NY(p1.ty)); ctx.stroke();
+        for (let i=1; i<pts.length; i++){
+          ctx.globalAlpha = .8 * pts[i].age;
+          ctx.beginPath(); ctx.moveTo(pts[i-1].x, pts[i-1].y); ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke();
         }
         ctx.restore(); ctx.globalAlpha = 1;
       }
