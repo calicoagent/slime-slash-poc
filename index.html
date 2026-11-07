@@ -230,7 +230,11 @@
     #hpText { font-size:14px; }
     #mpTrack { width:84px; height:9px; }
     #mpText { font-size:14px; }
-    #items { left:8px; bottom:calc(var(--dockH, 196px) + 88px); gap:8px; }
+    /* items become right-side THUMB controls on a phone: chunky buttons
+       stacked above the rack dock (riding --dockH), reachable without
+       crossing the play field */
+    #items { left:auto; right:max(8px, env(safe-area-inset-right)); bottom:calc(var(--dockH, 196px) + 10px); gap:8px; }
+    .ibtn { width:64px; min-height:60px; }
     .ibtn { width:44px; height:44px; }
     #interactPrompt { bottom:calc(var(--dockH, 196px) + 10px); font-size:9px; padding:9px 14px; }
     #bossBar { width:min(72vw,520px); }
@@ -291,11 +295,16 @@
   #interactPrompt:active { transform:translateX(-50%) translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
   #items { position:fixed; left:max(14px, env(safe-area-inset-left)); bottom:222px; z-index:21; display:flex; flex-direction:column; gap:10px; }
   .ibtn {
-    position:relative; width:48px; height:48px; border-radius:0; cursor:pointer;
+    position:relative; width:60px; min-height:60px; border-radius:0; cursor:pointer; touch-action:manipulation;
     border:3px solid #3a2b23; background:#fff6df; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
-    display:flex; align-items:center; justify-content:center; padding:0;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; padding:4px 2px;
   }
-  .ibtn svg { width:27px; height:27px; }
+  .ibtn svg { width:26px; height:26px; }
+  .ibtn .ilabel { font-family:"VT323",monospace; font-size:14px; line-height:1; color:#3a2b23; letter-spacing:.5px; }
+  /* PANIC affordance: at low HP with potions in hand the POTION button
+     throbs in hard pixel steps (no smooth glow) until it's used */
+  @keyframes potionPanic { 0%,49% { transform:scale(1); filter:brightness(1); } 50%,100% { transform:scale(1.13); filter:brightness(1.4); } }
+  .ibtn.panic { animation:potionPanic .5s steps(1,end) infinite; border-color:#e5484d; }
   .ibtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
   .ibtn .cnt {
     position:absolute; top:-7px; right:-7px; min-width:20px; height:20px; padding:0 5px;
@@ -567,9 +576,9 @@
   </div>
   <canvas id="minimap" width="124" height="124"></canvas>
   <div id="items">
-    <button class="ibtn empty" id="itemPotion" title="Potion (Z) — heal 60 HP"><svg viewBox="0 0 40 40"><rect x="16.5" y="7" width="7" height="26" rx="2.5" fill="#e5484d"/><rect x="7" y="16.5" width="26" height="7" rx="2.5" fill="#e5484d"/></svg><span class="cnt">0</span></button>
-    <button class="ibtn empty" id="itemBomb" title="Bomb (X) — blast every slime near your sword"><svg viewBox="0 0 40 40"><circle cx="19" cy="25" r="12" fill="#263238"/><rect x="23" y="9" width="6" height="8" rx="2" fill="#5b3a1e"/><path d="M27 9 q7-5 9 1" stroke="#ffb52e" stroke-width="2.5" fill="none" stroke-linecap="round"/><circle cx="15" cy="20" r="3.5" fill="#90a4ae"/></svg><span class="cnt">0</span></button>
-    <button class="ibtn empty" id="itemShield" title="Aegis Charm (C) — shield: 6s invulnerable"><svg viewBox="0 0 40 40"><path d="M20 3 L34 8.5 V19 C34 28.5 27.5 33.5 20 37.5 C12.5 33.5 6 28.5 6 19 V8.5 Z" fill="#4dabff" stroke="#22577a" stroke-width="2.5"/><path d="M20 8 L29 11.5 V19 C29 25.5 25 29.5 20 32.5 C15 29.5 11 25.5 11 19 V11.5 Z" fill="#bfe3ff"/></svg><span class="cnt">0</span></button>
+    <button class="ibtn empty" id="itemPotion" title="Potion (Z) — heal 60 HP"><svg viewBox="0 0 40 40"><rect x="16.5" y="7" width="7" height="26" rx="2.5" fill="#e5484d"/><rect x="7" y="16.5" width="26" height="7" rx="2.5" fill="#e5484d"/></svg><span class="ilabel">POTION</span><span class="cnt">0</span></button>
+    <button class="ibtn empty" id="itemBomb" title="Bomb (X) — blast every slime near your sword"><svg viewBox="0 0 40 40"><circle cx="19" cy="25" r="12" fill="#263238"/><rect x="23" y="9" width="6" height="8" rx="2" fill="#5b3a1e"/><path d="M27 9 q7-5 9 1" stroke="#ffb52e" stroke-width="2.5" fill="none" stroke-linecap="round"/><circle cx="15" cy="20" r="3.5" fill="#90a4ae"/></svg><span class="ilabel">BOMB</span><span class="cnt">0</span></button>
+    <button class="ibtn empty" id="itemShield" title="Aegis Charm (C) — shield: 6s invulnerable"><svg viewBox="0 0 40 40"><path d="M20 3 L34 8.5 V19 C34 28.5 27.5 33.5 20 37.5 C12.5 33.5 6 28.5 6 19 V8.5 Z" fill="#4dabff" stroke="#22577a" stroke-width="2.5"/><path d="M20 8 L29 11.5 V19 C29 25.5 25 29.5 20 32.5 C15 29.5 11 25.5 11 19 V11.5 Z" fill="#bfe3ff"/></svg><span class="ilabel">AEGIS</span><span class="cnt">0</span></button>
   </div>
   <button id="interactPrompt" class="hidden px-btn">OPEN BANK</button>
   <div id="bossBar" class="hidden"><b>SLIME EMPEROR</b><div id="bossTrack"><div id="bossFill"></div></div></div>
@@ -2142,6 +2151,8 @@ function refreshHUD(){
     b.querySelector('.cnt').textContent = me.items[id];
     b.classList.toggle('empty', me.items[id]<=0);
   }
+  // panic pulse: dying (HP < 35%) with a potion in hand -> POTION throbs
+  $('#itemPotion').classList.toggle('panic', me.hp < me.maxHp*.35 && me.items.potion > 0);
   if (!$('#bankPanel').classList.contains('hidden')) updateBankPanel();
   if (!$('#hospitalPanel').classList.contains('hidden')){
     $('#hospHp').textContent = Math.max(0, Math.ceil(me.hp)) + ' / ' + me.maxHp;
@@ -2819,9 +2830,13 @@ $('#forgeSheetClose').onclick = ()=>toggleForge();
 $('#pauseSheetResume').onclick = ()=>togglePause(false);
 $('#bankPanel').addEventListener('click', e=>{ if (e.target.id==='bankPanel') e.target.classList.add('hidden'); });
 $('#shopPanel').addEventListener('click', e=>{ if (e.target.id==='shopPanel') e.target.classList.add('hidden'); });
-$('#itemPotion').onclick = ()=>useItem('potion');
-$('#itemBomb').onclick = ()=>useItem('bomb');
-$('#itemShield').onclick = ()=>useItem('shield');
+/* Item buttons fire on pointerdown — a tap uses the item IMMEDIATELY, mid-
+   fight, with no click latency. The window pointerdown handler flags any
+   non-canvas press as uiPointer, so the tap can never swing the sword.
+   (onclick removed: it would double-fire after pointerdown.) */
+$('#itemPotion').addEventListener('pointerdown', ()=>useItem('potion'));
+$('#itemBomb').addEventListener('pointerdown', ()=>useItem('bomb'));
+$('#itemShield').addEventListener('pointerdown', ()=>useItem('shield'));
 
 /* ============================================================ pixel slimes (generated pixel-art sprites) */
 const SLIME_IMGS = {};
