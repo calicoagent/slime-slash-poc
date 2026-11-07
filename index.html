@@ -602,7 +602,7 @@
     <button class="pbtn main" id="resumeBtn">RESUME</button>
     <button class="pbtn" id="soundBtn">SOUND: ON</button>
     <button class="pbtn" id="restartBtn">RESET SAVE</button>
-    <div class="pcontrols">Drag to slash · Click / Tap or SPACE = Spin Slash · Keys 1-7 = weapons · F = Sphere Grid · K = weapon skill tree · V = weapon skill · Q / E / R / T = skills · Z / X / C = items · B = bank / shop / hospital · Esc = pause</div>
+    <div class="pcontrols">Drag to slash · Click / Tap or SPACE = Spin Slash · Keys 1-7 = weapons · F = Sphere Grid · K = weapon skill tree · V = weapon skill · Q / E / R / T = skills · Z / X / C = items · B = bank / shop / inn · Esc = pause</div>
   </div>
 </div>
 <div id="bankPanel" class="hidden panelWrap">
@@ -631,10 +631,11 @@
 </div>
 <div id="hospitalPanel" class="hidden panelWrap">
   <div class="pauseCard px-panel" style="width:min(94vw,410px)">
-    <div class="sheetHead"><span class="sheetTitle">HOSPITAL</span><button class="pbtn" id="hospSheetClose">CLOSE</button></div>
-    <h2>HOSPITAL</h2>
+    <div class="sheetHead"><span class="sheetTitle">THE INN</span><button class="pbtn" id="hospSheetClose">CLOSE</button></div>
+    <h2>THE INN</h2>
     <div class="bankLine">HP: <b id="hospHp">100 / 100</b></div>
     <div class="bankLine">Carried: <b id="hospCoins">0</b> coins</div>
+    <div class="bankLine">Respawn: <b id="hospSpawn">Town Centre</b></div>
     <div id="hospRows"></div>
     <button class="pbtn" id="hospCloseBtn">CLOSE</button>
   </div>
@@ -664,7 +665,7 @@
   </div>
   <button id="playBtn" class="px-btn">PLAY</button>
   <button id="titleReset" class="hidden">RESET SAVE</button>
-  <div id="howto">Move mouse / drag finger to swing your sword through slimes.<br>Tap or click for a SPIN SLASH. Sphere Points come from level-ups, bounties, and the Bank exchange (300c) — spend them on the SPHERE GRID for stats, passives and active skills.<br>There is only ONE world — send the link to friends and they drop straight into it with you. No rooms, no codes, no sign-up.<br>B — BANK / SHOP / HOSPITAL (in town)</div>
+  <div id="howto">Move mouse / drag finger to swing your sword through slimes.<br>Tap or click for a SPIN SLASH. Sphere Points come from level-ups, bounties, and the Bank exchange (300c) — spend them on the SPHERE GRID for stats, passives and active skills.<br>There is only ONE world — send the link to friends and they drop straight into it with you. No rooms, no codes, no sign-up.<br>B — BANK / SHOP / INN (in town)</div>
 </div>
 
 <script type="module">
@@ -888,7 +889,7 @@ const me = {
   weapon:1, coins:0, xp:0, level:1, kills:0,
   sp:0, actCd:{ wave:0, meteor:0, frenzy:0, goldrush:0 }, frenzyUntil:0, goldRushUntil:0,
   // survival + economy (HP is LOCAL only — never networked)
-  hp:100, maxHp:100, invulnUntil:0, lastDmgAt:0, shieldUntil:0,
+  hp:100, maxHp:100, spawnAt:null, invulnUntil:0, lastDmgAt:0, shieldUntil:0,
   mp:100, maxMp:100, wSkillCdUntil:0,   // MP is LOCAL only too — never networked, never persisted (loads full, like HP)
   banked:0, items:{ potion:0, bomb:0, shield:0 }, purse:false, owned:new Set([0,6]),
   gems: freshGems(), wxp:{}, gemRushUntil:0,   // mining state: gem pouch + per-weapon {lv,xp} (persisted)
@@ -1689,7 +1690,8 @@ function death(){
   const lost = me.purse ? Math.floor(me.coins*.25) : Math.floor(me.coins/2);   // Coin Purse softens the blow; banked coins are NEVER touched
   me.coins -= lost;
   me.hp = me.maxHp;
-  me.x = WORLD/2; me.y = WORLD/2 + .1; me.px = me.x; me.py = me.y;
+  const sp = me.spawnAt || { x: WORLD/2, y: WORLD/2 + .1 };   // inn-saved respawn, else town centre
+  me.x = sp.x; me.y = sp.y; me.px = me.x; me.py = me.y;
   const vw = W/UNIT(), vh = H/UNIT();
   cam.x = clamp(me.x - vw/2, 0, Math.max(0, WORLD - vw));
   cam.y = clamp(me.y - vh/2, 0, Math.max(0, WORLD - vh));
@@ -1810,33 +1812,49 @@ function buyItem(id){
   sfx.buy();
   buildShopRows(); refreshHUD(); saveGame();
 }
-/* ============================================================ hospital: pay coins, get healed */
+/* ============================================================ THE INN: sleep to full, or sleep & save your respawn */
 function openHospital(){ $('#hospitalPanel').classList.remove('hidden'); buildHospitalRows(); }
 function fullHealPrice(){ return Math.max(15, Math.ceil((me.maxHp - me.hp) * .8)); }
+function sleepSavePrice(){ return (me.hp < me.maxHp ? fullHealPrice() : 0) + 25; }   // heal (if hurt) + 25c flat for the respawn
 function buildHospitalRows(){
   $('#hospHp').textContent = Math.max(0, Math.ceil(me.hp)) + ' / ' + me.maxHp;
   $('#hospCoins').textContent = me.coins;
+  $('#hospSpawn').textContent = me.spawnAt ? 'The Inn' : 'Town Centre';
   const wrap = $('#hospRows'); wrap.innerHTML = '';
+  const full = me.hp >= me.maxHp;
   const rows = [
-    { id:'patch', name:'PATCH UP',       price:30,              desc:'Heal 40 HP' },
-    { id:'full',  name:'FULL TREATMENT', price:fullHealPrice(), desc:'Heal to full' },
+    { id:'sleep', name:'SLEEP',        price:fullHealPrice(), btn:'SLEEP', desc:'Heal to full HP',
+      disabled: full || me.coins < fullHealPrice() },
+    { id:'save',  name:'SLEEP & SAVE', price:sleepSavePrice(), btn:'SAVE', desc:'Heal to full + respawn at the inn',
+      // at full HP this stays buyable (flat 25c) UNLESS the inn is already your respawn
+      disabled: (full && !!me.spawnAt) || me.coins < sleepSavePrice() },
   ];
   for (const r of rows){
     const row = document.createElement('div'); row.className = 'shopRow';
     row.innerHTML = `<div class="info"><b>${r.name} — ${r.price}c</b><span>${r.desc}</span></div>`;
     const btn = document.createElement('button');
-    btn.textContent = 'HEAL';
-    btn.disabled = me.hp >= me.maxHp || me.coins < r.price;   // carried coins only, like the shop
-    btn.onclick = ()=>buyHeal(r.id);
+    btn.textContent = r.btn;
+    btn.disabled = r.disabled;   // carried coins only, like the shop
+    btn.onclick = ()=>buyInn(r.id);
     row.appendChild(btn);
     wrap.appendChild(row);
   }
 }
-function buyHeal(id){
-  const price = id==='full' ? fullHealPrice() : 30;
-  if (me.hp >= me.maxHp || me.coins < price) return;
-  me.coins -= price;
-  me.hp = id==='full' ? me.maxHp : Math.min(me.maxHp, me.hp + 40);
+function buyInn(id){
+  if (id === 'save'){
+    const price = sleepSavePrice();
+    if ((me.hp >= me.maxHp && me.spawnAt) || me.coins < price) return;
+    me.coins -= price;
+    me.hp = me.maxHp;
+    // respawn at the inn door: just north of the sprite, toward the plaza centre
+    me.spawnAt = { x: HOSPITAL_POS.x, y: HOSPITAL_POS.y - .28 };
+    toast('SPAWN SAVED AT THE INN');
+  } else {
+    const price = fullHealPrice();
+    if (me.hp >= me.maxHp || me.coins < price) return;
+    me.coins -= price;
+    me.hp = me.maxHp;
+  }
   sfx.buy();
   beep(660,.1,'sine',.1,330); setTimeout(()=>beep(880,.12,'sine',.09,220), 90);   // pleasant heal chime
   for (let i=0;i<12;i++) particles.push({ x:me.x, y:me.y, vx:rand(-.06,.06), vy:rand(-.14,-.03), life:1, color:'#57d93d', r:rand(2,5) });
@@ -1856,7 +1874,7 @@ function updateInteract(){
   nearBuilding = nd < .34 ? nb : null;
   const panelOpen = !$('#bankPanel').classList.contains('hidden') || !$('#shopPanel').classList.contains('hidden') || !$('#hospitalPanel').classList.contains('hidden');
   if (nearBuilding && !panelOpen){
-    pr.textContent = nearBuilding==='bank' ? 'OPEN BANK' : nearBuilding==='shop' ? 'OPEN SHOP' : 'OPEN HOSPITAL';
+    pr.textContent = nearBuilding==='bank' ? 'OPEN BANK' : nearBuilding==='shop' ? 'OPEN SHOP' : 'OPEN INN';
     pr.classList.remove('hidden');
   } else pr.classList.add('hidden');
   // walk away (> .42 units — outside the .34 interact radius) and the panel closes itself
@@ -2091,6 +2109,7 @@ function refreshHUD(){
   if (!$('#hospitalPanel').classList.contains('hidden')){
     $('#hospHp').textContent = Math.max(0, Math.ceil(me.hp)) + ' / ' + me.maxHp;
     $('#hospCoins').textContent = me.coins;
+    $('#hospSpawn').textContent = me.spawnAt ? 'The Inn' : 'Town Centre';
   }
   if (!$('#treePanel').classList.contains('hidden')) $('#treeSp').textContent = me.sp;
   // weapon skill button: the label follows the equipped weapon's tree active
@@ -2418,7 +2437,7 @@ function setMuted(v){
 function resetRun(){
   me.level=1; me.xp=0; me.coins=0; me.kills=0; me.sp=0; me.weapon=0; me.owned=new Set([0,6]);
   me.gems=freshGems(); me.wxp={}; me.gemRushUntil=0;
-  me.hp=me.maxHp; me.mp=me.maxMp; me.wSkillCdUntil=0; me.banked=0; me.items={ potion:0, bomb:0, shield:0 }; me.purse=false; me.shieldUntil=0;
+  me.hp=me.maxHp; me.mp=me.maxMp; me.wSkillCdUntil=0; me.banked=0; me.items={ potion:0, bomb:0, shield:0 }; me.purse=false; me.shieldUntil=0; me.spawnAt=null;
   $('#bankPanel').classList.add('hidden'); $('#shopPanel').classList.add('hidden'); $('#hospitalPanel').classList.add('hidden'); $('#treePanel').classList.add('hidden');
   unlocked.clear(); recalc();   // one shared set: Sphere nodes AND weapon-tree nodes both reset
   combo=0; comboUntil=0; updateComboBadge(false);
@@ -2439,7 +2458,7 @@ function saveGame(){
       level:me.level, xp:me.xp, coins:me.coins, kills:me.kills, sp:me.sp,
       unlocked:[...unlocked], weapon:me.weapon, name:me.name, muted, hintsSeen,
       banked:me.banked, items:me.items, purse:me.purse, owned:[...me.owned],
-      gems:me.gems, wxp:me.wxp, rackCollapsed,
+      gems:me.gems, wxp:me.wxp, rackCollapsed, spawnAt: me.spawnAt || null,
       bounty: bounty ? { type:bounty.type, key:bounty.key, label:bounty.label, need:bounty.need, have:bounty.have, reward:bounty.reward } : null
     }));
   }catch(e){}
@@ -2476,6 +2495,10 @@ function loadGame(){
   if (d.name){ me.name = cleanName(d.name); $('#nameIn').value = me.name; }
   if (d.hintsSeen) hintsSeen = { slash:!!d.hintsSeen.slash, spin:!!d.hintsSeen.spin, sphere:!!d.hintsSeen.sphere };
   if (typeof d.rackCollapsed === 'boolean') rackCollapsed = d.rackCollapsed;
+  if (d.spawnAt && isFinite(d.spawnAt.x) && isFinite(d.spawnAt.y)){
+    me.spawnAt = { x:+d.spawnAt.x, y:+d.spawnAt.y };
+    me.x = me.spawnAt.x; me.y = me.spawnAt.y; me.px = me.x; me.py = me.y;   // first spawn uses the saved respawn too
+  }
   if (d.bounty && d.bounty.key && (d.bounty.type==='color' || d.bounty.type==='kind')){
     bounty = { type:d.bounty.type, key:d.bounty.key, label:String(d.bounty.label||'').slice(0,16) || 'SLIME',
                need:Math.max(1, d.bounty.need|0 || 8), have:Math.max(0, d.bounty.have|0), reward:Math.max(0, d.bounty.reward|0 || 40) };
@@ -3237,7 +3260,7 @@ function drawBuildings(only){
   }
   // ---- HOSPITAL: white walls, red roof, big red cross ----
   if (!only || only==='hospital'){
-  if (imgOk(WORLD_IMGS['bld-hospital'])) drawBld(HOSPITAL_POS, WORLD_IMGS['bld-hospital'], 'HOSPITAL', '#fff8e7', '#5b3a1e');
+  if (imgOk(WORLD_IMGS['bld-hospital'])) drawBld(HOSPITAL_POS, WORLD_IMGS['bld-hospital'], 'INN', '#fff8e7', '#5b3a1e');
   else {
     const x = NX(HOSPITAL_POS.x), y = NY(HOSPITAL_POS.y), w = .30*u, h = .19*u;
     pad(HOSPITAL_POS.x, HOSPITAL_POS.y);
@@ -3257,7 +3280,7 @@ function drawBuildings(only){
     // door
     ctx.fillStyle = '#5b7a99'; roundRect(x-.028*u, y+.012*u, .056*u, h/2-.012*u, 4); ctx.fill();
     ctx.fillStyle = '#ffd94d'; ctx.beginPath(); ctx.arc(x+.016*u, y+.055*u, .005*u, 0, 7); ctx.fill();
-    sign(x, y-h/2-.052*u, 'HOSPITAL', '#ffffff', '#e5484d');
+    sign(x, y-h/2-.052*u, 'INN', '#ffffff', '#e5484d');
   }
   }
 }
