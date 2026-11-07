@@ -997,7 +997,8 @@ const weaponSVG_unused = (w,locked)=>`
 const cv = $('#game'), ctx = cv.getContext('2d');
 ctx.imageSmoothingEnabled = false;   // pixel-art sprites stay crisp
 let W=0,H=0,DPR=1;
-function resize(){ DPR=Math.min(2,devicePixelRatio||1); W=innerWidth; H=innerHeight; cv.width=W*DPR; cv.height=H*DPR; cv.style.width=W+'px'; cv.style.height=H+'px'; ctx.imageSmoothingEnabled=false; }
+function resize(){ const nd=Math.min(2,devicePixelRatio||1); if (W===innerWidth && H===innerHeight && DPR===nd) return;   // no-op resizes (iOS fires them when its URL bar shows/hides mid-drag) must NOT reassign cv.width — that reallocates + clears the whole backing store and hitches the game while moving
+  DPR=nd; W=innerWidth; H=innerHeight; cv.width=W*DPR; cv.height=H*DPR; cv.style.width=W+'px'; cv.style.height=H+'px'; ctx.imageSmoothingEnabled=false; }
 addEventListener('resize',resize); resize();
 /* The world is WORLD x WORLD units — much bigger than one screen.
    1 unit ≈ one screenful. The camera (cam = top-left, world coords) follows your sword. */
@@ -1804,6 +1805,17 @@ function bladeLive(now){
 }
 function localHitCheck(now){
   if (!bladeLive(now)) return;   // idle/AFK sword cuts nothing — no free kills
+  /* lastHitAt hygiene: it gains an entry for every slime/ore id ever hit
+     and ids are never reused, so without pruning it grows for the whole
+     session. Every few seconds, once it is fat, drop entries whose
+     target no longer exists (their cooldown can never matter again). */
+  if (me.lastHitAt.size > 400 && now - (localHitCheck._prune||0) > 4000){
+    localHitCheck._prune = now;
+    for (const k of me.lastHitAt.keys()){
+      if (typeof k === 'string' && k.startsWith('node:')){ if (!nodes.has(k.slice(5))) me.lastHitAt.delete(k); }
+      else if (!slimes.has(k)) me.lastHitAt.delete(k);
+    }
+  }
   // blade = segment from hand (pointer) to tip along the sword's CURRENT
   // angle; SWING weapons also test the swept arc since last frame so fast
   // arcs can't tunnel through slimes between frames
@@ -2037,8 +2049,16 @@ function updateDmgFlash(now){
     if (frac < .20) low += Math.sin(now * (Math.PI * 2 / 1200)) * .05;
   }
   const a = clamp(flash + low, 0, .55);
-  $('#dmgFlash').style.background = 'rgba(229,57,53,' + a.toFixed(3) + ')';
+  // write-on-change ONLY: assigning style.background every frame forces
+  // a full-screen style recalc + repaint of this fixed layer at 60-120Hz
+  // even when the alpha is identical (the common case: standing at full
+  // HP with a = 0). Sub-0.003 changes are imperceptible — skip them.
+  if (Math.abs(a - updateDmgFlash._a) > .003 || (a === 0) !== (updateDmgFlash._a === 0)){
+    updateDmgFlash._a = a;
+    $('#dmgFlash').style.background = 'rgba(229,57,53,' + a.toFixed(3) + ')';
+  }
 }
+updateDmgFlash._a = -1;
 function damagePlayer(amount, now){
   if (!started || paused) return;
   /* TOWN SAFE ZONE — sanctuaries: no damage while a building panel, the
@@ -2276,7 +2296,7 @@ function buyInn(id){
 }
 function updateInteract(){
   const pr = $('#interactPrompt');
-  if (!started){ pr.classList.add('hidden'); nearBuilding = null; return; }
+  if (!started){ pr.classList.add('hidden'); nearBuilding = null; updateInteract._pr = null; return; }
   const db = Math.sqrt(dist2(me.x,me.y,BANK_POS.x,BANK_POS.y));
   const ds = Math.sqrt(dist2(me.x,me.y,SHOP_POS.x,SHOP_POS.y));
   const dh = Math.sqrt(dist2(me.x,me.y,HOSPITAL_POS.x,HOSPITAL_POS.y));
@@ -2292,10 +2312,14 @@ function updateInteract(){
   const inTown = dist2(me.x, me.y, WORLD/2, WORLD/2) < TOWN_R*TOWN_R;
   nearBuilding = (inTown || nd < .34) ? nb : null;
   const panelOpen = !$('#bankPanel').classList.contains('hidden') || !$('#shopPanel').classList.contains('hidden') || !$('#hospitalPanel').classList.contains('hidden');
-  if (nearBuilding && !panelOpen){
-    pr.textContent = nearBuilding==='bank' ? 'OPEN BANK' : nearBuilding==='shop' ? 'OPEN SHOP' : 'OPEN INN';
-    pr.classList.remove('hidden');
-  } else pr.classList.add('hidden');
+  // change-only DOM writes: this runs EVERY frame, and re-setting the
+  // same textContent replaces the text node (layout work) every time
+  const wantPr = (nearBuilding && !panelOpen) ? (nearBuilding==='bank' ? 'OPEN BANK' : nearBuilding==='shop' ? 'OPEN SHOP' : 'OPEN INN') : null;
+  if (wantPr !== updateInteract._pr){
+    updateInteract._pr = wantPr;
+    if (wantPr){ pr.textContent = wantPr; pr.classList.remove('hidden'); }
+    else pr.classList.add('hidden');
+  }
   // walk away (> .42 units — outside the .34 interact radius) and the panel
   // closes itself; inside town you are never 'away', so panels stay open
   if (!inTown){
@@ -2556,7 +2580,13 @@ function refreshHUD(){
   if (combo>0 && performance.now()>comboUntil){ combo=0; updateComboBadge(false); }
   scanKings();
   updateHint();
-  saveGame();
+  // HUD-cadence persistence is THROTTLED: refreshHUD runs 2/s plus on
+  // events, and every saveGame() is a synchronous full-save localStorage
+  // write — on iOS those writes block the main thread and were landing
+  // ~4x a second. Event-driven saves (kills, buys, gems, level-ups) call
+  // saveGame() directly and stay immediate; this only trims the cadence.
+  const _svNow = performance.now();
+  if (_svNow - (refreshHUD._sv||0) > 2500){ refreshHUD._sv = _svNow; saveGame(); }
 }
 let joinedAt = 0;
 function refreshPeers(){
@@ -3531,6 +3561,26 @@ function whiteTintOf(img){
   WHITE_TINTS.set(img, c);
   return c;
 }
+/* Per-colour silhouette variants (same source-atop trick) — the sword's
+   saber glow is drawn from these instead of ctx.shadowBlur, which is
+   one of the slowest canvas ops on mobile Safari and ran every frame
+   for every visible sword. Cache is per image, capped per image. */
+const COLOR_TINTS = new Map();
+function colorTintOf(img, color){
+  let byImg = COLOR_TINTS.get(img);
+  if (!byImg){ byImg = new Map(); COLOR_TINTS.set(img, byImg); }
+  let c = byImg.get(color);
+  if (c) return c;
+  if (byImg.size > 24) byImg.clear();   // peer colours are arbitrary — never let the cache grow past a screenful of players
+  c = document.createElement('canvas');
+  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  const g2 = c.getContext('2d');
+  g2.drawImage(img, 0, 0);
+  g2.globalCompositeOperation = 'source-atop';
+  g2.fillStyle = color; g2.fillRect(0, 0, c.width, c.height);
+  byImg.set(color, c);
+  return c;
+}
 /* ---- RANDOM FACES: bodies ship FACELESS; the face is a runtime layer
    drawn here so it inherits squash/stretch/ghost/flinch transforms for
    free and needs ZERO sync (everything derives from the slime's seed,
@@ -3643,12 +3693,21 @@ function paintSlimeSprite(s, t, baseR, g, faceK){
   ctx.save();
   ctx.translate(g.gx, g.gy - g.liftW * UNIT());   // bottom anchor, raised by the hop arc
   ctx.scale(g.sqX, g.sqY);
-  try{ ctx.filter = tintK<=0 && s.flash>0 ? 'brightness(1.9)' : 'none'; }catch(e){}
   ctx.drawImage(g.img, -g.dw/2, -g.dh, g.dw, g.dh);
   if (tintK > 0){
     const prevA = ctx.globalAlpha;
     ctx.globalAlpha = prevA * tintK;
     ctx.drawImage(redTintOf(g.img), -g.dw/2, -g.dh, g.dw, g.dh);
+    ctx.globalAlpha = prevA;
+  } else if (s.flash > 0){
+    /* the white hit-flash used to be ctx.filter='brightness(1.9)' —
+       canvas filters force an offscreen filter pass PER DRAW on mobile
+       Safari and were a prime suspect in the move-and-fight stutter.
+       Same read, zero filter: the pre-rendered white silhouette (the
+       whiteTintOf cache) alpha-blended over the body. */
+    const prevA = ctx.globalAlpha;
+    ctx.globalAlpha = prevA * Math.min(1, s.flash) * .8;
+    ctx.drawImage(whiteTintOf(g.img), -g.dw/2, -g.dh, g.dw, g.dh);
     ctx.globalAlpha = prevA;
   }
   // the face goes on AFTER body + tint: flinch reddens the body only, the
@@ -3961,13 +4020,19 @@ function drawField(t){
     ctx.fillRect(x1-rail/2, y0-rail/2, rail, y1-y0+rail);
     ctx.fillStyle='#7a4d16';
     const ps=Math.max(6, .03*u);
+    // posts are view-culled: the full border is ~270 fillRects a frame,
+    // but only the stretch inside the viewport can ever be seen
+    const topVis = y0 > -ps && y0 < H + ps, botVis = y1 > -ps && y1 < H + ps;
+    const leftVis = x0 > -ps && x0 < W + ps, rightVis = x1 > -ps && x1 < W + ps;
     for (let wx=0; wx<=WORLD+.001; wx+=.09){
-      ctx.fillRect(NX(wx)-ps/2, y0-ps/2, ps, ps);
-      ctx.fillRect(NX(wx)-ps/2, y1-ps/2, ps, ps);
+      if (wx < cam.x-.1 || wx > cam.x+vw+.1) continue;
+      if (topVis) ctx.fillRect(NX(wx)-ps/2, y0-ps/2, ps, ps);
+      if (botVis) ctx.fillRect(NX(wx)-ps/2, y1-ps/2, ps, ps);
     }
     for (let wy=.09; wy<WORLD; wy+=.09){
-      ctx.fillRect(x0-ps/2, NY(wy)-ps/2, ps, ps);
-      ctx.fillRect(x1-ps/2, NY(wy)-ps/2, ps, ps);
+      if (wy < cam.y-.1 || wy > cam.y+vh+.1) continue;
+      if (leftVis) ctx.fillRect(x0-ps/2, NY(wy)-ps/2, ps, ps);
+      if (rightVis) ctx.fillRect(x1-ps/2, NY(wy)-ps/2, ps, ps);
     }
   }
 }
@@ -4282,12 +4347,12 @@ function drawSlime(s,t){
   ctx.fillStyle = 'rgba(0,0,0,' + (Math.hypot(s.x-WORLD/2, s.y-WORLD/2) < TOWN_R ? .27 : .16) + ')';
   ctx.beginPath(); ctx.ellipse(x, y + rY*.82, rX*.85, rY*.26, 0, 0, 7); ctx.fill();
   ctx.save(); ctx.translate(x,y);
-  if (s.flash>0){ ctx.shadowColor='#fff'; ctx.shadowBlur=18; }
   // body
   const g=ctx.createRadialGradient(-rX*.3,-rY*.5,rX*.15, 0,0, rX*1.25);
   g.addColorStop(0,'#ffffff'); g.addColorStop(.25,s.color); g.addColorStop(1, shade(s.color,-28));
   ctx.fillStyle=g;
   ctx.beginPath(); ctx.ellipse(0,0,rX,rY,0,0,7); ctx.fill();
+  if (s.flash>0){ ctx.fillStyle='rgba(255,255,255,' + (.55*s.flash).toFixed(3) + ')'; ctx.beginPath(); ctx.ellipse(0,0,rX,rY,0,0,7); ctx.fill(); }   // hit flash as a white overlay (was shadowBlur=18 — same mobile-cost problem)
   ctx.strokeStyle='rgba(60,90,40,.35)'; ctx.lineWidth=2; ctx.stroke();
   // shine
   ctx.fillStyle='rgba(255,255,255,.75)';
@@ -4502,9 +4567,13 @@ function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,whirling,ext=0){
     const iw = L*1.18, ih = iw * (wimg.naturalHeight/wimg.naturalWidth);
     ctx.fillStyle=color; ctx.beginPath(); ctx.arc(0,0,7,0,7); ctx.fill();
     ctx.strokeStyle='#fff'; ctx.lineWidth=2.5; ctx.stroke();
-    ctx.save(); ctx.shadowColor=color; ctx.shadowBlur=10;   // subtle saber glow hugging the sprite silhouette
-    ctx.drawImage(wimg, -L*.17, -ih/2, iw, ih);
+    // saber glow hugging the sprite silhouette: a slightly larger
+    // colour-tint silhouette behind the sprite (was ctx.shadowBlur=10
+    // every frame per sword — shadowBlur is brutally slow on iOS)
+    ctx.save(); ctx.globalAlpha = .5;
+    ctx.drawImage(colorTintOf(wimg, color), -L*.17 - iw*.04, -ih/2 - ih*.07, iw*1.08, ih*1.14);
     ctx.restore();
+    ctx.drawImage(wimg, -L*.17, -ih/2, iw, ih);
     ctx.restore();
     if (name){
       ctx.font='800 13px "Baloo 2",sans-serif'; ctx.textAlign='center';
@@ -4701,13 +4770,20 @@ function frame(now){
   drawEntities(now);
 
   if (started) tickActives(now, dt);
-  drawMinimap();
+  // minimap at ~20Hz, not every frame: it is a navigation aid (50ms
+  // cadence is invisible) and a full redraw is ~120 arc fills — at
+  // 120Hz phone refresh that was 14k fills a second for a thumbnail.
+  if (now-(frame._mm||0)>50){ frame._mm=now; drawMinimap(); }
 
   // particles & rings & floats
   popRings = popRings.filter(r=>r.life>0);
   for (const r of popRings){ r.r+=dt*.00045; r.life-=dt/380; ctx.strokeStyle=r.color; ctx.globalAlpha=Math.max(0,r.life); ctx.lineWidth=4; ctx.beginPath(); ctx.arc(NX(r.x),NY(r.y),r.r*SCALE(),0,7); ctx.stroke(); ctx.globalAlpha=1; }
   particles = particles.filter(p=>p.life>0);
-  for (const p of particles){ p.x+=p.vx*dt/60; p.y+=p.vy*dt/60; p.vy+=.0009*dt/16*(p.grav||1); p.life-=dt/480; ctx.globalAlpha=Math.max(0,p.life); ctx.fillStyle=p.color; ctx.beginPath(); ctx.arc(NX(p.x),NY(p.y),p.r,0,7); ctx.fill(); ctx.globalAlpha=1; }
+  // particles are PIXEL SQUARES, not arc paths: one fillRect each (no
+  // beginPath/arc/fill per spark) — the cheapest canvas op there is, and
+  // it matches the game's pixel-art style. At the 420 cap the old arc
+  // version cost ~1,300 path calls a frame; this costs 420 rects.
+  for (const p of particles){ p.x+=p.vx*dt/60; p.y+=p.vy*dt/60; p.vy+=.0009*dt/16*(p.grav||1); p.life-=dt/480; ctx.globalAlpha=Math.max(0,p.life); ctx.fillStyle=p.color; const ps = p.r*1.6; ctx.fillRect(NX(p.x)-ps/2, NY(p.y)-ps/2, ps, ps); ctx.globalAlpha=1; }
   floats = floats.filter(f=>f.life>0);
   ctx.textAlign='center';
   for (const f of floats){ f.y-=dt*.00003; f.life-=dt/(f.big?1750:950); ctx.globalAlpha=Math.max(0,f.life); ctx.font = '900 '+(f.size || (f.big?26:17))+'px "Baloo 2",sans-serif'; ctx.lineWidth = (f.big || f.size>=20) ? 6 : 4; ctx.strokeStyle='rgba(60,40,10,.8)'; ctx.strokeText(f.text,NX(f.x),NY(f.y)); ctx.fillStyle=f.color; ctx.fillText(f.text,NX(f.x),NY(f.y)); ctx.globalAlpha=1; }
@@ -4733,7 +4809,7 @@ function frame(now){
     if (simg && simg.complete && simg.naturalWidth){
       const iw = .38*u, ih = iw * (simg.naturalHeight/simg.naturalWidth);
       // white silhouette glow BEHIND the sprite (1.25x, alpha .5): the throw reads as a big glowing spear, not a brown stick
-      ctx.save(); ctx.globalAlpha = .5; ctx.shadowColor = '#ffffff'; ctx.shadowBlur = 12;
+      ctx.save(); ctx.globalAlpha = .5;   // (was shadowBlur=12 — dropped: the 1.25x white silhouette already reads as the glow, and shadowBlur is a top-tier mobile canvas cost)
       ctx.drawImage(whiteTintOf(simg), -iw*1.25*.86, -ih*1.25/2, iw*1.25, ih*1.25);
       ctx.restore();
       ctx.drawImage(simg, -iw*.86, -ih/2, iw, ih);   // tip lands on the hit point
@@ -4820,13 +4896,15 @@ function frame(now){
           ctx.beginPath(); ctx.moveTo(p0.bx, p0.by); ctx.lineTo(p1.bx, p1.by); ctx.stroke();
         }
         /* HEAD GLOW at the live tip — the saber's head must read even in
-           a frozen screenshot: colour bloom disc + white-hot core with a
-           real shadowBlur in the player's colour. */
+           a frozen screenshot: layered colour bloom discs + white-hot
+           core. (The bloom was a shadowBlur once; discs are far cheaper
+           on mobile GPUs and read the same in a still.) */
         const tipP = S2[S2.length-1];
         ctx.globalAlpha = .35; ctx.fillStyle = me.color;
         ctx.beginPath(); ctx.arc(tipP.tx, tipP.ty, hw*1.5, 0, 7); ctx.fill();
+        ctx.globalAlpha = .5;   // mid falloff disc — layered alpha discs replace the shadowBlur=18 bloom (same read, no blur pass)
+        ctx.beginPath(); ctx.arc(tipP.tx, tipP.ty, hw*1.1, 0, 7); ctx.fill();
         ctx.globalAlpha = .95; ctx.fillStyle = '#ffffff';
-        ctx.shadowColor = me.color; ctx.shadowBlur = 18;
         ctx.beginPath(); ctx.arc(tipP.tx, tipP.ty, hw*.9, 0, 7); ctx.fill();
         ctx.restore(); ctx.globalAlpha = 1;
       }
@@ -4855,8 +4933,10 @@ function frame(now){
     drawSword(NX(me.x),NY(me.y),bl.ang,me.weapon,me.color, me.name, true, now, false, bl.ext);
   }
 
-  // scoreboard refresh (cheap, 2/s)
-  if (started && now-(frame._b||0)>500){ frame._b=now; refreshHUD(); refreshPeers(); checkZone(); }
+  // scoreboard refresh (2/s). refreshPeers() already calls refreshHUD()
+  // internally — calling both here ran the full HUD pass (incl. the
+  // scoreboard innerHTML rebuild) TWICE per tick for nothing.
+  if (started && now-(frame._b||0)>500){ frame._b=now; refreshPeers(); checkZone(); }
 }
 requestAnimationFrame(frame);
 // title-screen ambient slimes (solo sim before joining)
