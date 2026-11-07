@@ -381,15 +381,30 @@
   /* the board is a SCROLLABLE viewport over a fixed 840px inner board in a
      200x200-unit virtual space: the classic branch disc (r=50 units) sits at
      the centre exactly as it always did, and the weapon paths radiate in the
-     ring outside it. Drag/scroll to explore; it auto-centres on open. */
+     ring outside it. Drag/scroll to explore; it auto-centres on open.
+     ZOOM (Handler: 'Sphere should be zoomable.'): the inner keeps its
+     natural 840px layout and is transform-scaled; #sphereSizer is sized
+     840*z so the scroll extents always match the scaled content. */
+  #sphereWrap { position:relative; width:min(86vw,424px); margin:0 auto; }
   #sphereBoard {
-    position:relative; width:min(86vw,424px); aspect-ratio:1; margin:0 auto;
+    position:relative; width:100%; aspect-ratio:1;
     border:4px solid #0d1030; border-radius:0;
     box-shadow:6px 6px 0 rgba(0,0,0,.30);
     overflow:auto; background:#10142e;
     scrollbar-width:thin; scrollbar-color:#ffd94d #10142e;
+    touch-action:none; user-select:none; -webkit-user-select:none;
   }
-  #sphereInner { position:relative; width:840px; height:840px; }
+  #sphereSizer { position:relative; width:840px; height:840px; }
+  #sphereInner { position:relative; width:840px; height:840px; transform-origin:0 0; }
+  #sphereZoom { position:absolute; right:8px; bottom:8px; z-index:5; display:flex; gap:6px; }
+  .szbtn {
+    font-family:"Press Start 2P",monospace; font-size:11px; cursor:pointer; pointer-events:auto;
+    min-width:40px; height:40px; padding:0 8px; color:#3a2b23; background:#ffd94d;
+    border:3px solid #0d1030; border-radius:0;
+    box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35);
+  }
+  .szbtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
+  #szPct { font-size:9px; min-width:62px; }
   #sphereLines { position:absolute; inset:0; width:100%; height:100%; }
   .snode {
     position:absolute; width:4.3%; aspect-ratio:1; margin:-2.15% 0 0 -2.15%; border-radius:0;
@@ -514,7 +529,7 @@
     #forge { right:50%; transform:translateX(50%); bottom:84px; width:94vw; padding:12px;
              max-height:calc(100dvh - 150px); overflow-y:auto; }
     #forge h3 { font-size:13px; margin-bottom:6px; }
-    #sphereBoard { width:min(82vw, 46dvh); }
+    #sphereWrap { width:min(82vw, 46dvh); }
   }
 
   /* ---------- mobile full-viewport modal sheets (<=640px) ----------
@@ -551,7 +566,7 @@
     }
     #forge > h3 { display:none; }
     #forge .sheetHead { margin:0 -12px 10px; padding-left:12px; padding-right:12px; }
-    #sphereBoard { width:min(92vw, 424px); }
+    #sphereWrap { width:min(92vw, 424px); }
     /* boss bar drops below the top badge row; the left badge column
        shifts down while a boss is up (body.boss-on) so nothing overlaps */
     #bossBar { top:calc(env(safe-area-inset-top) + 46px); width:min(76vw, 520px); }
@@ -757,14 +772,14 @@
     </div>
     <div id="forge" class="menuTab hidden">
       <div id="spBar">SPHERE POINTS <b id="spCount">0</b></div>
-      <div id="sphereBoard"><div id="sphereInner"><svg id="sphereLines" viewBox="0 0 200 200" preserveAspectRatio="none"></svg><div id="sphereNodes"></div></div></div>
+      <div id="sphereWrap"><div id="sphereBoard"><div id="sphereSizer"><div id="sphereInner"><svg id="sphereLines" viewBox="0 0 200 200" preserveAspectRatio="none"></svg><div id="sphereNodes"></div></div></div></div><div id="sphereZoom"><button class="szbtn" id="szOut" aria-label="Zoom out">-</button><button class="szbtn" id="szPct">100%</button><button class="szbtn" id="szIn" aria-label="Zoom in">+</button></div></div>
       <div id="nodeCard" class="hidden">
         <span class="ntype" id="ncType"></span>
         <b id="ncName"></b>
         <p id="ncDesc"></p>
         <button id="ncBtn"></button>
       </div>
-      <div style="text-align:center;color:#97754a;font-weight:700;font-size:12px;margin-top:8px;">Sphere Points: level-ups, bounties, Kings +1, Emperors +3 — or the Bank (price rises per purchase). Every weapon has a path on this grid — and the paths CROSS. Drag to explore!</div>
+      <div style="text-align:center;color:#97754a;font-weight:700;font-size:12px;margin-top:8px;">Sphere Points: level-ups, bounties, Kings +1, Emperors +3 — or the Bank (price rises per purchase). Every weapon has a path on this grid — and the paths CROSS. Drag to explore — pinch or Ctrl+scroll to zoom!</div>
     </div>
     <div id="gemPanel" class="menuTab hidden">
       <div class="bankLine">Soul gems in bag: <b id="gemBagCount"></b></div>
@@ -3083,6 +3098,7 @@ function buildSphere(){
   }
   renderNodeCard();
   $('#spCount').textContent = me.sp;
+  applySphereZoom();   // sizer must match the current zoom before scrollWidth is read for centring
   if (!sphereCentered){ const b = $('#sphereBoard'); if (b && b.clientWidth){ b.scrollLeft = (b.scrollWidth - b.clientWidth)/2; b.scrollTop = (b.scrollHeight - b.clientHeight)/2; sphereCentered = true; } }
 }
 function renderNodeCard(){
@@ -3109,6 +3125,97 @@ function renderNodeCard(){
   };
   $('#spCount').textContent = me.sp;
 }
+
+/* ============================================================ Sphere board ZOOM
+   (Handler: 'Sphere should be zoomable.') z in [0.5, 2], default 1,
+   session-only (never written to the save). The inner board keeps its
+   natural 840px layout — nodes, labels, SVG links and tap targets are
+   all children of it — and is scaled with ONE transform; #sphereSizer
+   is sized 840*z so the board's scroll extents always match the scaled
+   content. Every zoom re-solves the scroll offsets so the board point
+   under the focal point (pinch midpoint / wheel cursor / viewport
+   centre for the buttons) stays under it. */
+let sphereZoom = 1;
+const SZ_MIN = 0.5, SZ_MAX = 2, SZ_BASE = 840;
+function applySphereZoom(){
+  const sizer = $('#sphereSizer'), inner = $('#sphereInner'), pct = $('#szPct');
+  if (sizer){ const px = Math.round(SZ_BASE * sphereZoom) + 'px'; sizer.style.width = px; sizer.style.height = px; }
+  if (inner) inner.style.transform = 'scale(' + sphereZoom + ')';
+  if (pct) pct.textContent = Math.round(sphereZoom * 100) + '%';
+}
+function setSphereZoom(nz, fx, fy){
+  const b = $('#sphereBoard'); if (!b) return;
+  nz = Math.min(SZ_MAX, Math.max(SZ_MIN, nz));
+  const oz = sphereZoom;
+  if (fx === undefined || fy === undefined){ fx = (b.clientWidth || 0) / 2; fy = (b.clientHeight || 0) / 2; }
+  if (nz === oz){ applySphereZoom(); return; }
+  const ux = (b.scrollLeft + fx) / oz, uy = (b.scrollTop + fy) / oz;   // board point under the focal, in unscaled inner px
+  sphereZoom = nz; applySphereZoom();
+  b.scrollLeft = ux * nz - fx; b.scrollTop = uy * nz - fy;
+}
+(function initSphereZoom(){
+  const b = $('#sphereBoard'); if (!b) return;
+  $('#szIn').onclick = () => setSphereZoom(sphereZoom * 1.25);
+  $('#szOut').onclick = () => setSphereZoom(sphereZoom / 1.25);
+  $('#szPct').onclick = () => setSphereZoom(1);
+  /* Touch/pen gestures live on the board itself (CSS touch-action:none
+     hands them to us; mouse keeps native scrollbars + wheel). One
+     pointer pans, two pointers pinch around their midpoint. No explicit
+     setPointerCapture: touch gets implicit capture to the tapped node,
+     so node clicks still land — and a drag that actually moved
+     suppresses the click it ends with, the native-scroll contract. */
+  const pts = new Map();
+  let panRef = null, pinchRef = null, gestureMoved = false, suppressClickUntil = 0;
+  b.addEventListener('click', e => { if (performance.now() < suppressClickUntil){ e.stopPropagation(); e.preventDefault(); } }, true);
+  b.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse') return;
+    pts.set(e.pointerId, { x:e.clientX, y:e.clientY });
+    if (pts.size === 1){ panRef = { x:e.clientX, y:e.clientY, sl:b.scrollLeft, st:b.scrollTop }; pinchRef = null; gestureMoved = false; }
+    else if (pts.size === 2){
+      const p = [...pts.values()];
+      pinchRef = { d0: Math.max(1, Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y)), z0: sphereZoom };
+      panRef = null;
+    }
+  });
+  b.addEventListener('pointermove', e => {
+    if (!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, { x:e.clientX, y:e.clientY });
+    if (pinchRef && pts.size >= 2){
+      const p = [...pts.values()], r = b.getBoundingClientRect();
+      const d = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+      gestureMoved = true;
+      setSphereZoom(pinchRef.z0 * d / pinchRef.d0, (p[0].x + p[1].x) / 2 - r.left, (p[0].y + p[1].y) / 2 - r.top);
+      e.preventDefault();
+    } else if (panRef && pts.size === 1){
+      const dx = e.clientX - panRef.x, dy = e.clientY - panRef.y;
+      if (Math.abs(dx) + Math.abs(dy) > 2) gestureMoved = true;
+      b.scrollLeft = panRef.sl - dx; b.scrollTop = panRef.st - dy;
+      e.preventDefault();
+    }
+  });
+  const endPt = e => {
+    if (!pts.delete(e.pointerId)) return;
+    if (pts.size === 1){ const p = [...pts.values()][0]; panRef = { x:p.x, y:p.y, sl:b.scrollLeft, st:b.scrollTop }; }   // pinch -> one finger left: re-base the pan on it
+    else if (pts.size === 0){ panRef = null; if (gestureMoved) suppressClickUntil = performance.now() + 350; }
+    if (pts.size < 2) pinchRef = null;
+  };
+  b.addEventListener('pointerup', endPt);
+  b.addEventListener('pointercancel', endPt);
+  /* iOS Safari insurance: block the page pinch-zoom gesture and the
+     two-touch scroll default on the board. State only ever changes in
+     the pointer handlers above. */
+  b.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive:false });
+  b.addEventListener('gesturestart', e => e.preventDefault());
+  /* ctrl/cmd+wheel zooms around the cursor (trackpad pinch arrives as
+     ctrl+wheel); plain wheel keeps its native board scrolling. */
+  b.addEventListener('wheel', e => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    const r = b.getBoundingClientRect();
+    setSphereZoom(sphereZoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12), e.clientX - r.left, e.clientY - r.top);
+  }, { passive:false });
+  applySphereZoom();
+})();
 
 /* ============================================================ polish systems
    Combo, bounty objectives, King banner, tutorial hints, pause, saving. */
