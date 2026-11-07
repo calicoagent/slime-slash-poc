@@ -1200,11 +1200,11 @@ function royalGuard(now, boss){
   boss.guardUntil = now + 6000;
   const gp = { p:'guard', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now };
   bossEvent(gp);
-  if (sendBoss){ try { sendBoss(gp); } catch(e){} }
+  if (sendBoss && hasPeers()){ try { sendBoss(gp); } catch(e){} }
   const sm = (bossEnraged ? 1.15 : 1) * (bossFury ? 1.3 : 1);
   const rp = { p:'ring', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now, n:28, spd:.32, sm };
   bossEvent(rp);
-  if (sendBoss){ try { sendBoss(rp); } catch(e){} }
+  if (sendBoss && hasPeers()){ try { sendBoss(rp); } catch(e){} }
   for (let i=0;i<3;i++)
     spawnSlime({ kind: Math.random() < .5 ? 'mid' : 'dart', x:clamp(boss.x+rand(-.25,.25), .06, WORLD-.06), y:clamp(boss.y+rand(-.25,.25), .1, WORLD-.06) });
   broadcastWorld();
@@ -1396,14 +1396,14 @@ function hostTick(now,dt){
       bossFury = true;
       const fp = { p:'fury', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now };
       bossEvent(fp);
-      if (sendBoss){ try { sendBoss(fp); } catch(e){} }
+      if (sendBoss && hasPeers()){ try { sendBoss(fp); } catch(e){} }
     }
     // ENRAGE: at <=30% HP the Emperor latches into a faster, meaner fight
     if (!bossEnraged && boss.hp <= boss.max * .30){
       bossEnraged = true;
       const ep = { p:'enrage', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now };
       bossEvent(ep);
-      if (sendBoss){ try { sendBoss(ep); } catch(e){} }
+      if (sendBoss && hasPeers()){ try { sendBoss(ep); } catch(e){} }
     }
     // SUMMONS: every 20s while he lives, he calls 2-3 minions to his side
     if (!bossSummonAt) bossSummonAt = now + 20000;
@@ -1414,7 +1414,7 @@ function hostTick(now,dt){
         spawnSlime({ kind: Math.random() < .5 ? 'mid' : 'dart', x:clamp(boss.x+rand(-.25,.25), .06, WORLD-.06), y:clamp(boss.y+rand(-.25,.25), .1, WORLD-.06) });
       const sp = { p:'summon', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now };
       bossEvent(sp);
-      if (sendBoss){ try { sendBoss(sp); } catch(e){} }
+      if (sendBoss && hasPeers()){ try { sendBoss(sp); } catch(e){} }
       broadcastWorld();   // minions ride the normal slime sync — push them out now, not on the next cycle
     }
     if (!bossFireAt) bossFireAt = now + 1200;
@@ -1446,7 +1446,7 @@ function hostTick(now,dt){
          Every other system (hits, mining) already calls its local
          handler directly when host — the boss now does the same. */
       bossEvent(payload);   // Trystero does not echo to the sender — the host's own client sims it too
-      if (sendBoss){ try { sendBoss(payload); } catch(e){} }   // broadcast is best-effort; a dead channel must not kill the volley
+      if (sendBoss && hasPeers()){ try { sendBoss(payload); } catch(e){} }   // broadcast is best-effort; a dead channel must not kill the volley
     }
   } else if (!boss) bossFireAt = 0;
   /* ---- ore nodes: keep 12 in the world. A depleted node's replacement
@@ -1505,9 +1505,9 @@ function hostMine(nodeId, d, byId){
   const g = Math.random() < chance ? rollDrop(NODE_TYPES[n.t]) : null;
   if (n.left <= 0){ nodes.delete(nodeId); nodeRespawnAt.push(now + rand(20000, 40000)); }
   const payload = { n:nodeId, to:byId, x:n.x, y:n.y, g, left:Math.max(0, n.left) };
-  if (sendMined) sendMined(payload);
+  if (sendMined && hasPeers()) sendMined(payload);
   minedFx(payload);   // Trystero does not echo — the host's own client applies it locally
-  broadcastWorld();
+  queueWorld();
 }
 /* Every client on 'mined': the rock shakes; the miner pockets the gem. */
 function minedFx(d){
@@ -1925,7 +1925,7 @@ function hostApplyHit(slimeId, dmg, byId){
   const w = byId===me.id ? myWeapon() : WEAPONS.find(w=>w.id===(peers.get(byId)?.weaponId)) || WEAPONS[1];
   if (w.splash){ for (const o of slimes.values()) if (o!==s && dist2(o.x,o.y,s.x,s.y) < w.splash*w.splash){ if (o.kind==='boss' && now < (o.guardUntil||0)) continue; o.hp -= o.kind==='metal' ? 1 : Math.ceil(dmg*.5); } }
   if (s.hp<=0) hostKill(s, byId);
-  else broadcastWorld();
+  else queueWorld();
 }
 function hostKill(s, byId){
   slimes.delete(s.id);
@@ -1938,13 +1938,13 @@ function hostKill(s, byId){
   scores[byId] = scores[byId] || { name: byId===me.id?me.name:(peers.get(byId)?.name||'Knight'), kills:0 };
   scores[byId].kills++;
   const fx = { id:s.id, x:s.x, y:s.y, c:s.color, by:byId, coins, xp, kind:s.kind, elite:!!s.elite, r:s.r };
-  if (sendKillFx) sendKillFx(fx);
+  if (sendKillFx && hasPeers()) sendKillFx(fx);
   onKillFx(fx);
   if (s.kind==='splitter'){   // bursts into two babies where it died
     spawnSlime({ kind:'baby', x:clamp(s.x+rand(-.04,.04), .06, WORLD-.06), y:clamp(s.y+rand(-.04,.04), .1, WORLD-.06) });
     spawnSlime({ kind:'baby', x:clamp(s.x+rand(-.04,.04), .06, WORLD-.06), y:clamp(s.y+rand(-.04,.04), .1, WORLD-.06) });
   }
-  spawnSlime(); broadcastWorld();
+  spawnSlime(); queueWorld();
 }
 const STREAKS = { 10:'RAMPAGE!', 20:'SLIME STORM!', 30:'UNSTOPPABLE!', 50:'SLIME APOCALYPSE!' };
 function onKillFx(f){
@@ -2377,7 +2377,22 @@ function electHost(){
   }
 }
 let worldTimer=null;
-function broadcastWorld(){ if (isHost && sendWorld) sendWorld(worldPayload()); }
+/* NO PEERS, NO PAYLOAD. Trystero's send() JSON-stringifies, encodes and
+   chunks the data BEFORE it looks for peers (trystero 0.21.6 room.js
+   send), and worldPayload() itself walks every slime through toFixed —
+   so a solo host paid a full ~8KB world serialise on EVERY hit, every
+   kill and every 220ms, for nobody. Every outbound send now checks for
+   a peer first. */
+const hasPeers = () => peers.size > 0;
+function broadcastWorld(){ if (isHost && sendWorld && hasPeers()) sendWorld(worldPayload()); }
+/* Hit/kill/mine paths used to broadcast the whole world SYNCHRONOUSLY per
+   claim — a splash swing that touched 6 slimes built and sent 6+ full
+   payloads inside one frame. They now mark the world dirty; hostTick
+   flushes ONE payload at the end of the frame (<= one frame of latency;
+   the 220ms heartbeat is unchanged). */
+let worldDirty = false;
+function queueWorld(){ worldDirty = true; }
+function flushWorld(){ if (worldDirty){ worldDirty = false; broadcastWorld(); } }
 function startBroadcastLoop(){
   clearInterval(worldTimer);
   worldTimer = setInterval(()=>{ if (isHost) broadcastWorld(); }, 220);
@@ -2426,7 +2441,7 @@ function joinWorld(roomCode){
   setTimeout(refreshPeers, 15500);
 }
 setInterval(()=>{ // sword state @ ~20Hz
-  if (started && sendPos){ const bl = bladeAt(performance.now()); sendPos({ x:+me.x.toFixed(3), y:+me.y.toFixed(3), a:+bl.ang.toFixed(2), e:+bl.ext.toFixed(2), w:me.weapon, n:me.name, c:me.color, s: performance.now()<me.whirlUntil, l: me.level }); }
+  if (started && sendPos && hasPeers()){ const bl = bladeAt(performance.now()); sendPos({ x:+me.x.toFixed(3), y:+me.y.toFixed(3), a:+bl.ang.toFixed(2), e:+bl.ext.toFixed(2), w:me.weapon, n:me.name, c:me.color, s: performance.now()<me.whirlUntil, l: me.level }); }
 }, 50);
 
 /* ============================================================ input */
@@ -4659,7 +4674,7 @@ function frame(now){
   for (const s of slimes.values()){
     if (!isHost && s.tx!==undefined){ s.x += (s.tx-s.x)*interpK; s.y += (s.ty-s.y)*interpK; s.squish=Math.max(0,s.squish-dt/160); s.flash=Math.max(0,s.flash-dt/120); }
   }
-  if (isHost && started) hostTick(now,dt);
+  if (isHost && started){ hostTick(now,dt); flushWorld(); }   // at most ONE coalesced world payload per frame (see queueWorld)
   if (started && !paused) localHitCheck(now);
 
   /* ---- survival (ALL local — HP is never networked): slime contact damage,
