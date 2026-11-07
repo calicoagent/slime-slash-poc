@@ -40,9 +40,6 @@
   }
   .badge svg { width:28px; height:28px; flex:none; }
   #coinBadge { top:max(14px, env(safe-area-inset-top)); left:max(14px, env(safe-area-inset-left)); }
-  #gemBadge { top:64px; left:max(14px, env(safe-area-inset-left)); font-size:19px; padding:4px 10px; gap:10px; }
-  #gemBadge .gemSlot { display:inline-flex; align-items:center; gap:4px; }
-  #gemBadge .gemSlot i { width:10px; height:10px; transform:rotate(45deg); border:2px solid #3a2b23; display:inline-block; flex:none; }
   #peerBadge { top:max(14px, env(safe-area-inset-top)); right:max(14px, env(safe-area-inset-right)); padding:6px 16px; font-size:22px; }
   #peerBadge .dot { width:12px; height:12px; border-radius:0; background:#c33; border:2px solid #3a2b23; }
   #peerBadge.on .dot { background:#37c978; }
@@ -99,13 +96,15 @@
   .wcard .wxpbar.ready > div { background:#ffd94d; animation:wxpPulse .6s ease-in-out infinite alternate; }
   @keyframes wxpPulse { from { filter:brightness(.8); } to { filter:brightness(1.4); } }
 
-  #forgeBtn {
+  /* the dock stack is ONE chunky MENU button now (RPG menu, Handler's
+     ruling) — SPHERE / SKILLS / GEMS live as tabs inside the menu */
+  #menuBtn {
     cursor:pointer;
-    background:#ff8a2e; border:3px solid #3a2b23; border-radius:0; color:#fff;
+    background:#ffd94d; border:3px solid #3a2b23; border-radius:0; color:#3a2b23;
     font-family:"Press Start 2P",monospace; font-size:11px; padding:12px 14px;
     box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
   }
-  #forgeBtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
+  #menuBtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
   #shareBtn {
     position:fixed; z-index:21; bottom:14px; left:14px; cursor:pointer;
     background:#4dabff; border:3px solid #3a2b23; border-radius:0; color:#fff;
@@ -116,7 +115,7 @@
 
   /* forge popup */
   #forge {
-    position:fixed; z-index:30; bottom:calc(var(--dockH, 229px) + 10px); right:14px; width:290px;
+    position:fixed; z-index:30; bottom:calc(var(--dockH, 123px) + 10px); right:14px; width:290px;
     background:#fff6df; border:3px solid #3a2b23; border-radius:0; padding:16px;
     box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 5px 5px 0 rgba(0,0,0,.30);
     animation:pop .18s cubic-bezier(.2,2.2,.4,1);
@@ -149,13 +148,9 @@
   }
   #bubble:after { content:""; position:absolute; left:50%; bottom:-10px; transform:translateX(-50%); border:6px solid transparent; border-top:8px solid #3a2b23; border-bottom:0; }
 
-  /* ---------- polish pass: bounty / combo / hint / king banner / pause ---------- */
-  #bountyBadge {
-    position:fixed; z-index:20; top:238px; left:max(14px, env(safe-area-inset-left)); max-width:232px;
-    background:#fff6df; border:3px solid #3a2b23; border-radius:0; padding:8px 14px;
-    color:#3a2b23; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 4px 4px 0 rgba(0,0,0,.30); pointer-events:none;
-  }
-  #bountyBadge b { font-family:"Press Start 2P",monospace; font-size:8px; letter-spacing:0; color:#b8860b; display:block; margin-bottom:4px; }
+  /* ---------- polish pass: combo / hint / king banner / pause ----------
+     (the BOUNTY readout lives in the menu's MORE tab now — #bountyText /
+     #bountyProg below are its lines) */
   #bountyText { font-size:20px; line-height:1.2; }
   #bountyProg { font-size:16px; color:#97754a; margin-top:2px; }
   #comboBadge {
@@ -168,7 +163,7 @@
   #comboBadge.pop2 { animation:comboPop .22s cubic-bezier(.2,2.2,.4,1); }
   @keyframes comboPop { 40% { transform:scale(1.28) rotate(-2deg); } }
   #hint {
-    position:fixed; z-index:23; bottom:calc(var(--dockH, 229px) + 10px); left:50%; transform:translateX(-50%);
+    position:fixed; z-index:23; bottom:calc(var(--dockH, 123px) + 10px); left:50%; transform:translateX(-50%);
     background:#fff; color:#3a2b23; border:3px solid #3a2b23; border-radius:0;
     padding:9px 16px; font-family:"Press Start 2P",monospace; font-size:10px; line-height:1.7; white-space:nowrap; pointer-events:none;
     box-shadow:4px 4px 0 rgba(0,0,0,.30); animation:hintBob 1s ease-in-out infinite;
@@ -229,12 +224,9 @@
     .badge { pointer-events:none; }
     #coinBadge { top:max(8px, env(safe-area-inset-top)); left:8px; font-size:20px; padding:3px 10px 3px 5px; border-width:3px; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(0,0,0,.30); }
     #coinBadge svg { width:19px; height:19px; }
-    #gemBadge { top:158px; left:8px; font-size:15px; padding:2px 8px; gap:7px; border-width:3px; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(0,0,0,.30); pointer-events:none; }
-    #gemBadge .gemSlot i { width:8px; height:8px; }
     #lvlBadge { top:50px; left:8px; font-size:17px; padding:4px 10px; border-width:3px; border-radius:0; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(0,0,0,.30); }
     #xpTrack { width:84px; height:9px; }
     #peerBadge { top:max(8px, env(safe-area-inset-top)); right:8px; font-size:17px; padding:4px 10px; border-width:3px; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(0,0,0,.30); }
-    #bountyBadge { top:190px; left:8px; max-width:158px; padding:5px 9px; border-width:3px; border-radius:0; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(0,0,0,.30); pointer-events:none; }
     #hpTrack { width:84px; height:14px; }
     #hpText { font-size:14px; }
     #mpTrack { width:84px; height:14px; }
@@ -242,17 +234,16 @@
     /* items become right-side THUMB controls on a phone: chunky buttons
        stacked above the rack dock (riding --dockH), reachable without
        crossing the play field */
-    #items { left:auto; right:max(8px, env(safe-area-inset-right)); bottom:calc(var(--dockH, 196px) + 10px); gap:8px; }
+    #items { left:auto; right:max(8px, env(safe-area-inset-right)); bottom:calc(var(--dockH, 92px) + 10px); gap:8px; }
     /* chunky on phones too — a later 44px override used to shrink these
        back down; the big thumb size below is the only mobile rule now */
     .ibtn { width:84px; min-height:78px; }
     .ibtn svg { width:40px; height:40px; }
-    #interactPrompt { bottom:calc(var(--dockH, 196px) + 10px); font-size:9px; padding:9px 14px; }
+    #interactPrompt { bottom:calc(var(--dockH, 92px) + 10px); font-size:9px; padding:9px 14px; }
     #bossBar { width:min(72vw,520px); }
-    #bountyBadge b { font-size:6px; letter-spacing:0; }
     #bountyText { font-size:16px; line-height:1.2; }
     #bountyProg { font-size:14px; margin-top:1px; }
-    #minimap { width:74px; height:74px; left:8px; bottom:calc(var(--dockH, 196px) + 10px); border-width:3px; border-radius:0; pointer-events:none; }
+    #minimap { width:74px; height:74px; left:8px; bottom:calc(var(--dockH, 92px) + 10px); border-width:3px; border-radius:0; pointer-events:none; }
     #pauseBtn { left:auto; right:8px; top:94px; bottom:auto; width:36px; height:36px; font-size:10px; border-width:3px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
     #rackDock { padding-bottom:max(8px, env(safe-area-inset-bottom)); }
     #rackBtns { margin:0 8px 6px 0; gap:6px; }
@@ -266,15 +257,13 @@
     .wcard .wlv { font-size:11px; }
     .wcard .wl { font-size:12px; padding:1px 5px; top:-8px; right:-6px; }
     .wcard .key { font-size:7px; padding:1px 4px; top:-8px; left:-6px; }
-    #forgeBtn { font-size:8px; padding:9px 10px; border-width:3px; border-radius:0; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
-    #actives { bottom:calc(var(--dockH, 196px) + 8px); right:8px; gap:8px; }
+    #menuBtn { font-size:8px; padding:9px 10px; border-width:3px; border-radius:0; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
+    #actives { bottom:calc(var(--dockH, 92px) + 8px); right:8px; gap:8px; }
     #wSkillBtn { width:96px; font-size:7px; }
-    #treeBtn { font-size:8px; padding:9px 10px; border-width:3px; border-radius:0; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
-    #gemBtn { font-size:8px; padding:9px 10px; border-width:3px; border-radius:0; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
     .abtn { width:48px; height:48px; font-size:7px; border-width:3px; }
-    #comboBadge { right:auto; left:8px; bottom:calc(var(--dockH, 196px) + 142px); font-size:9px; padding:7px 10px; border-width:3px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
-    #hint { bottom:calc(var(--dockH, 196px) + 12px); font-size:8px; max-width:72vw; white-space:normal; text-align:center; padding:7px 10px; }
-    #toast { top:auto; bottom:calc(var(--dockH, 196px) + 60px); font-size:9px; padding:8px 14px; border-width:3px; }
+    #comboBadge { right:auto; left:8px; bottom:calc(var(--dockH, 92px) + 142px); font-size:9px; padding:7px 10px; border-width:3px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
+    #hint { bottom:calc(var(--dockH, 92px) + 12px); font-size:8px; max-width:72vw; white-space:normal; text-align:center; padding:7px 10px; }
+    #toast { top:auto; bottom:calc(var(--dockH, 92px) + 60px); font-size:9px; padding:8px 14px; border-width:3px; }
     #zoneBanner { font-size:10px; padding:6px 14px; max-width:94vw; }
   }
 
@@ -299,7 +288,7 @@
     animation:pop .18s cubic-bezier(.2,2.2,.4,1);
   }
   #interactPrompt {
-    position:fixed; z-index:23; bottom:calc(var(--dockH, 229px) + 10px); left:50%; transform:translateX(-50%);
+    position:fixed; z-index:23; bottom:calc(var(--dockH, 123px) + 10px); left:50%; transform:translateX(-50%);
     font-family:"Press Start 2P",monospace; font-size:11px; cursor:pointer;
     background:#ffd94d; color:#3a2b23; border:3px solid #3a2b23; border-radius:0;
     padding:11px 20px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
@@ -330,6 +319,35 @@
     position:fixed; inset:0; z-index:44; background:rgba(20,40,15,.45);
     display:flex; align-items:center; justify-content:center;
   }
+
+  /* ---------- RPG MENU (tabbed): INVENTORY / SPHERE / SKILLS / GEMS / MORE ----------
+     One sheet (a plain .panelWrap, so the <=640px full-viewport sheet
+     rules cover it like every other panel). The Sphere Grid, skill tree
+     and soul-gem manager MOVED IN as tab sections — their ids (#forge,
+     #treePanel, #gemPanel) survive on the section divs, and a section is
+     unhidden ONLY while the menu is open on its tab, so every legacy
+     'panel open?' check keeps telling the truth. */
+  #menuTabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
+  .mtab {
+    flex:1 1 auto; font-family:"Press Start 2P",monospace; font-size:9px; cursor:pointer; line-height:1.4;
+    padding:10px 6px; background:#e8e2d2; color:#3a2b23; border:3px solid #b8a888; border-radius:0;
+    box-shadow:inset -3px -3px 0 rgba(0,0,0,.12), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.25);
+  }
+  .mtab:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.12), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.25); }
+  .mtab.on { background:#3a2b23; color:#ffd94d; border-color:#3a2b23; }
+  .menuHead { font-family:"Press Start 2P",monospace; font-size:10px; color:#5b3a1e; margin:16px 0 8px; }
+  .menuHead:first-child { margin-top:0; }
+  .menuBounty { background:#fff; border:3px solid #3a2b23; border-radius:0; padding:8px 10px; color:#3a2b23; }
+  #menuItems .shopRow svg { width:34px; height:34px; flex:none; }
+  /* the Sphere Grid sheds its fixed dock-popup positioning inside the menu */
+  #menuPanel #forge {
+    position:static; width:auto; height:auto; max-height:none; overflow:visible;
+    padding:0; border:none; box-shadow:none; background:transparent; animation:none; transform:none; z-index:auto;
+  }
+  /* soul-gem explanation sub-line (Handler: 'How do I know what does
+     what') — a muted line under the gem's name/value, explanation ONLY */
+  .gemDesc { display:block; color:#97754a; font-size:15px; line-height:1.2; }
+  .gemSlot .gemDesc { font-size:13px; }
   .bankLine { color:#3a2b23; font-size:22px; line-height:1.2; }
   .bankLine b { color:#b8860b; }
   .shopRow .wstate { display:contents; }   /* state wrapper is layout-transparent: cost chips / XP text stay direct flex items */
@@ -397,7 +415,7 @@
   }
 
   /* ---------- active skill buttons ---------- */
-  #actives { position:fixed; right:14px; bottom:calc(var(--dockH, 229px) + 10px); z-index:21; display:flex; flex-direction:column; gap:10px; pointer-events:none; }
+  #actives { position:fixed; right:14px; bottom:calc(var(--dockH, 123px) + 10px); z-index:21; display:flex; flex-direction:column; gap:10px; pointer-events:none; }
   #actives > * { pointer-events:auto; }
   .abtn {
     position:relative; width:58px; height:58px; border-radius:0; cursor:pointer; overflow:hidden;
@@ -410,21 +428,7 @@
   .abtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
 
   /* ---------- weapon skill button + skill tree ---------- */
-  #treeBtn {
-    cursor:pointer;
-    background:#8e6bc8; border:3px solid #3a2b23; border-radius:0; color:#fff;
-    font-family:"Press Start 2P",monospace; font-size:11px; padding:12px 14px;
-    box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
-  }
-  #treeBtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
-  #gemBtn {
-    cursor:pointer;
-    background:#1f9e8f; border:3px solid #3a2b23; border-radius:0; color:#fff;
-    font-family:"Press Start 2P",monospace; font-size:11px; padding:12px 14px;
-    box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
-  }
-  #gemBtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
-  /* soul gem panel bits */
+  /* soul gem panel bits (now the menu's GEMS tab) */
   .gemDot { display:inline-block; width:10px; height:10px; transform:rotate(45deg); margin-right:8px; border:2px solid #3a2b23; vertical-align:-1px; }
   .gemBagHead, .gemEquipHead { font-family:"Press Start 2P",monospace; font-size:10px; color:#5b3a1e; margin:12px 0 6px; }
   .gemSlotsRow { display:flex; gap:8px; flex-wrap:wrap; }
@@ -572,8 +576,6 @@
     #bossBar { top:calc(env(safe-area-inset-top) + 46px); width:min(76vw, 520px); }
     #zoneBanner { top:calc(env(safe-area-inset-top) + 102px); }
     body.boss-on #lvlBadge { top:104px; }
-    body.boss-on #gemBadge { top:212px; }
-    body.boss-on #bountyBadge { top:244px; }
   }
 
   /* ---------- urgent mobile fix: HUD shrink (<=640px only) ----------
@@ -586,9 +588,8 @@
     .ibtn svg { width:26px; height:26px; }
     .ibtn .ilabel { display:none; }
     .ibtn .cnt { min-width:22px; height:22px; }
-    /* dock stack (SPHERE / SKILLS / GEMS): tight padding, ~12px type,
-       still a full 44px-tall touch target */
-    #forgeBtn, #treeBtn, #gemBtn { font-size:11px; padding:6px 12px; min-height:44px; }
+    /* dock MENU button: tight padding, still a 44px-tall touch target */
+    #menuBtn { font-size:11px; padding:6px 12px; min-height:44px; }
     /* weapon rack: expanded cards capped at ~42px tall (icon 16 + name 11
        + xp bar 4 + padding 4 + border 6); socket pips move to the GEMS
        panel on phones to make the cap */
@@ -628,26 +629,11 @@
       position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
       line-height:1; font-size:12px;
     }
-    /* coin badge + gem chips: small */
+    /* coin badge: small */
     #coinBadge { padding:4px 8px; font-size:13px; }
-    #gemBadge { top:128px; left:8px; padding:3px 6px; font-size:11px; gap:5px; }
-    /* BOUNTY becomes a slim one-line strip across the top centre:
-       'BOUNTY · Slay 12 PURPLE · 8/12'. Its top (156px) clears the stat
-       panel (46 + ~73 tall = ~119) and the gem row (~128-148, left side
-       only); it is centred, so it never touches the item column. */
-    #bountyBadge {
-      top:156px; left:50%; transform:translateX(-50%); width:max-content; max-width:52vw;
-      display:flex; align-items:center; gap:6px; padding:4px 8px; white-space:nowrap; overflow:hidden;
-    }
-    #bountyBadge b { display:inline; margin:0; font-size:8px; }
-    #bountyBadge b::after { content:' ·'; }
-    #bountyText { font-size:11px; line-height:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    #bountyProg { font-size:11px; line-height:1; margin:0; white-space:nowrap; }
-    #bountyProg::before { content:'· '; }
-    /* with a boss up the left column shifts down (earlier boss-on rules);
-       the gem row and the bounty strip follow it down */
-    body.boss-on #gemBadge { top:186px; }
-    body.boss-on #bountyBadge { top:214px; }
+    /* bounty lines live in the menu's MORE tab now — just their sizes */
+    #bountyText { font-size:11px; line-height:1.2; }
+    #bountyProg { font-size:11px; line-height:1.2; margin:0; }
     /* item buttons: 52px thumb squares, icon + count only. The column
        stays bottom-anchored on the right (bottom = live --dockH + 10px
        from the <=640px rules), so its top edge always starts far BELOW
@@ -655,11 +641,9 @@
     .ibtn { width:52px; min-height:52px; padding:2px; }
     .ibtn svg { width:24px; height:24px; }
     .ibtn .cnt { min-width:20px; height:20px; font-size:13px; top:-6px; right:-6px; }
-    /* minimap + dock stack (SKILLS / SPHERE / GEMS) shrink */
+    /* minimap shrinks; the dock MENU button gets a fixed 108px width */
     #minimap { width:84px; height:84px; }
-    /* fixed 108px for all three dock buttons — 'SPHERE (106)' can no
-       longer stretch its button wider than SKILLS / GEMS */
-    #forgeBtn, #treeBtn, #gemBtn {
+    #menuBtn {
       width:108px; box-sizing:border-box; font-size:9px; letter-spacing:0; padding:5px 4px;
       min-height:44px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     }
@@ -695,7 +679,6 @@
     <svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="16" fill="#ffd94d" stroke="#b8860b" stroke-width="3"/><circle cx="20" cy="20" r="10" fill="none" stroke="#b8860b" stroke-width="2.5"/><path d="M20 13v14M15.5 16.5c0-2 2-3 4.5-3s4.5 1.2 4.5 3-1.8 2.8-4.5 3.4-4.5 1.4-4.5 3.4 2 3 4.5 3 4.5-1 4.5-3" stroke="#b8860b" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg>
     <span id="coins">0</span>
   </div>
-  <div class="badge hidden" id="gemBadge"></div>
   <div class="badge" id="lvlBadge">
     <div>LV <span id="lvl">1</span> &nbsp;<span id="kills" style="color:#97754a;font-size:13px;">0 kills</span></div>
     <div id="xpTrack"><div id="xpFill"></div></div>
@@ -704,17 +687,9 @@
   </div>
   <div class="badge" id="peerBadge"><span class="dot"></span><span id="peers">Solo</span></div>
   <div class="badge" id="boardBadge"><b>TOP SLAYERS</b><div id="board"></div></div>
-  <div id="bountyBadge">
-    <b>BOUNTY</b>
-    <div id="bountyText">Finding a bounty...</div>
-    <div id="bountyProg"></div>
-  </div>
-
   <div id="rackDock">
     <div id="rackBtns">
-      <button id="treeBtn" class="px-btn">SKILLS</button>
-      <button id="forgeBtn" class="px-btn">SPHERE</button>
-      <button id="gemBtn" class="px-btn">GEMS</button>
+      <button id="menuBtn" class="px-btn">MENU</button>
     </div>
     <div id="rackTabRow"><button id="rackTab" class="px-btn"><span id="rackTabName">Sword</span><span id="rackTabChev">▲</span></button></div>
     <div id="rack"></div>
@@ -731,20 +706,6 @@
   <button id="shareBtn" class="px-btn">INVITE LINK</button>
   <div id="comboBadge" class="hidden">x3 COMBO</div>
   <button id="pauseBtn" title="Pause">| |</button>
-
-  <div id="forge" class="hidden px-panel">
-    <div class="sheetHead"><span class="sheetTitle">SPHERE GRID</span><button class="pbtn" id="forgeSheetClose">CLOSE</button></div>
-    <h3>SPHERE GRID</h3>
-    <div id="spBar">SPHERE POINTS <b id="spCount">0</b></div>
-    <div id="sphereBoard"><svg id="sphereLines" viewBox="0 0 100 100" preserveAspectRatio="none"></svg><div id="sphereNodes"></div></div>
-    <div id="nodeCard" class="hidden">
-      <span class="ntype" id="ncType"></span>
-      <b id="ncName"></b>
-      <p id="ncDesc"></p>
-      <button id="ncBtn"></button>
-    </div>
-    <div style="text-align:center;color:#97754a;font-weight:700;font-size:12px;margin-top:8px;">Earn Sphere Points from level-ups and bounties — or buy them at the Bank (300c). Follow a glowing path!</div>
-  </div>
 </div>
 
 <div id="dmgFlash"></div>
@@ -801,29 +762,69 @@
     <button class="pbtn" id="hospCloseBtn">CLOSE</button>
   </div>
 </div>
-<div id="treePanel" class="hidden panelWrap">
+<div id="menuPanel" class="hidden panelWrap">
   <div class="pauseCard px-panel" style="width:min(94vw,560px);max-height:88dvh;overflow-y:auto">
-    <div class="sheetHead"><span class="sheetTitle">WEAPON SKILLS</span><button class="pbtn" id="treeSheetClose">CLOSE</button></div>
-    <h2>WEAPON SKILLS</h2>
-    <div class="bankLine" style="text-align:center">Sphere Points: <b id="treeSp">0</b></div>
-    <div id="treeRows"></div>
-    <div id="treeDetail" class="hidden tcard">
-      <span class="ntype" id="tdType"></span>
-      <b id="tdName"></b>
-      <p id="tdDesc"></p>
-      <button id="tdBtn"></button>
+    <div class="sheetHead"><span class="sheetTitle">MENU</span><button class="pbtn" id="menuSheetClose">CLOSE</button></div>
+    <h2>MENU</h2>
+    <div id="menuTabs">
+      <button class="mtab" data-tab="inventory">INVENTORY</button>
+      <button class="mtab" data-tab="sphere">SPHERE</button>
+      <button class="mtab" data-tab="skills">SKILLS</button>
+      <button class="mtab" data-tab="gems">GEMS</button>
+      <button class="mtab" data-tab="more">MORE</button>
     </div>
-    <button class="pbtn" id="treeCloseBtn">CLOSE</button>
-  </div>
-</div>
-<div id="gemPanel" class="hidden panelWrap">
-  <div class="pauseCard px-panel" style="width:min(94vw,560px);max-height:88dvh;overflow-y:auto">
-    <div class="sheetHead"><span class="sheetTitle">SOUL GEMS</span><button class="pbtn" id="gemSheetClose">CLOSE</button></div>
-    <h2>SOUL GEMS <span id="gemBagCount" style="font-size:12px;color:#97754a"></span></h2>
-    <div id="gemSlots"></div>
-    <div id="gemBagList"></div>
-    <div id="gemOther"></div>
-    <button class="pbtn" id="gemCloseBtn">CLOSE</button>
+    <div id="menuTab-inventory" class="menuTab">
+      <div class="menuHead">ITEMS</div>
+      <div id="menuItems"></div>
+      <div class="menuHead">MINED GEMS</div>
+      <div id="menuGems"></div>
+    </div>
+    <div id="forge" class="menuTab hidden">
+      <div id="spBar">SPHERE POINTS <b id="spCount">0</b></div>
+      <div id="sphereBoard"><svg id="sphereLines" viewBox="0 0 100 100" preserveAspectRatio="none"></svg><div id="sphereNodes"></div></div>
+      <div id="nodeCard" class="hidden">
+        <span class="ntype" id="ncType"></span>
+        <b id="ncName"></b>
+        <p id="ncDesc"></p>
+        <button id="ncBtn"></button>
+      </div>
+      <div style="text-align:center;color:#97754a;font-weight:700;font-size:12px;margin-top:8px;">Earn Sphere Points from level-ups and bounties — or buy them at the Bank (300c). Follow a glowing path!</div>
+    </div>
+    <div id="treePanel" class="menuTab hidden">
+      <div class="bankLine" style="text-align:center">Sphere Points: <b id="treeSp">0</b></div>
+      <div id="treeRows"></div>
+      <div id="treeDetail" class="hidden tcard">
+        <span class="ntype" id="tdType"></span>
+        <b id="tdName"></b>
+        <p id="tdDesc"></p>
+        <button id="tdBtn"></button>
+      </div>
+    </div>
+    <div id="gemPanel" class="menuTab hidden">
+      <div class="bankLine">Soul gems in bag: <b id="gemBagCount"></b></div>
+      <div id="gemSlots"></div>
+      <div id="gemBagList"></div>
+      <div id="gemOther"></div>
+    </div>
+    <div id="menuTab-more" class="menuTab hidden">
+      <div class="menuHead">BOUNTY</div>
+      <div class="menuBounty">
+        <div id="bountyText">Finding a bounty...</div>
+        <div id="bountyProg"></div>
+      </div>
+      <div class="menuHead">PROGRESS</div>
+      <div class="bankLine">Level: <b id="menuLvl">1</b></div>
+      <div class="bankLine">Kills: <b id="menuKills">0</b></div>
+      <div class="bankLine">Carried: <b id="menuCarried">0</b> coins</div>
+      <div class="bankLine">Banked: <b id="menuBanked">0</b> coins</div>
+      <div class="bankLine">Sphere Points: <b id="menuSp">0</b></div>
+      <div class="menuHead">SYSTEM</div>
+      <button class="pbtn" id="menuSoundBtn">SOUND: ON</button>
+      <div class="menuHead">HOW TO PLAY</div>
+      <div class="pcontrols">Move mouse / drag finger to swing your sword through slimes. Tap or click for a SPIN SLASH. Sphere Points come from level-ups, bounties, and the Bank exchange (300c) — spend them in this menu: SPHERE GRID for stats, passives and active skills, SKILLS for weapon trees, GEMS for soul-gem sockets.<br>Keys 1-7 = weapons · M = menu · F / K / G = Sphere / Skills / Gems tabs · V = weapon skill · Q / E / R / T = skills · Z / X / C = items · B = bank / shop / inn (in town) · Esc = close / pause<br>There is only ONE world — send the link to friends and they drop straight into it with you.</div>
+      <button class="pbtn" id="menuResetBtn">RESET SAVE</button>
+    </div>
+    <button class="pbtn" id="menuCloseBtn">CLOSE</button>
   </div>
 </div>
 
@@ -1979,8 +1980,7 @@ function damagePlayer(amount, now){
      here, so orb fire over town is harmless too). Enemies can't be in
      town at all, but the check stands on its own regardless. */
   if (!$('#bankPanel').classList.contains('hidden') || !$('#shopPanel').classList.contains('hidden') ||
-      !$('#hospitalPanel').classList.contains('hidden') || !$('#forge').classList.contains('hidden') ||
-      !$('#treePanel').classList.contains('hidden') || !$('#gemPanel').classList.contains('hidden')) return;
+      !$('#hospitalPanel').classList.contains('hidden') || !$('#menuPanel').classList.contains('hidden')) return;
   if (dist2(me.x, me.y, WORLD/2, WORLD/2) < TOWN_R*TOWN_R) return;
   if (now < me.shieldUntil) return;        // Aegis Charm blocks ALL damage
   if (now <= me.invulnUntil) return;
@@ -2399,8 +2399,7 @@ addEventListener('pointercancel', ()=>{ downInfo = null; uiPointer = false; });
 addEventListener('touchmove', e=>{ e.preventDefault(); }, {passive:false});
 addEventListener('keydown', e=>{
   if (!started) return;
-  if (e.key==='Escape' && !$('#treePanel').classList.contains('hidden')){ toggleTree(false); return; }
-  if (e.key==='Escape' && !$('#gemPanel').classList.contains('hidden')){ toggleGems(false); return; }
+  if (e.key==='Escape' && !$('#menuPanel').classList.contains('hidden')){ closeMenu(); return; }
   if (e.key==='Escape' && !$('#hospitalPanel').classList.contains('hidden')){ $('#hospitalPanel').classList.add('hidden'); return; }
   if (e.key==='Escape' || e.key==='p' || e.key==='P'){ togglePause(); return; }
   const n = parseInt(e.key);
@@ -2416,6 +2415,7 @@ addEventListener('keydown', e=>{
   if (lk==='b'){ if (nearBuilding==='bank') openBank(); else if (nearBuilding==='shop') openShop(); else if (nearBuilding==='hospital') openHospital(); }
   if (lk==='v') castWeaponSkill();
   if (lk==='k') toggleTree();
+  if (lk==='m') toggleMenu();
   if (lk==='z') useItem('potion');
   if (lk==='x') useItem('bomb');
   if (lk==='c') useItem('shield');
@@ -2432,12 +2432,6 @@ function trySpin(){
 /* ============================================================ HUD */
 function refreshHUD(){
   $('#coins').textContent = me.coins;
-  // gem pouch badge: one chip per gem type carried, hidden when empty
-  const gb = $('#gemBadge');
-  const gemChips = Object.keys(GEMS).filter(g => me.gems[g] > 0)
-    .map(g => `<span class="gemSlot"><i style="background:${GEMS[g].col}"></i>${me.gems[g]}</span>`).join('');
-  gb.innerHTML = gemChips;
-  gb.classList.toggle('hidden', !gemChips);
   $('#lvl').textContent = me.level;
   $('#kills').textContent = me.kills+' kills';
   $('#xpFill').style.width = clamp(me.xp/(me.level*100)*100,0,100)+'%';
@@ -2482,7 +2476,12 @@ function refreshHUD(){
   $('#board').innerHTML = rows.length ? rows.map(([id,s])=>`<div class="row ${id===me.id?'me':''}"><span>${esc(s.name)}</span><b>${s.kills}</b></div>`).join('') : '<div class="row"><span>No kills yet</span></div>';
   // sphere points
   $('#spCount').textContent = me.sp;
-  $('#forgeBtn').textContent = me.sp>0 ? 'SPHERE ('+me.sp+')' : 'SPHERE';
+  // RPG menu: refresh the visible tab's values IN PLACE (same nodes —
+  // rebuilding mid-tap is what ate inn button clicks in an earlier pass)
+  if (!$('#menuPanel').classList.contains('hidden')){
+    if (menuTab === 'inventory') updateMenuInventory();
+    if (menuTab === 'more') updateMenuMore();
+  }
   if (selNode && !$('#forge').classList.contains('hidden')) renderNodeCard();
   // polish systems tick (refreshHUD runs ~2/s while playing)
   if (combo>0 && performance.now()>comboUntil){ combo=0; updateComboBadge(false); }
@@ -2559,18 +2558,99 @@ function equip(i){
   me.weapon=i; me.lastHitAt.clear(); buildRack(); beep(600,.06,'triangle',.08); refreshHUD(); saveGame();
   bubble(w.name.toUpperCase()+'!', me.x, me.y, 900);
 }
-function toggleForge(){
-  $('#forge').classList.toggle('hidden');
-  if (!$('#forge').classList.contains('hidden')) hintsSeen.sphere = true;
-  buildSphere(); refreshHUD(); updateHint();
+/* ============================================================ RPG MENU
+   ONE tabbed sheet holds everything that used to clutter the HUD and
+   three separate panels: INVENTORY (items + mined gems), SPHERE (the
+   Sphere Grid), SKILLS (weapon trees), GEMS (soul-gem sockets), MORE
+   (bounty, progress, sound, how-to, reset). A section keeps its legacy
+   id (#forge / #treePanel / #gemPanel) and is unhidden ONLY while the
+   menu is open on its tab; closeMenu hides ALL sections, so the legacy
+   'is X open?' checks scattered through damage/hints/pause stay true. */
+let menuTab = 'inventory';
+const MENU_SECTIONS = { inventory:'#menuTab-inventory', sphere:'#forge', skills:'#treePanel', gems:'#gemPanel', more:'#menuTab-more' };
+function openMenu(tab){
+  $('#menuPanel').classList.remove('hidden');
+  showMenuTab(tab || menuTab);
+}
+function showMenuTab(tab){
+  menuTab = tab;
+  for (const [k, sel] of Object.entries(MENU_SECTIONS)) $(sel).classList.toggle('hidden', k !== tab);
+  document.querySelectorAll('#menuTabs .mtab').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+  if (tab === 'sphere'){ buildSphere(); hintsSeen.sphere = true; }
+  if (tab === 'skills') buildTree();
+  if (tab === 'gems') buildGemPanel();
+  if (tab === 'inventory') buildMenuInventory();
+  if (tab === 'more') buildMenuMore();
+  refreshHUD(); updateHint();
+}
+function closeMenu(){
+  $('#menuPanel').classList.add('hidden');
+  for (const sel of Object.values(MENU_SECTIONS)) $(sel).classList.add('hidden');
+  menuResetArmed = false;
+  const rb = $('#menuResetBtn'); if (rb) rb.textContent = 'RESET SAVE';
+  updateHint();
+}
+function toggleMenu(tab){
+  if ($('#menuPanel').classList.contains('hidden')) openMenu(tab);
+  else if (tab && tab !== menuTab) showMenuTab(tab);
+  else closeMenu();
+}
+function toggleForge(){ toggleMenu('sphere'); }
+/* ---- menu INVENTORY tab: usable items + Coin Purse state + mined gems.
+   Rows build ONCE per open; counts/states refresh IN PLACE via updaters
+   (refreshHUD calls updateMenuInventory while the tab is visible). ---- */
+let menuInvUpdaters = [];
+function buildMenuInventory(){
+  menuInvUpdaters = [];
+  const iw = $('#menuItems'); iw.innerHTML = '';
+  for (const it of SHOP_ITEMS){
+    const row = document.createElement('div'); row.className = 'shopRow';
+    if (it.id === 'purse'){
+      row.innerHTML = `<div class="info"><b>Coin Purse</b><span>${it.desc}</span></div><div class="own"></div>`;
+      const ownEl = row.querySelector('.own');
+      menuInvUpdaters.push(()=>{ ownEl.textContent = me.purse ? 'OWNED' : it.price + 'c — at the SHOP'; });
+    } else {
+      const icon = $('#' + ({ potion:'itemPotion', bomb:'itemBomb', shield:'itemShield' })[it.id]).querySelector('svg').outerHTML;
+      row.innerHTML = `${icon}<div class="info"><b>${it.name}</b><span>${it.desc}</span></div><div class="own"></div>`;
+      const ownEl = row.querySelector('.own');
+      const btn = document.createElement('button');
+      btn.textContent = 'USE';
+      btn.onclick = ()=>useItem(it.id);   // the SAME use path as the HUD thumb buttons / Z X C keys
+      row.appendChild(btn);
+      menuInvUpdaters.push(()=>{
+        ownEl.textContent = 'x' + me.items[it.id];
+        btn.disabled = me.items[it.id] <= 0;
+      });
+    }
+    iw.appendChild(row);
+  }
+  const gw = $('#menuGems'); gw.innerHTML = '';
+  for (const [gk, g] of Object.entries(GEMS)){
+    const row = document.createElement('div'); row.className = 'shopRow';
+    row.innerHTML = `<div class="info"><b><span class="gemchip"><i style="background:${g.col}"></i></span>${g.name}</b><span>Mined from ore rocks — the Forge spends these</span></div><div class="own"></div>`;
+    const ownEl = row.querySelector('.own');
+    menuInvUpdaters.push(()=>{ ownEl.textContent = 'x' + (me.gems[gk] || 0); });
+    gw.appendChild(row);
+  }
+  updateMenuInventory();
+}
+function updateMenuInventory(){ for (const u of menuInvUpdaters) u(); }
+/* ---- menu MORE tab: bounty (its #bountyText/#bountyProg lines live
+   here now — updateBountyUI writes them unchanged), progress, system -- */
+function buildMenuMore(){ updateMenuMore(); }
+function updateMenuMore(){
+  $('#menuLvl').textContent = me.level;
+  $('#menuKills').textContent = me.kills;
+  $('#menuCarried').textContent = me.coins;
+  $('#menuBanked').textContent = me.banked;
+  $('#menuSp').textContent = me.sp;
 }
 /* ---- SOUL GEM panel: equipped weapon's slots, the loose-gem bag, and
    other weapons' socketed gems (unsocketing from anywhere is allowed) ---- */
 function toggleGems(force){
-  const p = $('#gemPanel');
-  const show = force !== undefined ? force : p.classList.contains('hidden');
-  p.classList.toggle('hidden', !show);
-  if (show) buildGemPanel();
+  if (force === true) openMenu('gems');
+  else if (force === false) closeMenu();
+  else toggleMenu('gems');
 }
 function socketGem(gid){
   const wi = me.weapon, sock = me.sockets[wi] || (me.sockets[wi] = []);
@@ -2590,7 +2670,7 @@ function buildGemPanel(){
   for (let i = 0; i < total; i++){
     const gem = sock[i] ? me.gemBag.find(g => g.id === sock[i]) : null;
     sh += gem
-      ? `<button class="gemSlot filled" data-unsocket="${gem.id}" title="Click to unsocket"><i style="background:${GEM_RARITY_COL[gem.rarity]}"></i><span>${gemLabel(gem)}</span></button>`
+      ? `<button class="gemSlot filled" data-unsocket="${gem.id}" title="Click to unsocket"><i style="background:${GEM_RARITY_COL[gem.rarity]}"></i><span>${gemLabel(gem)}<small class="gemDesc">${GEM_STAT_INFO[gem.stat] || ''}</small></span></button>`
       : `<div class="gemSlot empty"><i></i><span>EMPTY SLOT</span></div>`;
   }
   $('#gemSlots').innerHTML = sh + '</div>';
@@ -2599,7 +2679,7 @@ function buildGemPanel(){
   let bh = '<div class="gemBagHead">GEM BAG — loose gems</div>';
   if (!free.length) bh += '<div class="own">No loose gems. Slimes drop soul gems — elites, Kings, metals and the Emperor drop them best.</div>';
   for (const gem of free){
-    bh += `<div class="shopRow"><div class="info"><b><i class="gemDot" style="background:${GEM_RARITY_COL[gem.rarity]}"></i>${gemLabel(gem)}</b><span>${GEM_RARITY_NAME[gem.rarity]}</span></div><button data-socket="${gem.id}" ${sock.length >= total ? 'disabled' : ''}>SOCKET</button></div>`;
+    bh += `<div class="shopRow"><div class="info"><b><i class="gemDot" style="background:${GEM_RARITY_COL[gem.rarity]}"></i>${gemLabel(gem)}</b><span class="gemDesc">${GEM_STAT_INFO[gem.stat] || ''}</span><span>${GEM_RARITY_NAME[gem.rarity]}</span></div><button data-socket="${gem.id}" ${sock.length >= total ? 'disabled' : ''}>SOCKET</button></div>`;
   }
   $('#gemBagList').innerHTML = bh;
   let oh = '';
@@ -2607,18 +2687,25 @@ function buildGemPanel(){
     if (i2 === wi) return;
     for (const gid of (me.sockets[i2] || [])){
       const gem = me.gemBag.find(g => g.id === gid); if (!gem) continue;
-      oh += `<div class="shopRow"><div class="info"><b><i class="gemDot" style="background:${GEM_RARITY_COL[gem.rarity]}"></i>${gemLabel(gem)}</b><span>In ${w2.name}</span></div><button data-unsocket="${gid}">UNSOCKET</button></div>`;
+      oh += `<div class="shopRow"><div class="info"><b><i class="gemDot" style="background:${GEM_RARITY_COL[gem.rarity]}"></i>${gemLabel(gem)}</b><span class="gemDesc">${GEM_STAT_INFO[gem.stat] || ''}</span><span>${GEM_RARITY_NAME[gem.rarity]} · In ${w2.name}</span></div><button data-unsocket="${gid}">UNSOCKET</button></div>`;
     }
   });
   $('#gemOther').innerHTML = oh ? '<div class="gemBagHead">SOCKETED ELSEWHERE</div>' + oh : '';
   $('#gemPanel').querySelectorAll('[data-socket]').forEach(b => b.onclick = () => socketGem(b.dataset.socket));
   $('#gemPanel').querySelectorAll('[data-unsocket]').forEach(b => b.onclick = () => unsocketGem(b.dataset.unsocket));
 }
-$('#gemBtn').onclick = () => toggleGems();
-$('#gemCloseBtn').onclick = () => toggleGems(false);
-$('#gemSheetClose').onclick = () => toggleGems(false);
-$('#gemPanel').addEventListener('click', e => { if (e.target.id === 'gemPanel') toggleGems(false); });
-$('#forgeBtn').onclick = toggleForge;
+$('#menuBtn').onclick = () => toggleMenu();
+$('#menuCloseBtn').onclick = () => closeMenu();
+$('#menuSheetClose').onclick = () => closeMenu();
+$('#menuPanel').addEventListener('click', e => { if (e.target.id === 'menuPanel') closeMenu(); });
+document.querySelectorAll('#menuTabs .mtab').forEach(b => b.onclick = ()=>{ showMenuTab(b.dataset.tab); beep(600,.05,'triangle',.06); });
+$('#menuSoundBtn').onclick = ()=>{ setMuted(!muted); saveGame(); };
+let menuResetArmed = false;
+$('#menuResetBtn').onclick = ()=>{
+  const b = $('#menuResetBtn');
+  if (!menuResetArmed){ menuResetArmed = true; b.textContent = 'TAP AGAIN TO ERASE EVERYTHING'; return; }
+  menuResetArmed = false; b.textContent = 'RESET SAVE'; closeMenu(); resetRun();
+};
 $('#rackTab').onclick = toggleRack;
 if (window.ResizeObserver) new ResizeObserver(()=>syncDockH()).observe($('#rackDock'));
 addEventListener('resize', ()=>{ syncRackUI(); });
@@ -2643,6 +2730,19 @@ const GEM_STATS = {
   mending:  { name:'MENDING',  vals:[.3, .6, 1, 1.6, 2.4], fmt:v => '+'+v.toFixed(1)+' HP/s' },
 };
 function gemLabel(gem){ const st = GEM_STATS[gem.stat]; return st ? st.name + ' ' + st.fmt(st.vals[gem.rarity]) : 'GEM'; }
+/* Plain-language effect per soul-gem stat (Handler: 'How do I know what
+   does what'). Keys are GEM_STATS' ids 1:1 — no remapping needed. The
+   value stays in gemLabel's title line; this is explanation ONLY. */
+const GEM_STAT_INFO = {
+  crit:     'Critical hit chance — crits deal bonus damage',
+  dmg:      'Flat sword damage',
+  reach:    'Sword length',
+  haste:    'Swings recover faster (lower cooldown)',
+  greed:    'More coins from kills',
+  wisdom:   'More XP from kills',
+  vitality: 'More max HP',
+  mending:  'HP regenerated per second',
+};
 function rollGemRarity(floor){
   const weights = [55, 27, 12, 5, 1];   // Common/Fine/Rare/Epic/Legendary
   let tot = 0; for (let i = floor; i < 5; i++) tot += weights[i];
@@ -2894,7 +2994,7 @@ function checkZone(){
 /* ---------- tutorial hints (one at a time, in sequence) ---------- */
 function updateHint(){
   const h = $('#hint');
-  if (!started || paused || nearBuilding || !$('#forge').classList.contains('hidden') || !$('#treePanel').classList.contains('hidden')){ h.classList.add('hidden'); return; }
+  if (!started || paused || nearBuilding || !$('#menuPanel').classList.contains('hidden')){ h.classList.add('hidden'); return; }
   let txt = '';
   if (!hintsSeen.slash) txt = 'DRAG TO SLASH!';
   else if (!hintsSeen.spin) txt = 'CLICK / TAP — SPIN SLASH';
@@ -2912,13 +3012,15 @@ function togglePause(force){
 }
 function setMuted(v){
   muted = !!v; sfx.muted = muted;
-  $('#soundBtn').textContent = 'SOUND: '+(muted ? 'OFF' : 'ON');
+  const label = 'SOUND: '+(muted ? 'OFF' : 'ON');
+  $('#soundBtn').textContent = label;
+  const mb = $('#menuSoundBtn'); if (mb) mb.textContent = label;   // the menu's MORE tab mirrors the pause toggle
 }
 function resetRun(){
   me.level=1; me.xp=0; me.coins=0; me.kills=0; me.sp=0; me.weapon=0; me.owned=new Set([0,6]);
   me.gems=freshGems(); me.wxp={}; me.gemRushUntil=0; me.gemBag=[]; me.sockets={};
   me.hp=me.maxHp; me.mp=me.maxMp; me.wSkillCdUntil=0; me.banked=0; me.items={ potion:0, bomb:0, shield:0 }; me.purse=false; me.shieldUntil=0; me.spawnAt=null;
-  $('#bankPanel').classList.add('hidden'); $('#shopPanel').classList.add('hidden'); $('#hospitalPanel').classList.add('hidden'); $('#treePanel').classList.add('hidden'); $('#gemPanel').classList.add('hidden');
+  $('#bankPanel').classList.add('hidden'); $('#shopPanel').classList.add('hidden'); $('#hospitalPanel').classList.add('hidden'); closeMenu();
   unlocked.clear(); recalc();   // one shared set: Sphere nodes AND weapon-tree nodes both reset
   combo=0; comboUntil=0; updateComboBadge(false);
   if (scores[me.id]) scores[me.id].kills = 0;
@@ -3168,11 +3270,9 @@ function treeNodeState(wi, ni){
   return 'avail';
 }
 function toggleTree(force){
-  const p = $('#treePanel');
-  const show = force!==undefined ? !!force : p.classList.contains('hidden');
-  p.classList.toggle('hidden', !show);
-  if (show) buildTree();
-  updateHint();
+  if (force === true) openMenu('skills');
+  else if (force === false) closeMenu();
+  else toggleMenu('skills');
 }
 function buildTree(){
   $('#treeSp').textContent = me.sp;
@@ -3253,16 +3353,15 @@ $('#bankCloseBtn').onclick = ()=>$('#bankPanel').classList.add('hidden');
 $('#shopCloseBtn').onclick = ()=>$('#shopPanel').classList.add('hidden');
 $('#hospCloseBtn').onclick = ()=>$('#hospitalPanel').classList.add('hidden');
 $('#hospitalPanel').addEventListener('click', e=>{ if (e.target.id==='hospitalPanel') e.target.classList.add('hidden'); });
-$('#treeBtn').onclick = ()=>toggleTree();
-$('#wSkillBtn').onclick = ()=>castWeaponSkill();
-$('#treeCloseBtn').onclick = ()=>toggleTree(false);
-$('#treePanel').addEventListener('click', e=>{ if (e.target.id==='treePanel') toggleTree(false); });
+$('#wSkillBtn').onclick = ()=>{
+  const sk = WSKILLS[me.weapon];
+  if (sk && !unlocked.has(sk.node)) openMenu('skills');   // 'SKILL LOCKED' tap routes into the tree, per the menu amendment
+  else castWeaponSkill();
+};
 /* mobile sheet sticky-header buttons (hidden on desktop via CSS) */
 $('#bankSheetClose').onclick = ()=>$('#bankPanel').classList.add('hidden');
 $('#shopSheetClose').onclick = ()=>$('#shopPanel').classList.add('hidden');
 $('#hospSheetClose').onclick = ()=>$('#hospitalPanel').classList.add('hidden');
-$('#treeSheetClose').onclick = ()=>toggleTree(false);
-$('#forgeSheetClose').onclick = ()=>toggleForge();
 $('#pauseSheetResume').onclick = ()=>togglePause(false);
 $('#bankPanel').addEventListener('click', e=>{ if (e.target.id==='bankPanel') e.target.classList.add('hidden'); });
 $('#shopPanel').addEventListener('click', e=>{ if (e.target.id==='shopPanel') e.target.classList.add('hidden'); });
