@@ -1967,7 +1967,8 @@ function hostApplyHit(slimeId, dmg, byId){
   const key = byId+':'+slimeId, last = hitClaimsAt.get(key)||0;
   if (now-last < 60) return;                       // host anti-spam
   hitClaimsAt.set(key, now);
-  dmg = clamp(Math.round(dmg)||1, 1, 120);         // host caps claimed damage
+  dmg = (typeof dmg === 'number') ? Math.round(dmg) : NaN;   // NO damage cap (Handler: 'No cap') — the full claimed damage lands
+  if (!Number.isFinite(dmg) || dmg <= 0) return;              // sanitise: NaN / Infinity / zero / negative claims do no damage
   if (s.kind==='metal') dmg = 1;                   // METAL SLIME: host enforces the 1-damage rule on every claim too
   s.hp -= dmg; s.squish=1; s.flash=1; s.flinchUntil = performance.now()+220;
   // splash (warhammer)
