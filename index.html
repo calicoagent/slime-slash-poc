@@ -507,7 +507,7 @@
       <p id="ncDesc"></p>
       <button id="ncBtn"></button>
     </div>
-    <div style="text-align:center;color:#97754a;font-weight:700;font-size:12px;margin-top:8px;">Level up &amp; slay Kings to earn Sphere Points. Follow a glowing path!</div>
+    <div style="text-align:center;color:#97754a;font-weight:700;font-size:12px;margin-top:8px;">Earn Sphere Points from level-ups and bounties — or buy them at the Bank (300c). Follow a glowing path!</div>
   </div>
 </div>
 
@@ -536,6 +536,9 @@
     <div class="pcontrols">Banked coins are NEVER lost when you die. Death takes half of what you carry (only a quarter with a Coin Purse).</div>
     <button class="pbtn main" id="depBtn">DEPOSIT ALL</button>
     <button class="pbtn" id="wdBtn">WITHDRAW ALL</button>
+    <div class="bankLine" style="text-align:center">SPHERE POINTS: <b id="bankSp">0</b></div>
+    <button class="pbtn" id="buySpBtn">BUY 1 SP — 300c</button>
+    <div class="pcontrols">Kings no longer grant SP. Coins do.</div>
     <button class="pbtn" id="bankCloseBtn">CLOSE</button>
   </div>
 </div>
@@ -580,7 +583,7 @@
   </div>
   <button id="playBtn" class="px-btn">PLAY</button>
   <button id="titleReset" class="hidden">RESET SAVE</button>
-  <div id="howto">Move mouse / drag finger to swing your sword through slimes.<br>Tap or click for a SPIN SLASH. Level up to earn Sphere Points — spend them on the SPHERE GRID for stats, passives and active skills.<br>There is only ONE world — send the link to friends and they drop straight into it with you. No rooms, no codes, no sign-up.</div>
+  <div id="howto">Move mouse / drag finger to swing your sword through slimes.<br>Tap or click for a SPIN SLASH. Sphere Points come from level-ups, bounties, and the Bank exchange (300c) — spend them on the SPHERE GRID for stats, passives and active skills.<br>There is only ONE world — send the link to friends and they drop straight into it with you. No rooms, no codes, no sign-up.</div>
 </div>
 
 <script type="module">
@@ -1514,8 +1517,8 @@ function onKillFx(f){
     gainWxp(me.weapon, 10);   // +10 XP to the EQUIPPED weapon (all weapons level this way)
     gainXp(f.xp); sfx.coin();
     addFloat(f.x, f.y-.04, '+'+cg+' coins', '#ffd94d');
-    if (f.kind==='king'){ me.sp++; bubble('KING SLAYER! +1 SP', me.x, me.y); setTimeout(()=>toast('KING BONUS: +1 Sphere Point!'), 600); }
-    if (f.kind==='boss'){ me.sp += 2; bubble('EMPEROR SLAYER! +2 SP', me.x, me.y); setTimeout(()=>toast('EMPEROR BONUS: +2 Sphere Points!'), 600); }
+    if (f.kind==='king'){ bubble('KING SLAYER!', me.x, me.y); }
+    if (f.kind==='boss'){ bubble('EMPEROR SLAYER!', me.x, me.y); }
     // combo chain: kills within the window of each other keep it alive (Combo Charm stretches it)
     combo = (now < comboUntil) ? combo+1 : 1;
     comboUntil = now + 3000 * (1 + S.comboWin);
@@ -1603,9 +1606,19 @@ function death(){
 /* ============================================================ bank & shop */
 function openBank(){ $('#bankPanel').classList.remove('hidden'); updateBankPanel(); }
 function openShop(){ $('#shopPanel').classList.remove('hidden'); buildShopRows(); }
+const SP_EXCHANGE_COST = 300;   // the Bank sells Sphere Points for coins — kings no longer grant SP
 function updateBankPanel(){
   $('#bankCarried').textContent = me.coins;
   $('#bankBanked').textContent = me.banked;
+  $('#bankSp').textContent = me.sp;
+  $('#buySpBtn').disabled = (me.banked + me.coins) < SP_EXCHANGE_COST;
+}
+function buySpherePoint(){
+  if (me.banked + me.coins < SP_EXCHANGE_COST) return;
+  const fromBank = Math.min(me.banked, SP_EXCHANGE_COST);   // banked coins are spent first, carried covers the rest
+  me.banked -= fromBank; me.coins -= (SP_EXCHANGE_COST - fromBank);
+  me.sp++; sfx.buy(); toast('SPHERE POINT BOUGHT!');
+  updateBankPanel(); refreshHUD(); saveGame();
 }
 const SHOP_ITEMS = [
   { id:'potion', name:'Potion',      price:50,  desc:'Heal 60 HP' },
@@ -2586,6 +2599,7 @@ $('#interactPrompt').addEventListener('pointerdown', e=>{
 });
 $('#depBtn').onclick = ()=>{ me.banked += me.coins; me.coins = 0; sfx.buy(); updateBankPanel(); refreshHUD(); };
 $('#wdBtn').onclick = ()=>{ me.coins += me.banked; me.banked = 0; sfx.coin(); updateBankPanel(); refreshHUD(); };
+$('#buySpBtn').onclick = buySpherePoint;
 $('#bankCloseBtn').onclick = ()=>$('#bankPanel').classList.add('hidden');
 $('#shopCloseBtn').onclick = ()=>$('#shopPanel').classList.add('hidden');
 $('#hospCloseBtn').onclick = ()=>$('#hospitalPanel').classList.add('hidden');
