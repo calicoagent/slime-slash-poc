@@ -72,7 +72,7 @@
   .wcard .wl { position:absolute; top:-10px; right:-8px; background:#3a2b23; color:#ffd94d; font-size:15px; font-weight:700; border-radius:0; padding:2px 8px; line-height:1.1; }
   .wcard .key { position:absolute; top:-10px; left:-8px; background:#fff; border:2px solid #3a2b23; color:#3a2b23; font-family:"Press Start 2P",monospace; font-size:8px; border-radius:0; padding:2px 5px; }
   .wcard .wlv { position:absolute; top:2px; left:2px; background:rgba(58,43,35,.88); color:#ffd94d; font-family:"VT323",monospace; font-size:13px; font-weight:700; line-height:1.15; padding:0 4px; }
-  .wcard .wxpbar { height:3px; background:#e4d3ac; border:1px solid #3a2b23; margin-top:3px; }
+  .wcard .wxpbar { height:4px; background:rgba(58,43,35,.55); border:1px solid #3a2b23; margin-top:3px; }
   .wcard .wxpbar > div { height:100%; background:#ff9a2e; }
   .wcard .wxpbar.ready > div { background:#ffd94d; animation:wxpPulse .6s ease-in-out infinite alternate; }
   @keyframes wxpPulse { from { filter:brightness(.8); } to { filter:brightness(1.4); } }
@@ -441,7 +441,7 @@
   }
   @keyframes pulse { 0%,100% { transform:scale(1); } 50% { transform:scale(1.05); } }
   #playBtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
-  #howto { color:#fff; font-size:20px; text-shadow:2px 2px 0 rgba(0,0,0,.4); text-align:center; max-width:520px; line-height:1.35; }
+  #howto { color:#fff; font-size:20px; text-shadow:2px 2px 0 rgba(0,0,0,.4); text-align:center; max-width:520px; line-height:1.35; background:rgba(24,30,18,.78); border:3px solid #3a2b23; box-shadow:4px 4px 0 rgba(30,45,20,.55); padding:12px 16px; }
   @media (max-width:640px) {
     .wcard { width:min(56px,15vw); padding:6px 1px 5px; border-width:3px; border-radius:0; }
     .wcard svg { width:26px; height:26px; } .wcard .wn { font-family:"VT323",monospace; font-size:13px; font-weight:700; }
@@ -583,7 +583,7 @@
   </div>
   <button id="playBtn" class="px-btn">PLAY</button>
   <button id="titleReset" class="hidden">RESET SAVE</button>
-  <div id="howto">Move mouse / drag finger to swing your sword through slimes.<br>Tap or click for a SPIN SLASH. Sphere Points come from level-ups, bounties, and the Bank exchange (300c) — spend them on the SPHERE GRID for stats, passives and active skills.<br>There is only ONE world — send the link to friends and they drop straight into it with you. No rooms, no codes, no sign-up.</div>
+  <div id="howto">Move mouse / drag finger to swing your sword through slimes.<br>Tap or click for a SPIN SLASH. Sphere Points come from level-ups, bounties, and the Bank exchange (300c) — spend them on the SPHERE GRID for stats, passives and active skills.<br>There is only ONE world — send the link to friends and they drop straight into it with you. No rooms, no codes, no sign-up.<br>B — BANK / SHOP / HOSPITAL (in town)</div>
 </div>
 
 <script type="module">
@@ -630,7 +630,7 @@ Object.defineProperty(sfx, 'muted', { get:()=>muted, set:v=>{ muted = !!v; } });
 
 /* ---- Isekai Slime World combat FX (ported from bon5co/isekai-slime-world,
    client-phaser combatFx/actors): sampled hit sounds, glyph damage numbers,
-   crit bursts and the 160ms flinch. The source's crit CAMERA SHAKE is
+   crit bursts and the 220ms flinch. The source's crit CAMERA SHAKE is
    deliberately NOT ported — no screen shake in this game, ever. ---- */
 function makeAudioPool(src, vol){
   const els = [];
@@ -863,6 +863,7 @@ let spiralEmitters = [];
 let pendingVolleys = [];   // boss 'spread': timed 5-way volleys (client-local)        // active spiral bullet emitters (client-local)
 let bossSpawnAt = Infinity;     // host: next SLIME EMPEROR spawn time
 let lastMetalAt = -1;           // host: last time a metal slime spawned (75s spawn guarantee; -1 = uninitialised)
+let lastMetalNearAt = -1;       // host: last time a metal slime was NEAR a player (within 2.0u) — the reachability clock the guarantee actually runs on
 let bossFireAt = 0;             // host: next bullet-pattern volley
 let bossPatternIdx = 0;         // host: pattern rotation ring -> fan -> spiral
 let dmgFlashAt = 0;             // last time the player took damage (red vignette decay)
@@ -930,6 +931,8 @@ function pickKind(zone=0){
 }
 let slimeSeq = 1;
 function spawnSlime(opts={}){
+  // THE EMPEROR IS UNIQUE: never create a second boss while one lives
+  if (opts.kind === 'boss'){ for (const o of slimes.values()) if (o.kind==='boss') return o; }
   // position FIRST: the zone (and therefore kind odds + scaling) depends on it
   let sx, sy;
   if (opts.x !== undefined){ sx = opts.x; sy = opts.y; }
@@ -967,7 +970,7 @@ function spawnSlime(opts={}){
     x:sx, y:sy, vx:0, vy:0, dir:rand(0,Math.PI*2), turnAt:performance.now()+rand(800,2600),
     color: k.kind==='gold' ? '#ffe066' : k.kind==='metal' ? '#cfd8dc' : SLIME_COLORS[Math.floor(Math.random()*SLIME_COLORS.length)],
     seed:seedForId(id), squish:0, flash:0, mul: k.kind==='boss' ? 1.5 : zone.mul, elite:false };
-  if (k.kind==='metal') lastMetalAt = performance.now();   // any metal spawn (natural or guaranteed) restarts the 75s guarantee timer
+  if (k.kind==='metal') lastMetalAt = performance.now();   // bookkeeping only — the spawn guarantee runs on lastMetalNearAt (nearness to players, not spawn events)
   // ELITES: rare, tougher, much richer (never kings, the Emperor, or metal slimes)
   if (k.kind !== 'king' && k.kind !== 'boss' && k.kind !== 'metal' && Math.random() < .08){
     s.elite = true;
@@ -1020,19 +1023,12 @@ function hostTick(now,dt){
       else if (d > .85){ s.dir = away + Math.PI; mult *= 1.8; }
       else { s.dir = away + Math.PI/2 * (s.seed > .5 ? 1 : -1); mult *= .8; }
     }
-    /* TOWN SAFE ZONE — NO enemies in town, of ANY kind: inside
-       TOWN_R + .05 of the centre, whatever a slime was doing (hunting,
-       fleeing, kiting), it turns and hops radially OUT. One found deeper
-       than TOWN_R - .12 (spawn glitch, knockback) is hard-corrected out
-       to that line — a rare positional push, not movement. */
+    /* TOWN SAFE ZONE — steering half: inside TOWN_R + .17 of the centre,
+       whatever a slime was doing (hunting, fleeing, kiting), it turns and
+       hops radially OUT. The positional half — the hard clamp that makes
+       this a guarantee rather than an intention — runs after the hop. */
     const townD = Math.hypot(s.x-WORLD/2, s.y-WORLD/2);
-    if (townD < TOWN_R + .05){
-      s.dir = Math.atan2(s.y-WORLD/2, s.x-WORLD/2);
-      if (townD < TOWN_R - .12){
-        const push = (TOWN_R - .12) / (townD || 1e-4);
-        s.x = WORLD/2 + (s.x-WORLD/2)*push; s.y = WORLD/2 + (s.y-WORLD/2)*push;
-      }
-    }
+    if (townD < TOWN_R + .17) s.dir = Math.atan2(s.y-WORLD/2, s.x-WORLD/2);
     /* HOP LOCOMOTION: slimes never glide. Steering above only chooses s.dir;
        translation happens ONLY inside the hop cycle's air window, at
        hopDist per hop (steering multiplier applied). Grounded = planted. */
@@ -1043,6 +1039,17 @@ function hostTick(now,dt){
     }
     if (s.x<s.r+ .01){s.x=s.r+.01; s.dir=Math.PI-s.dir;} if (s.x>WORLD-s.r-.01){s.x=WORLD-s.r-.01; s.dir=Math.PI-s.dir;}
     if (s.y<s.r+.02){s.y=s.r+.02; s.dir=-s.dir;} if (s.y>WORLD-s.r-.03){s.y=WORLD-s.r-.03; s.dir=-s.dir;}
+    /* TOWN HARD CLAMP — positional guarantee, applied AFTER all movement
+       (steering, kiting, hop translation, wall bounces): no slime of any
+       kind ENDS the frame inside TOWN_R + .12 of the centre. The old code
+       "corrected" deep intruders only to TOWN_R - .12 — INSIDE the safe
+       zone — so kings and the Emperor could sit in the plaza for hops at
+       a time. This clamp leaves a .12u enemy-free moat past the plaza. */
+    const clampD = Math.hypot(s.x-WORLD/2, s.y-WORLD/2), MIN_TOWN_D = TOWN_R + .12;
+    if (clampD < MIN_TOWN_D){
+      const push = MIN_TOWN_D / (clampD || 1e-4);
+      s.x = WORLD/2 + (s.x-WORLD/2)*push; s.y = WORLD/2 + (s.y-WORLD/2)*push;
+    }
     s.squish = Math.max(0, s.squish - dt/160); s.flash = Math.max(0, s.flash - dt/120);
   }
   const target = Math.min(120, 80 + peers.size*8);
@@ -1050,19 +1057,25 @@ function hostTick(now,dt){
     if (Math.random()<.55) spawnSlime();
     if (slimes.size < target-4 && Math.random()<.55) spawnSlime();   // refill in pairs while well under target
   }
-  /* METAL SLIME GUARANTEE: at least one every ~75s of a host's reign.
-     Random odds alone starved it (0 seen in 284 gauntlet kills), so if
-     none is alive and the timer has lapsed, this spawn IS a metal — at
-     hunting distance (0.5-0.9u) from a random player, outside town.
-     Natural spawns and metal deaths also reset the timer (spawnSlime /
-     hostKill), so the guarantee only tops up a truly dry spell. */
-  if (lastMetalAt < 0) lastMetalAt = now;   // timer starts when this host's reign does
-  if (now - lastMetalAt > 75000 && ![...slimes.values()].some(s=>s.kind==='metal')){
+  /* METAL SLIME GUARANTEE: a REACHABLE metal at least every ~75s. The old
+     rule ("none alive AND 75s since the last spawn") starved forever in
+     practice: one natural metal spawning far away and then fleeing players
+     for the rest of the session counted as "alive" and blocked every
+     top-up (0 seen in 25 gauntlet minutes). Now the clock tracks NEARNESS:
+     while any metal is within 2.0u of any player the clock holds; after
+     75s with none near, far-away metals are removed and this spawn IS a
+     metal — at hunting distance (0.5-0.9u) from a random player, outside
+     town. */
+  if (lastMetalNearAt < 0) lastMetalNearAt = now;   // timer starts when this host's reign does
+  const metalSpots = [{x:me.x, y:me.y}];
+  for (const p of peers.values()) metalSpots.push({ x:(p.tx!==undefined?p.tx:p.x), y:(p.ty!==undefined?p.ty:p.y) });
+  const metalNear = [...slimes.values()].some(s=>s.kind==='metal' && metalSpots.some(c=>dist2(s.x,s.y,c.x,c.y) < 2*2));
+  if (metalNear) lastMetalNearAt = now;
+  else if (now - lastMetalNearAt > 75000){
+    for (const [id, s] of [...slimes]) if (s.kind==='metal') slimes.delete(id);   // every living metal is >2.0u from everyone here — unreachable; clear it
     let mx = null, my = null;
     for (let tries=0; tries<20 && mx===null; tries++){
-      const spots = [{x:me.x, y:me.y}];
-      for (const p of peers.values()) spots.push({ x:(p.tx!==undefined?p.tx:p.x), y:(p.ty!==undefined?p.ty:p.y) });
-      const c = spots[Math.floor(Math.random()*spots.length)];
+      const c = metalSpots[Math.floor(Math.random()*metalSpots.length)];
       const a = rand(0,Math.PI*2), d = rand(.5,.9);
       const x = clamp(c.x + Math.cos(a)*d, .06, WORLD-.06), y = clamp(c.y + Math.sin(a)*d, .1, WORLD-.06);
       if (Math.hypot(x-WORLD/2, y-WORLD/2) > TOWN_R + .10){ mx = x; my = y; }
@@ -1073,12 +1086,14 @@ function hostTick(now,dt){
       my = clamp(WORLD/2 + Math.sin(a)*(TOWN_R+.35), .1, WORLD-.06);
     }
     spawnSlime({ kind:'metal', x:mx, y:my });
-    lastMetalAt = now;
+    lastMetalNearAt = now;
   }
   /* ---- SLIME EMPEROR: timed spawn + bullet-hell volleys (host decides,
      every client sims the bullets locally from the 'boss' events) ---- */
   if (bossSpawnAt===Infinity) bossSpawnAt = now + 75000;   // first awakening 75s into this host's reign
-  let boss = [...slimes.values()].find(s=>s.kind==='boss');
+  const bosses = [...slimes.values()].filter(s=>s.kind==='boss');
+  if (bosses.length > 1) for (let i=1;i<bosses.length;i++) slimes.delete(bosses[i].id);   // Emperor is unique — purge duplicates (e.g. one adopted via world payload across a host handover)
+  let boss = bosses[0];
   if (now >= bossSpawnAt){
     bossSpawnAt = now + 150000;
     if (!boss){
@@ -1158,6 +1173,7 @@ function hostMine(nodeId, d, byId){
   if (now - last < 60) return;                    // host anti-spam (same map as hit claims)
   hitClaimsAt.set(key, now);
   n.left--; n.shakeT = now;
+  for (let i=0;i<5;i++) particles.push({ x:n.x+rand(-.03,.03), y:n.y+rand(-.03,.03), vx:rand(-.1,.1), vy:rand(-.13,.02), life:1, color:'#9aa0a3', r:rand(2,4) }); capParticles();   // every lost chunk bursts grey chips (host's client)
   const lv = clamp((d && d.lv|0) || 1, 1, 5);
   const chance = .55 + .06*(lv-1) + (d && d.gf ? .12 : 0) + (d && d.gr ? .40 : 0);
   const g = Math.random() < chance ? rollDrop(NODE_TYPES[n.t]) : null;
@@ -1195,7 +1211,7 @@ function applyWorld(p){
     const mul = a[8]!==undefined ? +a[8] : 1, elite = a[9]===1;   // appended fields (old payloads default safely)
     const old = slimes.get(id);
     if (old){
-      if (hp < old.hp){ old.squish=1; old.flash=1; old.flinchUntil=performance.now()+160; spawnHitFx(old.x,old.y,old.color,3); }
+      if (hp < old.hp){ old.squish=1; old.flash=1; old.flinchUntil=performance.now()+220; spawnHitFx(old.x,old.y,old.color,3); }
       old.tx=x; old.ty=y; old.hp=hp; old.dir=dir; old.mul=mul; old.elite=elite;
       const kk = SLIME_KINDS.find(m=>m.kind===old.kind); if (kk) old.r = kk.r * (elite?1.35:1);
     } else {
@@ -1212,7 +1228,11 @@ function applyWorld(p){
       const [id,x,y,t,left] = a; seenN.add(id);
       const old = nodes.get(id);
       if (old){
-        if (left < old.left) old.shakeT = performance.now();   // someone mined it — every client sees the rock shake
+        if (left < old.left){   // a chunk was lost — every client sees the rock shake AND a burst of grey chips
+          old.shakeT = performance.now();
+          for (let i=0;i<5;i++) particles.push({ x:old.x+rand(-.03,.03), y:old.y+rand(-.03,.03), vx:rand(-.1,.1), vy:rand(-.13,.02), life:1, color:'#9aa0a3', r:rand(2,4) });
+          capParticles();
+        }
         old.x = x; old.y = y; old.t = t; old.left = left;
       } else nodes.set(id, { id, x, y, t, r:.078, left, shakeT:0 });
     }
@@ -1314,7 +1334,7 @@ function bubble(text,x,y,ms=1600){ const b=$('#bubble'); b.textContent=text; b.s
    (including the host's own) turns them into glowing orbs simulated locally.
    Bullets are never added to the world payload. */
 function spawnBullet(x,y,vx,vy,now){
-  bullets.push({ x, y, vx, vy, born:now, life:4200 });
+  bullets.push({ x, y, vx, vy, born:now, life:3000 });
   if (bullets.length > 600) bullets.splice(0, bullets.length-600);
 }
 function bossEvent(d){
@@ -1444,7 +1464,7 @@ function doHit(s, dmg, opts={}){
     const nowT = performance.now();
     if (nowT - lastTingAt > 60){ lastTingAt = nowT; sfx.ting(); }
   }
-  s.squish=1; s.flash=1; s.flinchUntil=performance.now()+160;   // ISW flinch: red flash + shudder for 160ms
+  s.squish=1; s.flash=1; s.flinchUntil=performance.now()+220;   // ISW flinch: red flash + shudder for 220ms
   // ISW sampled hits replace the synth beep on the damage path: crit sample
   // on crits, hit sample otherwise; metal keeps its ting + a soft punch.
   if (s.kind==='metal') hitPool.play(.3);
@@ -1476,7 +1496,7 @@ function hostApplyHit(slimeId, dmg, byId){
   hitClaimsAt.set(key, now);
   dmg = clamp(Math.round(dmg)||1, 1, 120);         // host caps claimed damage
   if (s.kind==='metal') dmg = 1;                   // METAL SLIME: host enforces the 1-damage rule on every claim too
-  s.hp -= dmg; s.squish=1; s.flash=1; s.flinchUntil = performance.now()+160;
+  s.hp -= dmg; s.squish=1; s.flash=1; s.flinchUntil = performance.now()+220;
   // splash (warhammer)
   const w = byId===me.id ? myWeapon() : WEAPONS.find(w=>w.id===(peers.get(byId)?.weaponId)) || WEAPONS[1];
   if (w.splash){ for (const o of slimes.values()) if (o!==s && dist2(o.x,o.y,s.x,s.y) < w.splash*w.splash) o.hp -= o.kind==='metal' ? 1 : Math.ceil(dmg*.5); }
@@ -1485,7 +1505,7 @@ function hostApplyHit(slimeId, dmg, byId){
 }
 function hostKill(s, byId){
   slimes.delete(s.id);
-  if (s.kind==='metal') lastMetalAt = performance.now();   // a slain metal restarts the guarantee timer too
+  if (s.kind==='metal') lastMetalAt = performance.now();   // bookkeeping only (see lastMetalNearAt for the guarantee clock)
   const k = SLIME_KINDS.find(k=>k.kind===s.kind);
   const coins = Math.round(k.coins * (s.mul||1)), xp = Math.round(k.xp * (s.mul||1));   // zone/elite reward scaling
   scores[byId] = scores[byId] || { name: byId===me.id?me.name:(peers.get(byId)?.name||'Knight'), kills:0 };
@@ -1752,16 +1772,16 @@ function updateInteract(){
   let nd = db, nb = 'bank';   // nearest building wins the prompt
   if (ds < nd){ nd = ds; nb = 'shop'; }
   if (dh < nd){ nd = dh; nb = 'hospital'; }
-  nearBuilding = nd < .24 ? nb : null;
+  nearBuilding = nd < .34 ? nb : null;
   const panelOpen = !$('#bankPanel').classList.contains('hidden') || !$('#shopPanel').classList.contains('hidden') || !$('#hospitalPanel').classList.contains('hidden');
   if (nearBuilding && !panelOpen){
     pr.textContent = nearBuilding==='bank' ? 'OPEN BANK' : nearBuilding==='shop' ? 'OPEN SHOP' : 'OPEN HOSPITAL';
     pr.classList.remove('hidden');
   } else pr.classList.add('hidden');
-  // walk away (> .3 units) and the panel closes itself
-  if (!$('#bankPanel').classList.contains('hidden') && db > .3) $('#bankPanel').classList.add('hidden');
-  if (!$('#shopPanel').classList.contains('hidden') && ds > .3) $('#shopPanel').classList.add('hidden');
-  if (!$('#hospitalPanel').classList.contains('hidden') && dh > .3) $('#hospitalPanel').classList.add('hidden');
+  // walk away (> .42 units — outside the .34 interact radius) and the panel closes itself
+  if (!$('#bankPanel').classList.contains('hidden') && db > .42) $('#bankPanel').classList.add('hidden');
+  if (!$('#shopPanel').classList.contains('hidden') && ds > .42) $('#shopPanel').classList.add('hidden');
+  if (!$('#hospitalPanel').classList.contains('hidden') && dh > .42) $('#hospitalPanel').classList.add('hidden');
 }
 
 /* ============================================================ items */
@@ -2657,14 +2677,14 @@ function slimeSpriteGeom(s, t, baseR){
   const sqY = psy * bScaleY * (1 - s.squish * .35);
   const dw = baseR*2*1.04, dh = dw*0.88;   // rest footprint
   let gx = NX(s.x);
-  if (t < (s.flinchUntil||0)) gx += ((Math.floor(t/30)%2) ? -4 : 4) * UNIT()/1000;   // ISW flinch shudder: ±4px, flips every 30ms
+  if (t < (s.flinchUntil||0)) gx += ((Math.floor(t/30)%2) ? -6 : 6) * UNIT()/1000;   // ISW flinch shudder: ±6px, flips every 30ms
   const gy = NY(s.y) + baseR*.92;
   return { img, liftW, liftN, sqX, sqY, dw, dh, gx, gy };
 }
 /* Draw ONLY the slime's sprite image with the normal transform math (no
    shadow, no HP bar / kind marks). Used by drawVideoSlime and the ghost
    pass; honours whatever clip / globalAlpha the caller set up. */
-/* Red-tinted sprite variants for the ISW flinch flash (#ff8080), rendered
+/* Red-tinted sprite variants for the ISW flinch flash (#ff5a4e), rendered
    once per slime image into an offscreen canvas (fill via 'source-atop',
    so only the sprite's own pixels take the tint). */
 const RED_TINTS = new Map();
@@ -2676,8 +2696,23 @@ function redTintOf(img){
   const g2 = c.getContext('2d');
   g2.drawImage(img, 0, 0);
   g2.globalCompositeOperation = 'source-atop';
-  g2.fillStyle = '#ff8080'; g2.fillRect(0, 0, c.width, c.height);
+  g2.fillStyle = '#ff5a4e'; g2.fillRect(0, 0, c.width, c.height);
   RED_TINTS.set(img, c);
+  return c;
+}
+/* White silhouette variants (same source-atop trick) — the glow pass
+   behind a thrown spear. */
+const WHITE_TINTS = new Map();
+function whiteTintOf(img){
+  let c = WHITE_TINTS.get(img);
+  if (c) return c;
+  c = document.createElement('canvas');
+  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  const g2 = c.getContext('2d');
+  g2.drawImage(img, 0, 0);
+  g2.globalCompositeOperation = 'source-atop';
+  g2.fillStyle = '#ffffff'; g2.fillRect(0, 0, c.width, c.height);
+  WHITE_TINTS.set(img, c);
   return c;
 }
 function paintSlimeSprite(s, t, baseR, g){
@@ -3433,8 +3468,8 @@ function frame(now){
       // sparkle trail: two small sparks every 60ms of flight, so the throw reads in motion AND in stills
       if (now >= (sh.sparkAt||0)){
         sh.sparkAt = now + 60;
-        particles.push({ x:sh.x, y:sh.y, vx:rand(-.04,.04), vy:rand(-.04,.04), life:1, color:'#ffffff', r:rand(1.5,3) });
-        particles.push({ x:sh.x, y:sh.y, vx:rand(-.04,.04), vy:rand(-.04,.04), life:1, color:'#ffd94d', r:rand(1.5,3) });
+        particles.push({ x:sh.x, y:sh.y, vx:rand(-.04,.04), vy:rand(-.04,.04), life:1, color:'#ffffff', r:rand(2.5,5) });
+        particles.push({ x:sh.x, y:sh.y, vx:rand(-.04,.04), vy:rand(-.04,.04), life:1, color:'#ffd94d', r:rand(2.5,5) });
         capParticles();
       }
       for (const s of slimes.values()){
@@ -3484,9 +3519,11 @@ function frame(now){
   // boss bullets: glowing bullet-hell orbs (outer halo / hot body / white core)
   for (const b of bullets){
     const bx=NX(b.x), by=NY(b.y), u=UNIT();
+    ctx.globalAlpha = clamp((b.life - (now - b.born)) / 800, 0, 1);   // orbs visibly fade out over their last 800ms — no pop-out, nothing reads as permanent litter
     ctx.fillStyle='rgba(255,90,60,.35)'; ctx.beginPath(); ctx.arc(bx,by,.018*u,0,7); ctx.fill();
     ctx.fillStyle='#ff7847'; ctx.beginPath(); ctx.arc(bx,by,.011*u,0,7); ctx.fill();
     ctx.fillStyle='#ffffff'; ctx.beginPath(); ctx.arc(bx,by,.005*u,0,7); ctx.fill();
+    ctx.globalAlpha = 1;
   }
 
   // thrown spears in flight: the spear sprite along its velocity + a white
@@ -3496,12 +3533,19 @@ function frame(now){
   for (const sh of shots){
     const sx = NX(sh.x), sy = NY(sh.y), sa = Math.atan2(sh.vy, sh.vx), u = UNIT();
     ctx.save(); ctx.translate(sx, sy); ctx.rotate(sa);
-    ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 3; ctx.lineCap = 'round';
-    const tail = Math.hypot(sh.vx, sh.vy) * .055;   // streak length = speed * 55ms of travel
+    const tail = Math.hypot(sh.vx, sh.vy) * .07;   // streak length = speed * 70ms of travel
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 8;   // outer glow pass
+    ctx.beginPath(); ctx.moveTo(-tail*u, 0); ctx.lineTo(0, 0); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.lineWidth = 3.5;   // hot core pass
     ctx.beginPath(); ctx.moveTo(-tail*u, 0); ctx.lineTo(0, 0); ctx.stroke();
     const simg = WEAPON_IMGS.spear;
     if (simg && simg.complete && simg.naturalWidth){
-      const iw = .32*u, ih = iw * (simg.naturalHeight/simg.naturalWidth);
+      const iw = .38*u, ih = iw * (simg.naturalHeight/simg.naturalWidth);
+      // white silhouette glow BEHIND the sprite (1.25x, alpha .5): the throw reads as a big glowing spear, not a brown stick
+      ctx.save(); ctx.globalAlpha = .5; ctx.shadowColor = '#ffffff'; ctx.shadowBlur = 12;
+      ctx.drawImage(whiteTintOf(simg), -iw*1.25*.86, -ih*1.25/2, iw*1.25, ih*1.25);
+      ctx.restore();
       ctx.drawImage(simg, -iw*.86, -ih/2, iw, ih);   // tip lands on the hit point
     }
     ctx.restore();
