@@ -36,10 +36,13 @@
   }
   .badge svg { width:28px; height:28px; flex:none; }
   #coinBadge { top:14px; left:14px; }
+  #gemBadge { top:64px; left:14px; font-size:19px; padding:4px 10px; gap:10px; }
+  #gemBadge .gemSlot { display:inline-flex; align-items:center; gap:4px; }
+  #gemBadge .gemSlot i { width:10px; height:10px; transform:rotate(45deg); border:2px solid #3a2b23; display:inline-block; flex:none; }
   #peerBadge { top:14px; right:14px; padding:6px 16px; font-size:22px; }
   #peerBadge .dot { width:12px; height:12px; border-radius:0; background:#c33; border:2px solid #3a2b23; }
   #peerBadge.on .dot { background:#37c978; }
-  #lvlBadge { top:74px; left:14px; font-size:21px; padding:5px 14px 5px 10px; flex-direction:column; align-items:stretch; gap:3px; border-radius:0; }
+  #lvlBadge { top:100px; left:14px; font-size:21px; padding:5px 14px 5px 10px; flex-direction:column; align-items:stretch; gap:3px; border-radius:0; }
   #kills { font-size:17px !important; }
   #xpTrack { width:130px; height:12px; background:#e4d3ac; border:2px solid #3a2b23; border-radius:0; overflow:hidden; }
   #xpFill { height:100%; width:0%; background-color:#ff9a2e; background-image:repeating-linear-gradient(90deg, rgba(0,0,0,0) 0 6px, rgba(0,0,0,.18) 6px 8px); transition:width .3s; }
@@ -68,6 +71,11 @@
   .wcard .wn { font-family:"Press Start 2P",monospace; font-size:7px; color:#3a2b23; line-height:1.3; white-space:nowrap; }
   .wcard .wl { position:absolute; top:-10px; right:-8px; background:#3a2b23; color:#ffd94d; font-size:15px; font-weight:700; border-radius:0; padding:2px 8px; line-height:1.1; }
   .wcard .key { position:absolute; top:-10px; left:-8px; background:#fff; border:2px solid #3a2b23; color:#3a2b23; font-family:"Press Start 2P",monospace; font-size:8px; border-radius:0; padding:2px 5px; }
+  .wcard .wlv { position:absolute; top:2px; left:2px; background:rgba(58,43,35,.88); color:#ffd94d; font-family:"VT323",monospace; font-size:13px; font-weight:700; line-height:1.15; padding:0 4px; }
+  .wcard .wxpbar { height:3px; background:#e4d3ac; border:1px solid #3a2b23; margin-top:3px; }
+  .wcard .wxpbar > div { height:100%; background:#ff9a2e; }
+  .wcard .wxpbar.ready > div { background:#ffd94d; animation:wxpPulse .6s ease-in-out infinite alternate; }
+  @keyframes wxpPulse { from { filter:brightness(.8); } to { filter:brightness(1.4); } }
 
   #forgeBtn {
     position:fixed; z-index:21; bottom:14px; right:14px; cursor:pointer;
@@ -121,7 +129,7 @@
 
   /* ---------- polish pass: bounty / combo / hint / king banner / pause ---------- */
   #bountyBadge {
-    position:fixed; z-index:20; top:216px; left:14px; max-width:232px;
+    position:fixed; z-index:20; top:238px; left:14px; max-width:232px;
     background:#fff6df; border:3px solid #3a2b23; border-radius:0; padding:8px 14px;
     color:#3a2b23; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 4px 4px 0 rgba(0,0,0,.30);
   }
@@ -197,10 +205,12 @@
     .badge { pointer-events:none; }
     #coinBadge { top:max(8px, env(safe-area-inset-top)); left:8px; font-size:20px; padding:3px 10px 3px 5px; border-width:3px; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(0,0,0,.30); }
     #coinBadge svg { width:19px; height:19px; }
+    #gemBadge { top:158px; left:8px; font-size:15px; padding:2px 8px; gap:7px; border-width:3px; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(0,0,0,.30); pointer-events:none; }
+    #gemBadge .gemSlot i { width:8px; height:8px; }
     #lvlBadge { top:50px; left:8px; font-size:17px; padding:4px 10px; border-width:3px; border-radius:0; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(0,0,0,.30); }
     #xpTrack { width:84px; height:9px; }
     #peerBadge { top:max(8px, env(safe-area-inset-top)); right:8px; font-size:17px; padding:4px 10px; border-width:3px; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(0,0,0,.30); }
-    #bountyBadge { top:142px; left:8px; max-width:158px; padding:5px 9px; border-width:3px; border-radius:0; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(0,0,0,.30); pointer-events:none; }
+    #bountyBadge { top:190px; left:8px; max-width:158px; padding:5px 9px; border-width:3px; border-radius:0; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(0,0,0,.30); pointer-events:none; }
     #hpTrack { width:84px; height:9px; }
     #hpText { font-size:14px; }
     #mpTrack { width:84px; height:9px; }
@@ -281,6 +291,11 @@
   .shopRow .info b { color:#3a2b23; font-size:20px; display:block; line-height:1.1; }
   .shopRow .info span { color:#97754a; font-size:16px; }
   .shopRow .own { font-family:"Press Start 2P",monospace; color:#b8860b; font-size:8px; min-width:36px; text-align:center; }
+  .shopRow .costline { display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:16px; color:#3a2b23; }
+  .shopRow .costCoins { font-weight:700; }
+  .gemchip { display:inline-flex; align-items:center; gap:3px; font-family:"VT323",monospace; font-size:16px; }
+  .gemchip i { width:9px; height:9px; transform:rotate(45deg); border:1.5px solid #3a2b23; display:inline-block; flex:none; }
+  .gemchip.short { color:#c0392b; font-weight:700; }
   .shopRow button {
     font-family:"Press Start 2P",monospace; font-size:9px; cursor:pointer; white-space:nowrap;
     background:#ffd94d; border:3px solid #3a2b23; border-radius:0; padding:8px 9px; color:#3a2b23;
@@ -449,6 +464,7 @@
     <svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="16" fill="#ffd94d" stroke="#b8860b" stroke-width="3"/><circle cx="20" cy="20" r="10" fill="none" stroke="#b8860b" stroke-width="2.5"/><path d="M20 13v14M15.5 16.5c0-2 2-3 4.5-3s4.5 1.2 4.5 3-1.8 2.8-4.5 3.4-4.5 1.4-4.5 3.4 2 3 4.5 3 4.5-1 4.5-3" stroke="#b8860b" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg>
     <span id="coins">0</span>
   </div>
+  <div class="badge hidden" id="gemBadge"></div>
   <div class="badge" id="lvlBadge">
     <div>LV <span id="lvl">1</span> &nbsp;<span id="kills" style="color:#97754a;font-size:13px;">0 kills</span></div>
     <div id="xpTrack"><div id="xpFill"></div></div>
@@ -509,7 +525,7 @@
     <button class="pbtn main" id="resumeBtn">RESUME</button>
     <button class="pbtn" id="soundBtn">SOUND: ON</button>
     <button class="pbtn" id="restartBtn">RESET SAVE</button>
-    <div class="pcontrols">Drag to slash · Click / Tap or SPACE = Spin Slash · Keys 1-6 = weapons · F = Sphere Grid · K = weapon skill tree · V = weapon skill · Q / E / R / T = skills · Z / X / C = items · B = bank / shop / hospital · Esc = pause</div>
+    <div class="pcontrols">Drag to slash · Click / Tap or SPACE = Spin Slash · Keys 1-7 = weapons · F = Sphere Grid · K = weapon skill tree · V = weapon skill · Q / E / R / T = skills · Z / X / C = items · B = bank / shop / hospital · Esc = pause</div>
   </div>
 </div>
 <div id="bankPanel" class="hidden panelWrap">
@@ -603,6 +619,7 @@ const sfx = {
   sting: ()=>{ beep(196,.32,'sawtooth',.09,-30); setTimeout(()=>beep(392,.3,'triangle',.1,140),60); setTimeout(()=>beep(587,.38,'triangle',.09,80),130); },
   combo: ()=>beep(880,.09,'square',.07,320),
   ting: ()=>beep(1900,.07,'sine',.09,-200),   // metal slime ping
+  gem:  ()=>{ beep(1320,.06,'sine',.08); setTimeout(()=>beep(1760,.07,'sine',.08),55); },   // mined-gem sparkle: two quick rising notes
   hurt: ()=>beep(140,.18,'square',.14,-60),
   die:  ()=>{ [392,330,262,196].forEach((f,i)=>setTimeout(()=>beep(f,.22,'triangle',.12,-40), i*130)); },
 };
@@ -619,9 +636,58 @@ const WEAPONS = [
   { id:'spear', price:450,  name:'Spear',      dmg:19, reach:.215, cd:210, unlock:2, color:'#a5d6a7', motion:'stab',  crit:.20, critDmg:2.2, desc:'STAB · longest reach, big crits' },
   { id:'great', price:900,  name:'Greatsword', dmg:30, reach:.205, cd:300, unlock:3, color:'#b0bec5', motion:'swing', crit:.05, critDmg:1.75, splash:.05, desc:'SWING · AoE chops with splash' },
   { id:'hammer', price:1400, name:'Warhammer', dmg:42, reach:.150, cd:380, unlock:4, color:'#ffcc80', motion:'swing', crit:.05, critDmg:1.75, splash:.07, desc:'SWING · splash smash' },
+  { id:'pick', price:0, name:'Pickaxe', dmg:9, reach:.135, cd:210, unlock:1, color:'#ffca28', motion:'swing', crit:.05, critDmg:1.75, desc:'Cracks ore rocks. Slimes, less so.' },
 ];
 const WEAPON_IMGS = {};
 for (const w of WEAPONS){ const im=new Image(); im.src='assets/weapons/'+w.id+'.png'; WEAPON_IMGS[w.id]=im; }
+
+/* ============================================================ mining: gems, ore nodes, forge
+   Gems come from mining ore rocks with the Pickaxe (weapon 6, free starter).
+   The Forge (in the shop) crafts weapons for coins + gems, and promotes
+   owned weapons through 5 levels — XP from kills (any weapon) and mining. */
+const GEMS = {
+  emerald:{ name:'Emerald',  col:'#3ddc84' },
+  topaz:{ name:'Topaz',       col:'#ffd54a' },
+  sapphire:{ name:'Sapphire', col:'#5eb2ff' },
+  ruby:{ name:'Ruby',         col:'#ff5e6b' },
+  amethyst:{ name:'Amethyst', col:'#b388ff' },
+  diamond:{ name:'Diamond',   col:'#b2ebf2' },
+};
+const freshGems = () => ({ emerald:0, topaz:0, sapphire:0, ruby:0, amethyst:0, diamond:0 });
+const ZONE_NAMES = ['meadow','grove','wilds'];   // index = zoneOf()
+/* Ore node types (index is what travels in the world payload). drops are
+   [gemKey, weight]; chunks = pickaxe hits the rock survives. */
+const NODE_TYPES = [
+  { name:'Mossy Boulder', zones:['meadow'],        drops:[['emerald',70],['topaz',30]],                    chunks:4, crystals:['emerald','topaz'] },
+  { name:'River Rock',    zones:['grove'],         drops:[['sapphire',60],['emerald',40]],                 chunks:4, crystals:['sapphire','emerald'] },
+  { name:'Sunstone',      zones:['grove','meadow'],drops:[['topaz',70],['sapphire',15],['ruby',15]],      chunks:5, crystals:['topaz','sapphire'] },
+  { name:'Crimson Crag',  zones:['wilds'],         drops:[['ruby',65],['amethyst',20],['topaz',15]],       chunks:5, crystals:['ruby','amethyst'] },
+  { name:'Void Geode',    zones:['wilds'],         drops:[['amethyst',60],['diamond',25],['ruby',15]],    chunks:6, crystals:['amethyst','diamond'] },
+];
+const NODE_WEIGHTS = [4,3,2,2,1];   // spawn weights per NODE_TYPES index
+/* Forge recipes (weapon index -> cost) and promotion costs (target level ->
+   cost). Promotion also requires the weapon's XP bar to be full. */
+const CRAFT_RECIPES = {
+  1:{ coins:100,  gems:{ emerald:2 } },
+  2:{ coins:300,  gems:{ sapphire:3, emerald:2 } },
+  3:{ coins:350,  gems:{ topaz:3, sapphire:2 } },
+  4:{ coins:700,  gems:{ ruby:4, topaz:3 } },
+  5:{ coins:1100, gems:{ amethyst:5, ruby:4 } },
+};
+const PROMOTE_COSTS = {
+  2:{ coins:100 },
+  3:{ coins:250,  gems:{ emerald:2 } },
+  4:{ coins:500,  gems:{ sapphire:3, topaz:2 } },
+  5:{ coins:1000, gems:{ ruby:3, amethyst:2, diamond:1 } },
+};
+function xpNeed(lv){ return 60 * lv; }   // weapon XP to fill the bar at lv 1..4 (lv 5 = MAX)
+function wxpOf(i){ if (!me.wxp[i]) me.wxp[i] = { lv:1, xp:0 }; return me.wxp[i]; }
+function gainWxp(i, n){
+  const w = wxpOf(i); if (w.lv >= 5) return;
+  const before = w.xp;
+  w.xp = Math.min(w.xp + n, xpNeed(w.lv));   // clamps AT the threshold: upgrade-ready, never auto-promotes
+  if (w.xp !== before) buildRack();
+}
 
 /* ============================================================ weapon skill trees
    Every weapon has its own 3-node path (spent with the SAME Sphere Points and
@@ -658,6 +724,11 @@ const WTREES = {
     { id:'w52', name:'Shockwave',      desc:'Splash radius +0.03 with the Warhammer.', cost:1, kind:'stat' },
     { id:'w53', name:'Thunder Smash',  desc:'ACTIVE SKILL (key V, 40 MP): 3x damage to everything at your sword tip, in a burst of lightning.', cost:2, kind:'active' },
   ],
+  pick: [
+    { id:'w61', name:'Strong Arms',    desc:'+3 damage with the Pickaxe.', cost:1, kind:'stat' },
+    { id:'w62', name:'Gem Sense',      desc:'PASSIVE: +12% chance to pop a gem out of ore rocks.', cost:1, kind:'stat' },
+    { id:'w63', name:'GEM RUSH',       desc:'ACTIVE SKILL (key V, 25 MP): 8 seconds of +40% gem chance — ore crystals sparkle.', cost:2, kind:'active' },
+  ],
 };
 const WTREE_IDS = new Set(Object.values(WTREES).flat().map(n=>n.id));
 const WSKILLS = [   // per weapon index: the V-key active granted by tree node 3
@@ -667,6 +738,7 @@ const WSKILLS = [   // per weapon index: the V-key active granted by tree node 3
   { name:'THROW SPEAR',   mp:35, cd:7000,  node:'w33' },
   { name:'EARTHSHAKER',   mp:40, cd:12000, node:'w43' },
   { name:'THUNDER SMASH', mp:40, cd:12000, node:'w53' },
+  { name:'GEM RUSH',      mp:25, cd:14000, node:'w63' },
 ];
 // tree bonus helper: true only while the matching weapon is equipped
 const wHas = (wi, nid) => me.weapon===wi && unlocked.has(nid);
@@ -709,7 +781,8 @@ const me = {
   // survival + economy (HP is LOCAL only — never networked)
   hp:100, maxHp:100, invulnUntil:0, lastDmgAt:0, shieldUntil:0,
   mp:100, maxMp:100, wSkillCdUntil:0,   // MP is LOCAL only too — never networked, never persisted (loads full, like HP)
-  banked:0, items:{ potion:0, bomb:0, shield:0 }, purse:false, owned:new Set([0]),
+  banked:0, items:{ potion:0, bomb:0, shield:0 }, purse:false, owned:new Set([0,6]),
+  gems: freshGems(), wxp:{}, gemRushUntil:0,   // mining state: gem pouch + per-weapon {lv,xp} (persisted)
   stabT0:0, stabAng:0,
   ptrSpeedPx:0,   // latest pointer speed (px/s, max of recent events, decayed per frame) — an idle blade must not cut
   lastHitAt:new Map(), spinUntil:0, spinCdUntil:0, trail:[],
@@ -743,7 +816,14 @@ me.x = WORLD/2; me.y = WORLD/2 + .1;   // start at world centre
 const peers = new Map();       // id -> {x,y,tx,ty,angle,name,color,weapon,trail,lastSeen}
 let slimes = new Map();        // id -> slime (local mirror; host owns truth)
 let particles = [], floats = [], popRings = [];
-let started=false, room=null, sendPos=null, sendHit=null, sendWorld=null, sendKillFx=null, sendBoss=null;
+let started=false, room=null, sendPos=null, sendHit=null, sendWorld=null, sendKillFx=null, sendBoss=null, sendMine=null, sendMined=null;
+/* Ore nodes: ONE map for everyone — the host owns and mutates it, clients
+   mirror it from the world payload (and a new host adopts the mirror).
+   shakeT is local render state (the rock-shake when mined). */
+let nodes = new Map();          // id -> {id,x,y,t,r,left,shakeT}
+let nodeSeq = 1;
+const nodeRespawnAt = [];       // host: timestamps when depleted nodes may be replaced
+let lastPickToastAt = 0;        // 'NEED THE PICKAXE' toast throttle
 /* ---- survival pass state ---- */
 const CONTACT_DMG = { baby:4, dart:4, mid:6, gold:2, metal:5, splitter:7, big:9, tank:13, king:16, boss:20 };
 const BANK_POS = { x: WORLD/2 - .42, y: WORLD/2 - .34 };
@@ -1000,9 +1080,82 @@ function hostTick(now,dt){
       bossEvent(payload);   // Trystero does not echo to the sender — the host's own client sims it too
     }
   } else if (!boss) bossFireAt = 0;
+  /* ---- ore nodes: keep 12 in the world. A depleted node's replacement
+     waits on the respawn queue (20-40s); with an empty queue (fresh world,
+     host migration) top up immediately. ---- */
+  if (nodes.size < 12){
+    if (nodeRespawnAt.length){
+      nodeRespawnAt.sort((a,b)=>a-b);
+      if (now >= nodeRespawnAt[0] && spawnNode()) nodeRespawnAt.shift();
+    } else spawnNode();
+  }
+}
+/* Roll a node type by spawn weight, then a position whose zone suits it
+   (max 12 tries): outside the town safe zone, inside the world margin,
+   clear of other nodes. */
+function spawnNode(){
+  let tot = 0; for (const w of NODE_WEIGHTS) tot += w;
+  let r = Math.random()*tot, t = 0;
+  for (let i=0;i<NODE_WEIGHTS.length;i++){ if ((r -= NODE_WEIGHTS[i]) <= 0){ t = i; break; } }
+  const type = NODE_TYPES[t];
+  for (let tries=0; tries<12; tries++){
+    const x = rand(.15, WORLD-.15), y = rand(.15, WORLD-.15);
+    if (Math.hypot(x-WORLD/2, y-WORLD/2) < TOWN_R + .15) continue;   // never in town (buildings are covered by this too)
+    let clash = false;
+    for (const o of nodes.values()) if (dist2(x,y,o.x,o.y) < .28*.28){ clash = true; break; }
+    if (clash) continue;
+    if (!type.zones.includes(ZONE_NAMES[zoneOf(x,y)])) continue;
+    const id = (hostId||me.id).slice(0,4)+'-n'+(nodeSeq++);
+    nodes.set(id, { id, x:+x.toFixed(3), y:+y.toFixed(3), t, r:.078, left:type.chunks, shakeT:0 });
+    return true;
+  }
+  return false;
+}
+function rollDrop(type){
+  let tot = 0; for (const d of type.drops) tot += d[1];
+  let r = Math.random()*tot;
+  for (const [g,w] of type.drops){ if ((r -= w) <= 0) return g; }
+  return type.drops[0][0];
+}
+/* Host side of mining: validate the claim (sender near the rock, chunks
+   left, anti-spam), consume a chunk, roll the gem, tell everyone. */
+function hostMine(nodeId, d, byId){
+  const n = nodes.get(nodeId); if (!n || n.left <= 0) return;
+  let px, py;
+  if (byId === me.id){ px = me.x; py = me.y; }
+  else { const p = peers.get(byId); if (!p) return; px = (p.tx!==undefined ? p.tx : p.x); py = (p.ty!==undefined ? p.ty : p.y); }
+  if (dist2(px, py, n.x, n.y) > .55*.55) return;   // the miner must actually be at the rock
+  const now = performance.now();
+  const key = 'mine:'+byId+':'+nodeId, last = hitClaimsAt.get(key)||0;
+  if (now - last < 60) return;                    // host anti-spam (same map as hit claims)
+  hitClaimsAt.set(key, now);
+  n.left--; n.shakeT = now;
+  const lv = clamp((d && d.lv|0) || 1, 1, 5);
+  const chance = .55 + .06*(lv-1) + (d && d.gf ? .12 : 0) + (d && d.gr ? .40 : 0);
+  const g = Math.random() < chance ? rollDrop(NODE_TYPES[n.t]) : null;
+  if (n.left <= 0){ nodes.delete(nodeId); nodeRespawnAt.push(now + rand(20000, 40000)); }
+  const payload = { n:nodeId, to:byId, x:n.x, y:n.y, g, left:Math.max(0, n.left) };
+  if (sendMined) sendMined(payload);
+  minedFx(payload);   // Trystero does not echo — the host's own client applies it locally
+  broadcastWorld();
+}
+/* Every client on 'mined': the rock shakes; the miner pockets the gem. */
+function minedFx(d){
+  if (!d) return;
+  const n = nodes.get(d.n); if (n) n.shakeT = performance.now();
+  if (d.to !== me.id) return;
+  if (d.g && GEMS[d.g]){
+    me.gems[d.g]++;
+    const rare = d.g==='ruby' || d.g==='amethyst' || d.g==='diamond';
+    addFloat(d.x, d.y-.1, '+1 ' + GEMS[d.g].name.toUpperCase(), GEMS[d.g].col, rare ? { big:true } : {});
+    sfx.gem();
+  }
+  gainWxp(6, 6);   // the chunk is the work — pickaxe XP even when no gem pops
+  saveGame(); refreshHUD();
 }
 function worldPayload(){
   return { s:[...slimes.values()].map(s=>[s.id, +s.x.toFixed(3), +s.y.toFixed(3), Math.ceil(s.hp), s.max, s.kind, s.color, +s.dir.toFixed(2), Math.round((s.mul||1)*100)/100, s.elite?1:0]),
+           n:[...nodes.values()].map(n=>[n.id, +n.x.toFixed(3), +n.y.toFixed(3), n.t, n.left]),
            sc: scores, h: hostId };
 }
 function applyWorld(p){
@@ -1024,6 +1177,23 @@ function applyWorld(p){
   }
   for (const id of [...slimes.keys()]) if (!seen.has(id) && !isHost) slimes.delete(id);
   if (p.sc) scores = p.sc;
+  /* ore nodes ride the same payload: [id, x, y, typeIdx, chunksLeft] */
+  if (Array.isArray(p.n)){
+    const seenN = new Set();
+    for (const a of p.n){
+      const [id,x,y,t,left] = a; seenN.add(id);
+      const old = nodes.get(id);
+      if (old){
+        if (left < old.left) old.shakeT = performance.now();   // someone mined it — every client sees the rock shake
+        old.x = x; old.y = y; old.t = t; old.left = left;
+      } else nodes.set(id, { id, x, y, t, r:.078, left, shakeT:0 });
+    }
+    if (!isHost) for (const [id, n] of [...nodes.entries()]) if (!seenN.has(id)){
+      // a node that vanishes mid-life CRUMBLES (it was mined out)
+      if (n.left > 0){ for (let i=0;i<14;i++) particles.push({ x:n.x+rand(-.04,.04), y:n.y+rand(-.04,.04), vx:rand(-.1,.1), vy:rand(-.14,.02), life:1, color:'#9aa0a3', r:rand(2,5) }); capParticles(); }
+      nodes.delete(id);
+    }
+  }
 }
 
 /* ============================================================ fx */
@@ -1073,6 +1243,8 @@ function myDamage(){
   if (wHas(1,'w11')) base += 3;   // Sword tree: Heavy Blade
   if (wHas(4,'w42')) base += 6;   // Greatsword tree: Heavy Blade
   if (wHas(5,'w51')) base += 8;   // Warhammer tree: Heavy Head
+  if (wHas(6,'w61')) base += 3;   // Pickaxe tree: Strong Arms
+  base *= 1 + .15 * (wxpOf(me.weapon).lv - 1);   // weapon level: +15% damage per level (every weapon, pickaxe included)
   return (combo>=15 && performance.now()<comboUntil) ? base*1.15 : base;   // ON FIRE combo bonus
 }
 function myReach(){
@@ -1140,6 +1312,29 @@ function localHitCheck(now){
       let crit = false;
       if (Math.random() < critCh){ dmg *= critMul; crit = true; }
       doHit(s, Math.round(dmg), { crit });
+    }
+  }
+  /* ---- mining: the same swept blade vs ore nodes (circle r .078).
+     Only the PICKAXE sends a claim; any other weapon just CLINKs. ---- */
+  for (const n of nodes.values()){
+    const nk = 'node:'+n.id, nlast = me.lastHitAt.get(nk)||0;
+    if (now - nlast < myCd()) continue;
+    let hit = false;
+    if (spinning){ hit = dist2(me.x,me.y,n.x,n.y) < (reach + n.r)*(reach + n.r); }
+    else hit = testAngles.some(ang => segHit(n, ang));
+    if (!hit) continue;
+    me.lastHitAt.set(nk, now);
+    n.shakeT = now;   // prediction: the rock shakes on my screen right away
+    if (me.weapon === 6){
+      for (let i=0;i<3;i++) particles.push({ x:n.x+rand(-.03,.03), y:n.y+rand(-.03,.03), vx:rand(-.08,.08), vy:rand(-.12,.02), life:1, color:'#9aa0a3', r:rand(2,4) });
+      capParticles();
+      sfx.hit();
+      const claim = { n:n.id, lv:wxpOf(6).lv, gf: unlocked.has('w62') ? 1 : 0, gr: now < me.gemRushUntil ? 1 : 0 };
+      if (isHost) hostMine(n.id, claim, me.id);
+      else if (sendMine) sendMine(claim);
+    } else {
+      addFloat(n.x, n.y-.09, 'CLINK', '#cfd8dc');
+      if (now - lastPickToastAt > 3000){ lastPickToastAt = now; toast('You need the PICKAXE to mine ore — press 7'); }
     }
   }
 }
@@ -1220,6 +1415,7 @@ function onKillFx(f){
     if (now < me.goldRushUntil) cg *= 2;   // GOLD RUSH: double coins
     me.coins += cg; me.kills++;
     me.mp = Math.min(me.maxMp, me.mp + 2);   // +2 MP per kill (own kills only)
+    gainWxp(me.weapon, 10);   // +10 XP to the EQUIPPED weapon (all weapons level this way)
     gainXp(f.xp); sfx.coin();
     addFloat(f.x, f.y-.04, '+'+cg+' coins', '#ffd94d');
     if (f.kind==='king'){ me.sp++; bubble('KING SLAYER! +1 SP', me.x, me.y); setTimeout(()=>toast('KING BONUS: +1 Sphere Point!'), 600); }
@@ -1338,26 +1534,61 @@ function buildShopRows(){
   }
   buildWeaponRows(wrap);
 }
-function buyWeapon(i){
-  const w = WEAPONS[i]; if (!w || me.owned.has(i) || me.coins < w.price) return;
-  me.coins -= w.price; me.owned.add(i);
+/* ---- the FORGE: weapons are CRAFTED for coins + gems (mined from ore
+   rocks), and owned weapons PROMOTE through 5 levels once their XP bar
+   is full — again for coins + gems. Carried coins only, like the shop. ---- */
+function canAfford(cost){ return !!cost && me.coins >= cost.coins && Object.entries(cost.gems||{}).every(([g,n]) => (me.gems[g]||0) >= n); }
+function payCost(cost){ me.coins -= cost.coins; for (const [g,n] of Object.entries(cost.gems||{})) me.gems[g] -= n; }
+function costHTML(cost){
+  let h = `<span class="costCoins">${cost.coins}c</span>`;
+  for (const [g,n] of Object.entries(cost.gems||{})){
+    const have = me.gems[g]||0;
+    h += `<span class="gemchip${have<n?' short':''}"><i style="background:${GEMS[g].col}"></i>${have}/${n}</span>`;
+  }
+  return h;
+}
+function craftWeapon(i){
+  const cost = CRAFT_RECIPES[i];
+  if (!cost || me.owned.has(i) || !canAfford(cost)) return;
+  payCost(cost); me.owned.add(i); wxpOf(i);
   sfx.buy(); buildShopRows(); buildRack(); refreshHUD(); saveGame();
-  toast(w.name.toUpperCase()+' IS YOURS! Press '+(i+1)+' to wield it');
+  toast(WEAPONS[i].name.toUpperCase()+' CRAFTED! Press '+(i+1)+' to wield it');
+}
+function promoteWeapon(i){
+  const wp = wxpOf(i);
+  if (!me.owned.has(i) || wp.lv >= 5 || wp.xp < xpNeed(wp.lv)) return;
+  const cost = PROMOTE_COSTS[wp.lv + 1];
+  if (!canAfford(cost)) return;
+  payCost(cost); wp.lv++; wp.xp = 0;
+  sfx.buy(); buildShopRows(); buildRack(); refreshHUD(); saveGame();
+  toast(WEAPONS[i].name.toUpperCase()+' IS NOW LV '+wp.lv+'!');
 }
 function buildWeaponRows(wrap){
   const head = document.createElement('div');
-  head.innerHTML = '<b style="color:#5b3a1e;font-size:15px">WEAPONS</b> <span style="color:#97754a;font-size:12px;font-weight:700">yours forever once bought</span>';
+  head.innerHTML = '<b style="color:#5b3a1e;font-size:15px">FORGE</b> <span style="color:#97754a;font-size:12px;font-weight:700">craft &amp; upgrade — mine ore rocks for gems</span>';
   head.style.margin = '10px 0 4px'; wrap.appendChild(head);
   WEAPONS.forEach((w,i)=>{
-    if (i===0) return;   // the starter dagger is never sold
     const row = document.createElement('div'); row.className = 'shopRow';
-    const owned = me.owned.has(i);
-    row.innerHTML = `<img src="assets/weapons/${w.id}.png" alt="" style="width:64px;height:20px;object-fit:contain;flex:none"><div class="info"><b>${w.name} — ${w.price}c</b><span>${w.dmg} dmg · ${w.desc}</span></div><div class="own">${owned?'OWNED':''}</div>`;
-    const btn = document.createElement('button');
-    btn.textContent = owned ? 'OWNED' : 'BUY';
-    btn.disabled = owned || me.coins < w.price;
-    btn.onclick = ()=>buyWeapon(i);
-    row.appendChild(btn); wrap.appendChild(row);
+    const owned = me.owned.has(i), wp = wxpOf(i);
+    let state = '', btn = null;
+    if (i===0 || i===6) state = '<div class="own">STARTER</div>';   // dagger & pickaxe: free from the start
+    else if (!owned){
+      const cost = CRAFT_RECIPES[i];
+      state = `<span class="costline">${costHTML(cost)}</span>`;
+      btn = document.createElement('button'); btn.textContent = 'CRAFT'; btn.disabled = !canAfford(cost);
+      btn.onclick = ()=>craftWeapon(i);
+    }
+    else if (wp.lv >= 5) state = '<div class="own">MAX LEVEL</div>';
+    else if (wp.xp >= xpNeed(wp.lv)){
+      const cost = PROMOTE_COSTS[wp.lv + 1];
+      state = `<span class="costline">${costHTML(cost)}</span>`;
+      btn = document.createElement('button'); btn.textContent = 'UPGRADE'; btn.disabled = !canAfford(cost);
+      btn.onclick = ()=>promoteWeapon(i);
+    }
+    else state = `<div class="own">XP ${wp.xp}/${xpNeed(wp.lv)}</div>`;
+    row.innerHTML = `<img src="assets/weapons/${w.id}.png" alt="" style="width:64px;height:20px;object-fit:contain;flex:none"><div class="info"><b>${w.name}${owned ? ' · Lv '+wp.lv : ''}</b><span>${w.dmg} dmg · ${w.desc}</span></div>${state}`;
+    if (btn) row.appendChild(btn);
+    wrap.appendChild(row);
   });
 }
 function buyItem(id){
@@ -1510,6 +1741,10 @@ function joinWorld(roomCode){
   onK(f=>{ if (f && typeof f.x==='number') onKillFx(f); });
   const [sendB, onB] = room.makeAction('boss'); sendBoss = sendB;
   onB(d=>{ if (d) bossEvent(d); });
+  const [sendMn, onMn] = room.makeAction('mine'); sendMine = sendMn;
+  onMn((d,id)=>{ if (isHost && d && typeof d.n==='string') hostMine(d.n, d, id); });
+  const [sendMd, onMd] = room.makeAction('mined'); sendMined = sendMd;
+  onMd(d=>{ if (d) minedFx(d); });
 
   joinedAt = performance.now();
   electHost(); startBroadcastLoop();
@@ -1616,6 +1851,12 @@ function trySpin(){
 /* ============================================================ HUD */
 function refreshHUD(){
   $('#coins').textContent = me.coins;
+  // gem pouch badge: one chip per gem type carried, hidden when empty
+  const gb = $('#gemBadge');
+  const gemChips = Object.keys(GEMS).filter(g => me.gems[g] > 0)
+    .map(g => `<span class="gemSlot"><i style="background:${GEMS[g].col}"></i>${me.gems[g]}</span>`).join('');
+  gb.innerHTML = gemChips;
+  gb.classList.toggle('hidden', !gemChips);
   $('#lvl').textContent = me.level;
   $('#kills').textContent = me.kills+' kills';
   $('#xpFill').style.width = clamp(me.xp/(me.level*100)*100,0,100)+'%';
@@ -1680,15 +1921,23 @@ function buildRack(){
     const locked = !me.owned.has(i);
     const d=document.createElement('div');
     d.className='wcard'+(me.weapon===i?' sel':'')+(locked?' locked':'');
-    d.innerHTML = weaponSVG(w,locked)+`<div class="wn">${w.name}</div>`+(locked?`<div class="wl">${w.price}c</div>`:`<div class="key">${i+1}</div>`);
-    d.title = w.name+' — '+w.dmg+' dmg, '+w.desc+(locked?(' (buy at the SHOP: '+w.price+'c)'):'');
+    let extra;
+    if (locked) extra = `<div class="wl">FORGE</div>`;
+    else {
+      const wp = wxpOf(i), need = wp.lv < 5 ? xpNeed(wp.lv) : 0;
+      const pct = wp.lv >= 5 ? 100 : clamp(wp.xp/need*100, 0, 100);
+      const ready = wp.lv < 5 && wp.xp >= need;
+      extra = `<div class="key">${i+1}</div><div class="wlv">Lv ${wp.lv}</div><div class="wxpbar${ready?' ready':''}"><div style="width:${pct}%"></div></div>`;
+    }
+    d.innerHTML = weaponSVG(w,locked)+`<div class="wn">${w.name}</div>`+extra;
+    d.title = w.name+' — '+w.dmg+' dmg, '+w.desc+(locked?' (craft it at the FORGE in the shop)':'');
     d.onclick=()=>equip(i);
     rack.appendChild(d);
   });
 }
 function equip(i){
   const w=WEAPONS[i];
-  if (!me.owned.has(i)){ toast('Buy the '+w.name+' at the SHOP — '+w.price+'c'); return; }
+  if (!me.owned.has(i)){ toast('Craft the '+w.name+' at the FORGE — in the SHOP'); return; }
   me.weapon=i; me.lastHitAt.clear(); buildRack(); beep(600,.06,'triangle',.08); refreshHUD();
   bubble(w.name.toUpperCase()+'!', me.x, me.y, 900);
 }
@@ -1925,7 +2174,8 @@ function setMuted(v){
   $('#soundBtn').textContent = 'SOUND: '+(muted ? 'OFF' : 'ON');
 }
 function resetRun(){
-  me.level=1; me.xp=0; me.coins=0; me.kills=0; me.sp=0; me.weapon=0; me.owned=new Set([0]);
+  me.level=1; me.xp=0; me.coins=0; me.kills=0; me.sp=0; me.weapon=0; me.owned=new Set([0,6]);
+  me.gems=freshGems(); me.wxp={}; me.gemRushUntil=0;
   me.hp=me.maxHp; me.mp=me.maxMp; me.wSkillCdUntil=0; me.banked=0; me.items={ potion:0, bomb:0, shield:0 }; me.purse=false; me.shieldUntil=0;
   $('#bankPanel').classList.add('hidden'); $('#shopPanel').classList.add('hidden'); $('#hospitalPanel').classList.add('hidden'); $('#treePanel').classList.add('hidden');
   unlocked.clear(); recalc();   // one shared set: Sphere nodes AND weapon-tree nodes both reset
@@ -1947,6 +2197,7 @@ function saveGame(){
       level:me.level, xp:me.xp, coins:me.coins, kills:me.kills, sp:me.sp,
       unlocked:[...unlocked], weapon:me.weapon, name:me.name, muted, hintsSeen,
       banked:me.banked, items:me.items, purse:me.purse, owned:[...me.owned],
+      gems:me.gems, wxp:me.wxp,
       bounty: bounty ? { type:bounty.type, key:bounty.key, label:bounty.label, need:bounty.need, have:bounty.have, reward:bounty.reward } : null
     }));
   }catch(e){}
@@ -1966,6 +2217,13 @@ function loadGame(){
     WEAPONS.forEach((w,i)=>{ if (me.level >= w.unlock) me.owned.add(i); });
   }
   if (!me.owned.size) me.owned.add(0);
+  me.owned.add(6);   // migration: the Pickaxe is a free starter — every existing save gains it, nothing is lost
+  // mining state persists: gem pouch + per-weapon levels
+  if (d.gems) for (const g of Object.keys(GEMS)) me.gems[g] = Math.max(0, d.gems[g]|0);
+  if (d.wxp) for (const [k,v] of Object.entries(d.wxp)){
+    const i = k|0;
+    if (WEAPONS[i] && v) me.wxp[i] = { lv:clamp(v.lv|0 || 1, 1, 5), xp:Math.max(0, v.xp|0) };
+  }
   let wi = d.weapon|0;
   if (!WEAPONS[wi] || !me.owned.has(wi)) wi = Math.max(...me.owned);
   me.weapon = wi;
@@ -2134,6 +2392,10 @@ function castWeaponSkill(){
     popRings.push({ x:tx, y:ty, r:.05, life:1, color:'#ffe082' });
     spawnPopFx(tx, ty, '#ffe082', 18, .02);
     beep(120,.2,'square',.1,40); setTimeout(()=>beep(880,.12,'square',.06,-200), 30);
+  } else if (me.weapon===6){   // PICKAXE — GEM RUSH: 8s of rich veins (claims carry the gr flag)
+    me.gemRushUntil = now + 8000;
+    bubble('GEM RUSH!', me.x, me.y, 900);
+    sfx.lvl();
   }
   refreshHUD();
 }
@@ -2456,6 +2718,54 @@ function drawRock(d){
   ctx.fillStyle = '#9aa0a3'; ctx.beginPath(); ctx.ellipse(x, y, r, r*.75, 0, 0, 7); ctx.fill();
   ctx.fillStyle = '#b9bfc2'; ctx.beginPath(); ctx.ellipse(x-r*.25, y-r*.22, r*.55, r*.4, 0, 0, 7); ctx.fill();
   ctx.fillStyle = '#7e858a'; ctx.beginPath(); ctx.ellipse(x+r*.4, y+r*.18, r*.4, r*.3, 0, 0, 7); ctx.fill();
+}
+/* Ore node: the decor-rock sprite studded with chunky gem crystals in its
+   type's colours. When mined it SHAKES (an object effect — a quick wobble
+   around its base that decays over 220ms; the camera never moves). Down
+   to its last chunk it shows cracks. GEM RUSH makes the crystals pulse. */
+function drawNode(n, t){
+  const u = UNIT();
+  let dx = 0, rot = 0;
+  if (n.shakeT && t >= n.shakeT && t - n.shakeT < 220){
+    const k = 1 - (t - n.shakeT)/220;
+    dx = Math.sin(t*.09) * .007 * k;
+    rot = Math.sin(t*.11) * .035 * k;
+  }
+  const img = WORLD_IMGS['decor-rock'];
+  const w = .21*u, h = imgOk(img) ? w * img.naturalHeight/img.naturalWidth : .16*u;
+  const type = NODE_TYPES[n.t] || NODE_TYPES[0];
+  const seed = seedForId(n.id);
+  ctx.save();
+  ctx.translate(NX(n.x) + dx*u, NY(n.y) + .07*u);   // origin at the rock's base (matches its y-sort anchor)
+  ctx.rotate(rot);
+  if (imgOk(img)) ctx.drawImage(img, -w/2, -h, w, h);
+  else {
+    ctx.fillStyle = '#9aa0a3'; ctx.beginPath(); ctx.ellipse(0, -h/2, w/2, h/2, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#b9bfc2'; ctx.beginPath(); ctx.ellipse(-w*.13, -h*.62, w*.28, h*.2, 0, 0, 7); ctx.fill();
+  }
+  // crystals: 4 chunky diamonds at seeded spots on the rock's upper half
+  const rush = t < me.gemRushUntil;
+  for (let i=0;i<4;i++){
+    const f1 = Math.abs(Math.sin(seed*12.9 + i*78.2) * 43758.5453) % 1;
+    const f2 = Math.abs(Math.sin(seed*78.3 + i*39.4) * 28001.8384) % 1;
+    const f3 = Math.abs(Math.sin(seed*37.7 + i*11.3) * 12543.2197) % 1;
+    const cx = (f1 - .5) * w * .62, cy = -h * (.38 + f2 * .45);
+    let cs = (.018 + f3 * .018) * u;
+    if (rush){ cs *= 1 + .18 * Math.sin(t/120 + i*1.7); ctx.globalAlpha = .8 + .2 * Math.sin(t/120 + i*1.7); }
+    ctx.fillStyle = GEMS[type.crystals[i % type.crystals.length]].col;
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(Math.PI/4);
+    ctx.fillRect(-cs/2, -cs/2, cs, cs);
+    ctx.restore();
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(cx - 1, cy - cs*.55, 2, 2);   // sparkle corner
+    ctx.globalAlpha = 1;
+  }
+  // cracks when the rock is one chunk from crumbling
+  if (n.left <= 1){
+    ctx.strokeStyle = 'rgba(45,38,32,.6)'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-w*.28, -h*.62); ctx.lineTo(-w*.05, -h*.42); ctx.lineTo(-w*.16, -h*.2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(w*.3, -h*.7); ctx.lineTo(w*.08, -h*.5); ctx.lineTo(w*.2, -h*.28); ctx.stroke();
+  }
+  ctx.restore();
 }
 function drawField(t){
   const u=UNIT(), vw=W/u, vh=H/u;
@@ -2796,11 +3106,17 @@ function drawEntities(t){
   // slime anchor = ground contact (y + r*.8) -- NOT the hop-lifted sprite,
   // so a jumping slime never changes depth order mid-hop
   for (const s of slimes.values()) ents.push({ baseY:s.y + s.r*.8, kind:'slime', s });
+  // ore nodes join the same depth order at their base (y + .07)
+  for (const n of nodes.values()){
+    if (n.x<cam.x-.55 || n.x>cam.x+vw+.55 || n.y<cam.y-.55 || n.y>cam.y+vh+.55) continue;   // view-culled like decor
+    ents.push({ baseY:n.y + .07, kind:'node', n });
+  }
   ents.sort((a,b)=>a.baseY - b.baseY);
   for (const e of ents){
     if (e.kind === 'tree') drawTree(e.d, t);
     else if (e.kind === 'rock') drawRock(e.d);
     else if (e.kind === 'bld') drawBuildings(e.b.key);
+    else if (e.kind === 'node') drawNode(e.n, t);
     else drawSlime(e.s, t);
   }
   drawGhosts(t, occluders);
