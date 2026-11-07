@@ -3843,6 +3843,12 @@ function drawNode(n, t){
   const w = .21*u, h = imgOk(img) ? w * img.naturalHeight/img.naturalWidth : .16*u;
   const type = NODE_TYPES[n.t] || NODE_TYPES[0];
   const seed = seedForId(n.id);
+  // ground shadow — same flat recipe as drawRock (rgba(0,0,0,.18) ellipse
+  // at the base); the node path had none, so ore rocks floated while decor
+  // boulders sat grounded. Drawn BEFORE the shake transform on purpose:
+  // ground shadows don't wobble.
+  ctx.fillStyle = 'rgba(0,0,0,.18)';
+  ctx.beginPath(); ctx.ellipse(NX(n.x), NY(n.y) + .075*u, w*.40, w*.11, 0, 0, 7); ctx.fill();
   ctx.save();
   ctx.translate(NX(n.x) + dx*u, NY(n.y) + .07*u);   // origin at the rock's base (matches its y-sort anchor)
   ctx.rotate(rot);
@@ -4053,29 +4059,30 @@ function drawBuildings(only){
     sign(x, y-.155*u, 'SHOP', '#c0392b', '#ffffff');
   }
   }
-  // ---- HOSPITAL: white walls, red roof, big red cross ----
+  // ---- INN: warm stucco walls, brown roof, moon sign (sprite: bld-hospital.png) ----
   if (!only || only==='hospital'){
   if (imgOk(WORLD_IMGS['bld-hospital'])) drawBld(HOSPITAL_POS, WORLD_IMGS['bld-hospital'], 'INN', '#fff8e7', '#5b3a1e');
   else {
     const x = NX(HOSPITAL_POS.x), y = NY(HOSPITAL_POS.y), w = .30*u, h = .19*u;
     pad(HOSPITAL_POS.x, HOSPITAL_POS.y);
-    ctx.fillStyle = '#f7fafc'; roundRect(x-w/2, y-h/2, w, h, 6); ctx.fill();
+    ctx.fillStyle = '#fff3d0'; roundRect(x-w/2, y-h/2, w, h, 6); ctx.fill();
     ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 3; roundRect(x-w/2, y-h/2, w, h, 6); ctx.stroke();
-    ctx.fillStyle = '#e5484d';
+    ctx.fillStyle = '#8a5a12';
     ctx.beginPath(); ctx.moveTo(x-w/2-.02*u, y-h/2); ctx.lineTo(x, y-h/2-.075*u); ctx.lineTo(x+w/2+.02*u, y-h/2); ctx.closePath(); ctx.fill();
     ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 2.5; ctx.stroke();
-    // windows
-    ctx.fillStyle = '#bfe3ff';
+    // warm lit windows
+    ctx.fillStyle = '#ffd97a';
     roundRect(x-w/2+.024*u, y-h/2+.030*u, .048*u, .044*u, 3); ctx.fill();
     roundRect(x+w/2-.072*u, y-h/2+.030*u, .048*u, .044*u, 3); ctx.fill();
-    // big red cross emblem on the wall
-    ctx.fillStyle = '#e5484d';
-    ctx.fillRect(x-.008*u, y-h/2+.026*u, .016*u, .052*u);
-    ctx.fillRect(x-.026*u, y-h/2+.044*u, .052*u, .016*u);
+    // hanging sign board with a gold crescent moon (matches the sprite)
+    ctx.fillStyle = '#282c4a'; roundRect(x-.038*u, y-h/2+.020*u, .076*u, .052*u, 3); ctx.fill();
+    ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 2; roundRect(x-.038*u, y-h/2+.020*u, .076*u, .052*u, 3); ctx.stroke();
+    ctx.fillStyle = '#ffd94d'; ctx.beginPath(); ctx.arc(x-.004*u, y-h/2+.046*u, .016*u, 0, 7); ctx.fill();
+    ctx.fillStyle = '#282c4a'; ctx.beginPath(); ctx.arc(x+.006*u, y-h/2+.040*u, .013*u, 0, 7); ctx.fill();
     // door
-    ctx.fillStyle = '#5b7a99'; roundRect(x-.028*u, y+.012*u, .056*u, h/2-.012*u, 4); ctx.fill();
+    ctx.fillStyle = '#7a4d16'; roundRect(x-.028*u, y+.012*u, .056*u, h/2-.012*u, 4); ctx.fill();
     ctx.fillStyle = '#ffd94d'; ctx.beginPath(); ctx.arc(x+.016*u, y+.055*u, .005*u, 0, 7); ctx.fill();
-    sign(x, y-h/2-.052*u, 'INN', '#ffffff', '#e5484d');
+    sign(x, y-h/2-.052*u, 'INN', '#fff8e7', '#5b3a1e');
   }
   }
 }
