@@ -96,11 +96,11 @@
   #bubble:after { content:""; position:absolute; left:50%; bottom:-10px; transform:translateX(-50%); border:6px solid transparent; border-top:8px solid #5b3a1e; border-bottom:0; }
 
   /* ---------- sphere grid ---------- */
-  #forge { width:min(92vw,404px); }
+  #forge { width:min(94vw,472px); }
   #spBar { text-align:center; font-weight:900; color:#5b3a1e; font-size:16px; margin-bottom:8px; }
   #spBar b { background:#5b3a1e; color:#ffd94d; border-radius:99px; padding:2px 14px; margin-left:6px; font-size:18px; }
   #sphereBoard {
-    position:relative; width:min(84vw,356px); aspect-ratio:1; margin:0 auto;
+    position:relative; width:min(86vw,424px); aspect-ratio:1; margin:0 auto;
     background:radial-gradient(circle at 50% 42%, #2b3a6e 0%, #1b2450 55%, #12173a 100%);
     border:4px solid #0d1030; border-radius:50%;
     box-shadow:inset 0 0 44px rgba(120,170,255,.35), 0 6px 18px rgba(0,0,0,.3);
@@ -108,9 +108,9 @@
   }
   #sphereLines { position:absolute; inset:0; width:100%; height:100%; }
   .snode {
-    position:absolute; width:46px; height:46px; margin:-23px 0 0 -23px; border-radius:50%;
+    position:absolute; width:37px; height:37px; margin:-18.5px 0 0 -18.5px; border-radius:50%;
     border:3px solid rgba(255,255,255,.35); background:#39406e; color:#cfd8ff;
-    font-family:inherit; font-weight:900; font-size:11px; cursor:pointer; z-index:2;
+    font-family:inherit; font-weight:900; font-size:10px; cursor:pointer; z-index:2;
     display:flex; align-items:center; justify-content:center; letter-spacing:.5px;
     box-shadow:0 3px 8px rgba(0,0,0,.45); transition:transform .12s;
   }
@@ -708,8 +708,8 @@ const NODES = [
 const nodePos = n => {
   const idx = NODES.filter(m=>m.b===n.b).indexOf(n);
   const a = BRANCHES[n.b].ang * Math.PI/180;
-  const dist = 13.5 + idx*5.6;                                 // % of board from centre
-  const perp = (idx===0 ? 0 : (idx%2 ? 4.2 : -4.2)) * Math.PI/180;
+  const dist = 11 + idx*6.8;                                   // % of board from centre
+  const perp = (idx===0 ? 0 : (idx%2 ? 6.5 : -6.5)) * Math.PI/180;
   const x = 50 + Math.cos(a+perp)*dist, y = 50 + Math.sin(a+perp)*dist;
   return { x, y, idx };
 };
@@ -751,7 +751,7 @@ function buildSphere(){
     d.style.left = p.x+'%'; d.style.top = p.y+'%';
     if (unlocked.has(n.id)) d.style.background = br.color;
     else if (nodeAvail(n)) d.style.background = '#5563a8';
-    d.innerHTML = n.icon + `<small>${n.cost} SP</small>`;
+    d.innerHTML = n.icon;
     d.title = n.name;
     d.onclick = ()=>{ selNode = n.id; buildSphere(); };
     wrap.appendChild(d);
