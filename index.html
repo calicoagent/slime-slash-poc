@@ -833,6 +833,7 @@
 
 <script type="module">
 import { joinRoom, selfId } from 'https://cdn.jsdelivr.net/npm/trystero@0.21.6/nostr/+esm';
+import { createStore } from 'https://cdn.jsdelivr.net/npm/zustand@5.1.0/vanilla/+esm';
 
 /* ============================================================ utils */
 const $ = s => document.querySelector(s);
@@ -1042,6 +1043,59 @@ const UNIT = () => Math.min(W,H);                   // px per world unit
 const NX = x => (x - cam.x) * UNIT(), NY = y => (y - cam.y) * UNIT();
 const SCALE = () => UNIT();
 
+/* ============================================================ STATE STORE
+   ONE central zustand (vanilla) store holds the game's state, split by
+   who owns a fact and whether it outlives the tab:
+
+   world    SHARED + EPHEMERAL, host-authoritative. Slimes, the Emperor's
+            host clocks/latches, boss orbs, ore nodes, peers, hostId, the
+            room + its send channels, the scoreboard. Written by netcode
+            and the host sim, read by rendering. NEVER persisted.
+
+   Hot-path rule: the world slice is a STABLE object — created once, never
+   replaced — so the frame loop and host sim read and write its fields and
+   entity records in place (zero allocations per frame, no subscriptions).
+   `world` below is that slice, taken from getState() once. */
+const freshWorld = () => ({
+  // connection: the Trystero room and its action senders (null until joinWorld)
+  room:null, joinedAt:0, sendPos:null, sendHit:null, sendWorld:null, sendKillFx:null, sendBoss:null, sendMine:null, sendMined:null,
+  peers: new Map(),          // id -> {x,y,tx,ty,angle,name,color,weapon,trail,lastSeen}
+  hostId:null, isHost:false, lastWorldAt:0,
+  scores: {},                // id -> {name,kills} — room scoreboard (session kills, host-published)
+  // shared entities
+  slimes: new Map(),         // id -> slime (local mirror; host owns truth)
+  slimeSeq: 1,
+  /* Ore nodes: ONE map for everyone — the host owns and mutates it, clients
+     mirror it from the world payload (and a new host adopts the mirror).
+     shakeT is local render state (the rock-shake when mined). */
+  nodes: new Map(),          // id -> {id,x,y,t,r,left,shakeT}
+  nodeSeq: 1,
+  nodeRespawnAt: [],         // host: timestamps when depleted nodes may be replaced
+  // boss bullet-hell orbs: every client simulates them from the host's boss events (never networked themselves)
+  bullets: [],
+  spiralEmitters: [],        // active spiral bullet emitters
+  pendingVolleys: [],        // boss 'spread': timed 5-way volleys
+  pendingBursts: [],         // boss 'burst': timed single AIMED orbs, target re-picked per volley
+  // host sim clocks + latches
+  bossSpawnAt: Infinity,     // host: next SLIME EMPEROR spawn time
+  lastMetalAt: -1,           // host: the metal GUARANTEE clock — written ONLY inside spawnSlime at the moment a metal slime actually enters the world (plus reign init); -1 = uninitialised
+  metalNoneNearSince: 0,     // host: since when NO metal has been NEAR (within 0.9u of any player); 0 = a metal is near right now
+  bossFireAt: 0,             // host: next bullet-pattern volley
+  bossPatternIdx: 0,         // host: pattern rotation ring -> fan -> burst -> spiral -> spread
+  bossEnraged: false,        // host: ENRAGE latch (boss at <=30% HP) — fire interval x0.75, orb speeds x1.15, one-way
+  bossFury: false,           // host: FINAL FURY latch (boss at <=10% HP) — fire interval x0.6 (stacks), orb speeds x1.3, one-way
+  bossSummonAt: 0,           // host: next minion summon while the Emperor lives (every 20s)
+  hitClaimsAt: new Map(),    // host-side hit rate limiting: 'player|target' -> last accepted claim time
+  hitPruneAt: 0,             // host: last hitClaimsAt prune
+  // host broadcast
+  worldTimer: null,          // 220ms heartbeat interval
+  worldDirty: false,         // a hit/kill/mine changed the world: flush ONE payload at the end of the frame
+});
+const store = createStore(() => ({
+  world: freshWorld(),
+}));
+const world = store.getState().world;
+
 const me = {
   id: selfId, name:'Knight', color:`hsl(${hashHue(selfId)} 80% 55%)`,
   x:.5, y:.6, px:.5, py:.6, angle:-Math.PI/4, speed:0,
@@ -1083,16 +1137,8 @@ function bladeAt(now){
   return { ang: swordAngleAt(now), ext: 0 };
 }
 me.x = WORLD/2; me.y = WORLD/2 + .1;   // start at world centre
-const peers = new Map();       // id -> {x,y,tx,ty,angle,name,color,weapon,trail,lastSeen}
-let slimes = new Map();        // id -> slime (local mirror; host owns truth)
 let particles = [], floats = [], popRings = [];
-let started=false, room=null, sendPos=null, sendHit=null, sendWorld=null, sendKillFx=null, sendBoss=null, sendMine=null, sendMined=null;
-/* Ore nodes: ONE map for everyone — the host owns and mutates it, clients
-   mirror it from the world payload (and a new host adopts the mirror).
-   shakeT is local render state (the rock-shake when mined). */
-let nodes = new Map();          // id -> {id,x,y,t,r,left,shakeT}
-let nodeSeq = 1;
-const nodeRespawnAt = [];       // host: timestamps when depleted nodes may be replaced
+let started=false;
 let lastPickToastAt = 0;        // 'NEED THE PICKAXE' toast throttle
 /* ---- survival pass state ---- */
 const CONTACT_DMG = { baby:4, dart:4, mid:6, gold:2, metal:5, splitter:7, big:9, tank:13, king:16, boss:26 };
@@ -1101,23 +1147,9 @@ const SHOP_POS = { x: WORLD/2 + .67, y: WORLD/2 - .54 };
 const HOSPITAL_POS = { x: WORLD/2, y: WORLD/2 + .70 };
 const TOWN_R = 1.30;   // safe-zone radius around the town centre — 1.30 ≈ .75*sqrt(3), so the plaza AREA is 3x the old disc; covers all three buildings + the plaza; NO enemies inside, NO damage inside
 const KING_BAR_RANGE = 1.0;   // a Slime King's floating HP bar renders only when the LOCAL player is within this many world units (Handler)
-let bullets = [];               // boss bullet-hell orbs (client-local sim, never networked)
-let spiralEmitters = [];
-let pendingVolleys = [];   // boss 'spread': timed 5-way volleys (client-local)        // active spiral bullet emitters (client-local)
-let pendingBursts = [];    // boss 'burst': timed single AIMED orbs, target re-picked per volley (client-local)
-let bossSpawnAt = Infinity;     // host: next SLIME EMPEROR spawn time
-let lastMetalAt = -1;           // host: the metal GUARANTEE clock — written ONLY inside spawnSlime at the moment a metal slime actually enters the world (plus reign init); -1 = uninitialised
-let metalNoneNearSince = 0;     // host: since when NO metal has been NEAR (within 0.9u of any player); 0 = a metal is near right now
-let bossFireAt = 0;             // host: next bullet-pattern volley
-let bossPatternIdx = 0;         // host: pattern rotation ring -> fan -> burst -> spiral -> spread
-let bossEnraged = false;        // host: ENRAGE latch (boss at <=30% HP) — fire interval x0.75, orb speeds x1.15, one-way
-let bossFury = false;           // host: FINAL FURY latch (boss at <=10% HP) — fire interval x0.6 (stacks), orb speeds x1.3, one-way
-let bossSummonAt = 0;           // host: next minion summon while the Emperor lives (every 20s)
 let dmgFlashAt = 0;             // last time the player took damage (flat red flash decay stamp)
 let nearBuilding = null;        // 'bank' | 'shop' | 'hospital' | null — drives the interact prompt
 const seenBosses = new Set();   // boss ids already announced by the banner
-let isHost=false, hostId=null, lastWorldAt=0, scores = {}; // id -> {name,kills}
-const hitClaimsAt = new Map(); // host-side rate limiting
 
 /* ---- polish pass state ---- */
 let combo=0, comboUntil=0;                 // kill-chain combo (2.5s window)
@@ -1174,10 +1206,9 @@ function pickKind(zone=0){
   for (let i=0;i<SLIME_KINDS.length;i++){ if ((r-=ws[i])<=0) return SLIME_KINDS[i]; }
   return SLIME_KINDS[0];
 }
-let slimeSeq = 1;
 function spawnSlime(opts={}){
   // THE EMPEROR IS UNIQUE: never create a second boss while one lives
-  if (opts.kind === 'boss'){ for (const o of slimes.values()) if (o.kind==='boss') return o; }
+  if (opts.kind === 'boss'){ for (const o of world.slimes.values()) if (o.kind==='boss') return o; }
   // position FIRST: the zone (and therefore kind odds + scaling) depends on it
   let sx, sy;
   if (opts.x !== undefined){ sx = opts.x; sy = opts.y; }
@@ -1191,7 +1222,7 @@ function spawnSlime(opts={}){
         // ~60% of spawns land near a player (within ~0.9 units) so the action
         // finds the players instead of the field emptying out; rest spawn anywhere.
         const spots = [{x:me.x, y:me.y}];
-        for (const p of peers.values()) spots.push({ x:(p.tx!==undefined?p.tx:p.x), y:(p.ty!==undefined?p.ty:p.y) });
+        for (const p of world.peers.values()) spots.push({ x:(p.tx!==undefined?p.tx:p.x), y:(p.ty!==undefined?p.ty:p.y) });
         const c = spots[Math.floor(Math.random()*spots.length)];
         const a = rand(0,Math.PI*2), d = rand(.15,.9);
         sx = clamp(c.x + Math.cos(a)*d, .06, WORLD-.06);
@@ -1209,13 +1240,13 @@ function spawnSlime(opts={}){
   }
   const zi = zoneOf(sx, sy), zone = ZONES[zi];
   const k = opts.kind ? (SLIME_KINDS.find(m=>m.kind===opts.kind) || SLIME_KINDS[0]) : pickKind(zi);
-  const id = (hostId||me.id).slice(0,4)+'-'+(slimeSeq++);
+  const id = (world.hostId||me.id).slice(0,4)+'-'+(world.slimeSeq++);
   const hp = k.kind==='boss' ? k.hp : Math.round(k.hp * zone.hp);   // the Emperor keeps his true 4000 HP — no zone scaling
   const s = { id, kind:k.kind, hp, max:hp, r:k.r,
     x:sx, y:sy, vx:0, vy:0, dir:rand(0,Math.PI*2), turnAt:performance.now()+rand(800,2600),
     color: k.kind==='gold' ? '#ffe066' : k.kind==='metal' ? '#cfd8dc' : SLIME_COLORS[Math.floor(Math.random()*SLIME_COLORS.length)],
     seed:seedForId(id), squish:0, flash:0, mul: k.kind==='boss' ? 1.5 : zone.mul, elite:false };
-  if (k.kind==='metal') lastMetalAt = performance.now();   // THE guarantee clock: a metal entering the world is the only thing that resets it
+  if (k.kind==='metal') world.lastMetalAt = performance.now();   // THE guarantee clock: a metal entering the world is the only thing that resets it
   // ELITES: rare, tougher, much richer (never kings, the Emperor, or metal slimes)
   if (k.kind !== 'king' && k.kind !== 'boss' && k.kind !== 'metal' && Math.random() < .08){
     s.elite = true;
@@ -1223,7 +1254,7 @@ function spawnSlime(opts={}){
     s.r = k.r * 1.35;
     s.mul = +(zone.mul * 3).toFixed(2);
   }
-  slimes.set(id,s); return s;
+  world.slimes.set(id,s); return s;
 }
 /* ROYAL GUARD (host): the Emperor raises a 6s invulnerable shield at 66%
    and again at 33% HP. Announces on every client via the 'guard' boss
@@ -1234,18 +1265,18 @@ function royalGuard(now, boss){
   boss.guardUntil = now + 6000;
   const gp = { p:'guard', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now };
   bossEvent(gp);
-  if (sendBoss && hasPeers()){ try { sendBoss(gp); } catch(e){} }
-  const sm = (bossEnraged ? 1.15 : 1) * (bossFury ? 1.3 : 1);
+  if (world.sendBoss && hasPeers()){ try { world.sendBoss(gp); } catch(e){} }
+  const sm = (world.bossEnraged ? 1.15 : 1) * (world.bossFury ? 1.3 : 1);
   const rp = { p:'ring', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now, n:28, spd:.32, sm };
   bossEvent(rp);
-  if (sendBoss && hasPeers()){ try { sendBoss(rp); } catch(e){} }
+  if (world.sendBoss && hasPeers()){ try { world.sendBoss(rp); } catch(e){} }
   for (let i=0;i<3;i++)
     spawnSlime({ kind: Math.random() < .5 ? 'mid' : 'dart', x:clamp(boss.x+rand(-.25,.25), .06, WORLD-.06), y:clamp(boss.y+rand(-.25,.25), .1, WORLD-.06) });
   broadcastWorld();
 }
 function hostTick(now,dt){
   // wander + spawn
-  for (const s of slimes.values()){
+  for (const s of world.slimes.values()){
     if (now>s.turnAt){ s.dir=rand(0,Math.PI*2); s.turnAt=now+rand(800,2600); }
     const k = SLIME_KINDS.find(k=>k.kind===s.kind);
     let sp = k.speed*dt*60/1000, mult = 1;   // mult: steering speed multiplier, applied to hop distance
@@ -1253,7 +1284,7 @@ function hostTick(now,dt){
     if (s.kind==='gold' || s.kind==='metal'){
       // gold slimes FLEE the nearest player — catch one if you can
       let bx=me.x, by=me.y, bd=dist2(s.x,s.y,me.x,me.y);
-      for (const p of peers.values()){
+      for (const p of world.peers.values()){
         const px=(p.tx!==undefined?p.tx:p.x), py=(p.ty!==undefined?p.ty:p.y);
         const d=dist2(s.x,s.y,px,py);
         if (d<bd){ bd=d; bx=px; by=py; }
@@ -1272,7 +1303,7 @@ function hostTick(now,dt){
     if (s.kind==='king'){
       // the King HUNTS: it steers straight at the nearest player, faster than its wander
       let bx=me.x, by=me.y, bd=dist2(s.x,s.y,me.x,me.y);
-      for (const p of peers.values()){
+      for (const p of world.peers.values()){
         const px=(p.tx!==undefined?p.tx:p.x), py=(p.ty!==undefined?p.ty:p.y);
         const d=dist2(s.x,s.y,px,py);
         if (d<bd){ bd=d; bx=px; by=py; }
@@ -1285,7 +1316,7 @@ function hostTick(now,dt){
       // (~.62-.85u from the nearest player) — backs off when crowded,
       // closes only to firing range, strafes while in the band.
       let bx=me.x, by=me.y, bd=dist2(s.x,s.y,me.x,me.y);
-      for (const p of peers.values()){
+      for (const p of world.peers.values()){
         const px=(p.tx!==undefined?p.tx:p.x), py=(p.ty!==undefined?p.ty:p.y);
         const d=dist2(s.x,s.y,px,py);
         if (d<bd){ bd=d; bx=px; by=py; }
@@ -1324,13 +1355,13 @@ function hostTick(now,dt){
     }
     s.squish = Math.max(0, s.squish - dt/160); s.flash = Math.max(0, s.flash - dt/120);
   }
-  const target = Math.min(120, 80 + peers.size*8);
-  if (slimes.size < target){
+  const target = Math.min(120, 80 + world.peers.size*8);
+  if (world.slimes.size < target){
     // spawn probability rescaled by dt: a flat .55/frame trickle would
     // refill the world twice as fast at 120Hz as at 60Hz
     const spawnP = 1 - Math.pow(.45, dt/16.667);
     if (Math.random()<spawnP) spawnSlime();
-    if (slimes.size < target-4 && Math.random()<spawnP) spawnSlime();   // refill in pairs while well under target
+    if (world.slimes.size < target-4 && Math.random()<spawnP) spawnSlime();   // refill in pairs while well under target
   }
   /* METAL SLIME GUARANTEE (v5): a FINDABLE metal at least every ~60s of
      continuous none-near time (near = within 0.9u). v5 changes over v4,
@@ -1359,16 +1390,16 @@ function hostTick(now,dt){
      spawnSlime (and all its candidate logic) is not involved at all;
      (3) the spawn announces itself with the king banner and the metal
      sheds silver sparkles while alive, so it cannot be missed. */
-  if (lastMetalAt < 0) lastMetalAt = now;   // the clock starts with this host's reign
+  if (world.lastMetalAt < 0) world.lastMetalAt = now;   // the clock starts with this host's reign
   const metalSpots = [{x:me.x, y:me.y}];
-  for (const p of peers.values()) metalSpots.push({ x:(p.tx!==undefined?p.tx:p.x), y:(p.ty!==undefined?p.ty:p.y) });
+  for (const p of world.peers.values()) metalSpots.push({ x:(p.tx!==undefined?p.tx:p.x), y:(p.ty!==undefined?p.ty:p.y) });
   let metalNear = false;
-  for (const s of slimes.values()) if (s.kind==='metal' && metalSpots.some(c=>dist2(s.x,s.y,c.x,c.y) < .9*.9)){ metalNear = true; break; }
-  if (metalNear) metalNoneNearSince = 0;
-  else if (!metalNoneNearSince) metalNoneNearSince = now;
-  else if (now - metalNoneNearSince > 60000){
-    metalNoneNearSince = now;
-    for (const [id, s] of [...slimes]) if (s.kind==='metal') slimes.delete(id);   // every living metal is unreachable — clear it
+  for (const s of world.slimes.values()) if (s.kind==='metal' && metalSpots.some(c=>dist2(s.x,s.y,c.x,c.y) < .9*.9)){ metalNear = true; break; }
+  if (metalNear) world.metalNoneNearSince = 0;
+  else if (!world.metalNoneNearSince) world.metalNoneNearSince = now;
+  else if (now - world.metalNoneNearSince > 60000){
+    world.metalNoneNearSince = now;
+    for (const [id, s] of [...world.slimes]) if (s.kind==='metal') world.slimes.delete(id);   // every living metal is unreachable — clear it
     // position computed valid HERE: 0.6u from a random player in a random
     // direction, >= TOWN_R + .15 from centre, inside world bounds; up to
     // 8 tries, else the town-ring point at TOWN_R + .35 toward the player
@@ -1387,32 +1418,32 @@ function hostTick(now,dt){
     // DIRECT construction into the map (mirror of spawnSlime's object
     // shape, incl. zone scaling) — no spawnSlime call on this path
     const mk = SLIME_KINDS.find(m=>m.kind==='metal'), mzone = ZONES[zoneOf(mx, my)];
-    const mid = (hostId||me.id).slice(0,4)+'-'+(slimeSeq++);
+    const mid = (world.hostId||me.id).slice(0,4)+'-'+(world.slimeSeq++);
     const mhp = Math.round(mk.hp * mzone.hp);
-    slimes.set(mid, { id:mid, kind:'metal', hp:mhp, max:mhp, r:mk.r,
+    world.slimes.set(mid, { id:mid, kind:'metal', hp:mhp, max:mhp, r:mk.r,
       x:mx, y:my, vx:0, vy:0, dir:rand(0,Math.PI*2), turnAt:now+rand(800,2600),
       color:'#cfd8dc', seed:seedForId(mid), squish:0, flash:0, mul:mzone.mul, elite:false,
       guaranteed:true, bornAt:now });   // guaranteed: edge arrow + 1500ms spawn-in freeze key off these (host-local flavour; the world payload doesn't carry them)
-    lastMetalAt = now;   // a metal entered the world
+    world.lastMetalAt = now;   // a metal entered the world
   }
   /* ---- SLIME EMPEROR: timed spawn + bullet-hell volleys (host decides,
      every client sims the bullets locally from the 'boss' events) ---- */
-  if (bossSpawnAt===Infinity) bossSpawnAt = now + 75000;   // first awakening 75s into this host's reign
-  const bosses = [...slimes.values()].filter(s=>s.kind==='boss');
-  if (bosses.length > 1) for (let i=1;i<bosses.length;i++) slimes.delete(bosses[i].id);   // Emperor is unique — purge duplicates (e.g. one adopted via world payload across a host handover)
+  if (world.bossSpawnAt===Infinity) world.bossSpawnAt = now + 75000;   // first awakening 75s into this host's reign
+  const bosses = [...world.slimes.values()].filter(s=>s.kind==='boss');
+  if (bosses.length > 1) for (let i=1;i<bosses.length;i++) world.slimes.delete(bosses[i].id);   // Emperor is unique — purge duplicates (e.g. one adopted via world payload across a host handover)
   let boss = bosses[0];
-  if (now >= bossSpawnAt){
-    bossSpawnAt = now + 240000;   // fallback cadence (hostKill re-anchors this to the kill moment); the FIRST spawn stays at +75s
+  if (now >= world.bossSpawnAt){
+    world.bossSpawnAt = now + 240000;   // fallback cadence (hostKill re-anchors this to the kill moment); the FIRST spawn stays at +75s
     if (!boss){
       let bx=WORLD/2, by=.3;
       for (let i=0;i<40;i++){ const x=rand(.15,WORLD-.15), y=rand(.15,WORLD-.15); if (Math.hypot(x-WORLD/2, y-WORLD/2) > 2.3){ bx=x; by=y; break; } }
       boss = spawnSlime({ kind:'boss', x:bx, y:by });
-      bossEnraged = false; bossFury = false; bossSummonAt = 0;   // a fresh Emperor starts calm and summons on his own clock
+      world.bossEnraged = false; world.bossFury = false; world.bossSummonAt = 0;   // a fresh Emperor starts calm and summons on his own clock
       /* EMPEROR SCALING: the flat 4000 melts under a geared high-level
          player, so the Emperor scales to the STRONGEST player present
          (peer levels ride the pos payload). Lv<=12: x1.0. Lv34: x7.6. */
       let topLevel = me.level;
-      for (const p of peers.values()) if (p.level && p.level > topLevel) topLevel = p.level;
+      for (const p of world.peers.values()) if (p.level && p.level > topLevel) topLevel = p.level;
       boss.bScale = 1 + 0.30 * Math.max(0, topLevel - 12);
       boss.max = boss.hp = Math.round(4000 * boss.bScale);
       boss.bOrb = Math.round(12 + Math.min(8, 0.4 * Math.max(0, topLevel - 12)));    // orb damage 12 -> 20 max
@@ -1426,41 +1457,41 @@ function hostTick(now,dt){
     if (!boss.guard66 && bFrac <= .66){ boss.guard66 = true; royalGuard(now, boss); }
     else if (!boss.guard33 && bFrac <= .33){ boss.guard33 = true; royalGuard(now, boss); }
     // FINAL FURY: at <=10% HP — interval x0.6 (stacks with enrage), orbs x1.3
-    if (!bossFury && boss.hp <= boss.max * .10){
-      bossFury = true;
+    if (!world.bossFury && boss.hp <= boss.max * .10){
+      world.bossFury = true;
       const fp = { p:'fury', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now };
       bossEvent(fp);
-      if (sendBoss && hasPeers()){ try { sendBoss(fp); } catch(e){} }
+      if (world.sendBoss && hasPeers()){ try { world.sendBoss(fp); } catch(e){} }
     }
     // ENRAGE: at <=30% HP the Emperor latches into a faster, meaner fight
-    if (!bossEnraged && boss.hp <= boss.max * .30){
-      bossEnraged = true;
+    if (!world.bossEnraged && boss.hp <= boss.max * .30){
+      world.bossEnraged = true;
       const ep = { p:'enrage', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now };
       bossEvent(ep);
-      if (sendBoss && hasPeers()){ try { sendBoss(ep); } catch(e){} }
+      if (world.sendBoss && hasPeers()){ try { world.sendBoss(ep); } catch(e){} }
     }
     // SUMMONS: every 20s while he lives, he calls 2-3 minions to his side
-    if (!bossSummonAt) bossSummonAt = now + 20000;
-    else if (now >= bossSummonAt){
-      bossSummonAt = now + 20000;
+    if (!world.bossSummonAt) world.bossSummonAt = now + 20000;
+    else if (now >= world.bossSummonAt){
+      world.bossSummonAt = now + 20000;
       const nMin = Math.random() < .5 ? 2 : 3;
       for (let i=0;i<nMin;i++)
         spawnSlime({ kind: Math.random() < .5 ? 'mid' : 'dart', x:clamp(boss.x+rand(-.25,.25), .06, WORLD-.06), y:clamp(boss.y+rand(-.25,.25), .1, WORLD-.06) });
       const sp = { p:'summon', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now };
       bossEvent(sp);
-      if (sendBoss && hasPeers()){ try { sendBoss(sp); } catch(e){} }
+      if (world.sendBoss && hasPeers()){ try { world.sendBoss(sp); } catch(e){} }
       broadcastWorld();   // minions ride the normal slime sync — push them out now, not on the next cycle
     }
-    if (!bossFireAt) bossFireAt = now + 1200;
-    if (now >= bossFireAt){
-      bossFireAt = now + 1250 * (bossEnraged ? .75 : 1) * (bossFury ? .6 : 1);   // enrage x0.75 (~0.94s), FINAL FURY x0.6 on top
-      const p = ['ring','fan','burst','spiral','spread'][bossPatternIdx++ % 5];
-      const sm = (bossEnraged ? 1.15 : 1) * (bossFury ? 1.3 : 1);   // orb-speed multipliers, carried on every pattern payload
+    if (!world.bossFireAt) world.bossFireAt = now + 1200;
+    if (now >= world.bossFireAt){
+      world.bossFireAt = now + 1250 * (world.bossEnraged ? .75 : 1) * (world.bossFury ? .6 : 1);   // enrage x0.75 (~0.94s), FINAL FURY x0.6 on top
+      const p = ['ring','fan','burst','spiral','spread'][world.bossPatternIdx++ % 5];
+      const sm = (world.bossEnraged ? 1.15 : 1) * (world.bossFury ? 1.3 : 1);   // orb-speed multipliers, carried on every pattern payload
       let payload;
       if (p==='ring') payload = { p:'ring', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now, n:28, spd:.32, sm };
       else if (p==='fan' || p==='spread'){
         let bx=me.x, by=me.y, bd=dist2(boss.x,boss.y,me.x,me.y);
-        for (const pp of peers.values()){
+        for (const pp of world.peers.values()){
           const px=(pp.tx!==undefined?pp.tx:pp.x), py=(pp.ty!==undefined?pp.ty:pp.y);
           const d=dist2(boss.x,boss.y,px,py);
           if (d<bd){ bd=d; bx=px; by=py; }
@@ -1480,24 +1511,24 @@ function hostTick(now,dt){
          Every other system (hits, mining) already calls its local
          handler directly when host — the boss now does the same. */
       bossEvent(payload);   // Trystero does not echo to the sender — the host's own client sims it too
-      if (sendBoss && hasPeers()){ try { sendBoss(payload); } catch(e){} }   // broadcast is best-effort; a dead channel must not kill the volley
+      if (world.sendBoss && hasPeers()){ try { world.sendBoss(payload); } catch(e){} }   // broadcast is best-effort; a dead channel must not kill the volley
     }
-  } else if (!boss) bossFireAt = 0;
+  } else if (!boss) world.bossFireAt = 0;
   /* hitClaimsAt hygiene: one key per (player, slime) and per (player,
      rock) ever claimed, ids never reused — it grew for the whole host
      reign. Only the last 60ms of a key matters (anti-spam window), so
      once it is fat, entries older than 1s are dropped every 5s. */
-  if (hitClaimsAt.size > 600 && now - (hostTick._prune||0) > 5000){
-    hostTick._prune = now;
-    for (const [k, at] of hitClaimsAt) if (now - at > 1000) hitClaimsAt.delete(k);
+  if (world.hitClaimsAt.size > 600 && now - world.hitPruneAt > 5000){
+    world.hitPruneAt = now;
+    for (const [k, at] of world.hitClaimsAt) if (now - at > 1000) world.hitClaimsAt.delete(k);
   }
   /* ---- ore nodes: keep 12 in the world. A depleted node's replacement
      waits on the respawn queue (20-40s); with an empty queue (fresh world,
      host migration) top up immediately. ---- */
-  if (nodes.size < 12){
-    if (nodeRespawnAt.length){
-      nodeRespawnAt.sort((a,b)=>a-b);
-      if (now >= nodeRespawnAt[0] && spawnNode()) nodeRespawnAt.shift();
+  if (world.nodes.size < 12){
+    if (world.nodeRespawnAt.length){
+      world.nodeRespawnAt.sort((a,b)=>a-b);
+      if (now >= world.nodeRespawnAt[0] && spawnNode()) world.nodeRespawnAt.shift();
     } else spawnNode();
   }
 }
@@ -1513,11 +1544,11 @@ function spawnNode(){
     const x = rand(.15, WORLD-.15), y = rand(.15, WORLD-.15);
     if (Math.hypot(x-WORLD/2, y-WORLD/2) < TOWN_R + .15) continue;   // never in town (buildings are covered by this too)
     let clash = false;
-    for (const o of nodes.values()) if (dist2(x,y,o.x,o.y) < .28*.28){ clash = true; break; }
+    for (const o of world.nodes.values()) if (dist2(x,y,o.x,o.y) < .28*.28){ clash = true; break; }
     if (clash) continue;
     if (!type.zones.includes(ZONE_NAMES[zoneOf(x,y)])) continue;
-    const id = (hostId||me.id).slice(0,4)+'-n'+(nodeSeq++);
-    nodes.set(id, { id, x:+x.toFixed(3), y:+y.toFixed(3), t, r:.078, left:type.chunks, shakeT:0 });
+    const id = (world.hostId||me.id).slice(0,4)+'-n'+(world.nodeSeq++);
+    world.nodes.set(id, { id, x:+x.toFixed(3), y:+y.toFixed(3), t, r:.078, left:type.chunks, shakeT:0 });
     return true;
   }
   return false;
@@ -1531,30 +1562,30 @@ function rollDrop(type){
 /* Host side of mining: validate the claim (sender near the rock, chunks
    left, anti-spam), consume a chunk, roll the gem, tell everyone. */
 function hostMine(nodeId, d, byId){
-  const n = nodes.get(nodeId); if (!n || n.left <= 0) return;
+  const n = world.nodes.get(nodeId); if (!n || n.left <= 0) return;
   let px, py;
   if (byId === me.id){ px = me.x; py = me.y; }
-  else { const p = peers.get(byId); if (!p) return; px = (p.tx!==undefined ? p.tx : p.x); py = (p.ty!==undefined ? p.ty : p.y); }
+  else { const p = world.peers.get(byId); if (!p) return; px = (p.tx!==undefined ? p.tx : p.x); py = (p.ty!==undefined ? p.ty : p.y); }
   if (dist2(px, py, n.x, n.y) > .55*.55) return;   // the miner must actually be at the rock
   const now = performance.now();
-  const key = 'mine:'+byId+':'+nodeId, last = hitClaimsAt.get(key)||0;
+  const key = 'mine:'+byId+':'+nodeId, last = world.hitClaimsAt.get(key)||0;
   if (now - last < 60) return;                    // host anti-spam (same map as hit claims)
-  hitClaimsAt.set(key, now);
+  world.hitClaimsAt.set(key, now);
   n.left--; n.shakeT = now;
   mineChips(n.x, n.y, 12);   // every lost chunk bursts stone chips (host's client)
   const lv = clamp((d && d.lv|0) || 1, 1, 5);
   const chance = .55 + .06*(lv-1) + (d && d.gf ? .12 : 0) + (d && d.gr ? .40 : 0);
   const g = Math.random() < chance ? rollDrop(NODE_TYPES[n.t]) : null;
-  if (n.left <= 0){ nodes.delete(nodeId); nodeRespawnAt.push(now + rand(20000, 40000)); }
+  if (n.left <= 0){ world.nodes.delete(nodeId); world.nodeRespawnAt.push(now + rand(20000, 40000)); }
   const payload = { n:nodeId, to:byId, x:n.x, y:n.y, g, left:Math.max(0, n.left) };
-  if (sendMined && hasPeers()) sendMined(payload);
+  if (world.sendMined && hasPeers()) world.sendMined(payload);
   minedFx(payload);   // Trystero does not echo — the host's own client applies it locally
   queueWorld();
 }
 /* Every client on 'mined': the rock shakes; the miner pockets the gem. */
 function minedFx(d){
   if (!d) return;
-  const n = nodes.get(d.n); if (n) n.shakeT = performance.now();
+  const n = world.nodes.get(d.n); if (n) n.shakeT = performance.now();
   if (d.to !== me.id) return;
   if (d.g && GEMS[d.g]){
     me.gems[d.g]++;
@@ -1566,10 +1597,10 @@ function minedFx(d){
   saveGame(); refreshHUD();
 }
 function worldPayload(){
-  const boss = [...slimes.values()].find(s=>s.kind==='boss');
-  return { s:[...slimes.values()].map(s=>[s.id, +s.x.toFixed(3), +s.y.toFixed(3), Math.ceil(s.hp), s.max, s.kind, s.color, +s.dir.toFixed(2), Math.round((s.mul||1)*100)/100, s.elite?1:0]),
-           n:[...nodes.values()].map(n=>[n.id, +n.x.toFixed(3), +n.y.toFixed(3), n.t, n.left]),
-           sc: scores, h: hostId,
+  const boss = [...world.slimes.values()].find(s=>s.kind==='boss');
+  return { s:[...world.slimes.values()].map(s=>[s.id, +s.x.toFixed(3), +s.y.toFixed(3), Math.ceil(s.hp), s.max, s.kind, s.color, +s.dir.toFixed(2), Math.round((s.mul||1)*100)/100, s.elite?1:0]),
+           n:[...world.nodes.values()].map(n=>[n.id, +n.x.toFixed(3), +n.y.toFixed(3), n.t, n.left]),
+           sc: world.scores, h: world.hostId,
            /* Emperor scaling block: clients evaluate orb + contact damage
               locally, so the scaled values (and the guard window, carried
               as ms REMAINING so no clock sync is needed) ride every payload */
@@ -1577,33 +1608,33 @@ function worldPayload(){
 }
 function applyWorld(p){
   if (!p || !Array.isArray(p.s)) return;
-  lastWorldAt = performance.now();
+  world.lastWorldAt = performance.now();
   const seen = new Set();
   for (const a of p.s){
     const [id,x,y,hp,max,kind,color,dir] = a; seen.add(id);
     const mul = a[8]!==undefined ? +a[8] : 1, elite = a[9]===1;   // appended fields (old payloads default safely)
-    const old = slimes.get(id);
+    const old = world.slimes.get(id);
     if (old){
       if (hp < old.hp){ old.squish=1; old.flash=1; old.flinchUntil=performance.now()+220; spawnHitFx(old.x,old.y,old.color,3); }
       old.tx=x; old.ty=y; old.hp=hp; old.dir=dir; old.mul=mul; old.elite=elite;
       const kk = SLIME_KINDS.find(m=>m.kind===old.kind); if (kk) old.r = kk.r * (elite?1.35:1);
     } else {
       const k = SLIME_KINDS.find(k=>k.kind===kind) || SLIME_KINDS[0];
-      slimes.set(id,{id,kind,hp,max,r:k.r*(elite?1.35:1),x,y,tx:x,ty:y,dir,color,seed:seedForId(id),squish:1,flash:0,mul,elite});
+      world.slimes.set(id,{id,kind,hp,max,r:k.r*(elite?1.35:1),x,y,tx:x,ty:y,dir,color,seed:seedForId(id),squish:1,flash:0,mul,elite});
     }
   }
-  for (const id of [...slimes.keys()]) if (!seen.has(id) && !isHost) slimes.delete(id);
+  for (const id of [...world.slimes.keys()]) if (!seen.has(id) && !world.isHost) world.slimes.delete(id);
   if (p.b){   // Emperor scaling + guard window land on the local boss object
-    const bs = [...slimes.values()].find(s=>s.kind==='boss');
+    const bs = [...world.slimes.values()].find(s=>s.kind==='boss');
     if (bs){ bs.bScale = +p.b.sc || 1; bs.bOrb = p.b.od || 12; bs.bCon = p.b.cd || 26; bs.guardUntil = performance.now() + (p.b.gu || 0); }
   }
-  if (p.sc) scores = p.sc;
+  if (p.sc) world.scores = p.sc;
   /* ore nodes ride the same payload: [id, x, y, typeIdx, chunksLeft] */
   if (Array.isArray(p.n)){
     const seenN = new Set();
     for (const a of p.n){
       const [id,x,y,t,left] = a; seenN.add(id);
-      const old = nodes.get(id);
+      const old = world.nodes.get(id);
       if (old){
         if (left < old.left){   // a chunk was lost — every client sees the rock shake AND a burst of stone chips
           old.shakeT = performance.now();
@@ -1611,12 +1642,12 @@ function applyWorld(p){
           capParticles();
         }
         old.x = x; old.y = y; old.t = t; old.left = left;
-      } else nodes.set(id, { id, x, y, t, r:.078, left, shakeT:0 });
+      } else world.nodes.set(id, { id, x, y, t, r:.078, left, shakeT:0 });
     }
-    if (!isHost) for (const [id, n] of [...nodes.entries()]) if (!seenN.has(id)){
+    if (!world.isHost) for (const [id, n] of [...world.nodes.entries()]) if (!seenN.has(id)){
       // a node that vanishes mid-life CRUMBLES (it was mined out)
       if (n.left > 0){ for (let i=0;i<14;i++) particles.push({ x:n.x+rand(-.04,.04), y:n.y+rand(-.04,.04), vx:rand(-.1,.1), vy:rand(-.14,.02), life:1, color:'#9aa0a3', r:rand(2,5) }); capParticles(); }
-      nodes.delete(id);
+      world.nodes.delete(id);
     }
   }
 }
@@ -1790,8 +1821,8 @@ function bubble(text,x,y,ms=1600){ const b=$('#bubble'); b.textContent=text; b.s
    (including the host's own) turns them into glowing orbs simulated locally.
    Bullets are never added to the world payload. */
 function spawnBullet(x,y,vx,vy,now){
-  bullets.push({ x, y, vx, vy, born:now, life:3000 });
-  if (bullets.length > 320) bullets.splice(0, bullets.length-320);   // global live-orb cap: cull the OLDEST first
+  world.bullets.push({ x, y, vx, vy, born:now, life:3000 });
+  if (world.bullets.length > 320) world.bullets.splice(0, world.bullets.length-320);   // global live-orb cap: cull the OLDEST first
 }
 function bossEvent(d){
   if (!d || typeof d.x!=='number' || typeof d.y!=='number') return;
@@ -1804,11 +1835,11 @@ function bossEvent(d){
     const aim = +d.aim || 0;
     for (let i=0;i<9;i++){ const a = aim + (i-4)*(1.0/8); spawnBullet(d.x, d.y, Math.cos(a)*.4*sm, Math.sin(a)*.4*sm, now); }
   } else if (d.p==='spiral'){
-    spiralEmitters.push({ until: now+2400, nextAt: now, ang: rand(0, Math.PI*2), sm });
+    world.spiralEmitters.push({ until: now+2400, nextAt: now, ang: rand(0, Math.PI*2), sm });
   } else if (d.p==='spread'){
-    pendingVolleys.push({ aim: +d.aim || 0, left: 3, nextAt: now, sm });
+    world.pendingVolleys.push({ aim: +d.aim || 0, left: 3, nextAt: now, sm });
   } else if (d.p==='burst'){
-    pendingBursts.push({ left: 3, nextAt: now, sm });   // volleys fired by the frame loop, aim re-picked per volley
+    world.pendingBursts.push({ left: 3, nextAt: now, sm });   // volleys fired by the frame loop, aim re-picked per volley
   } else if (d.p==='enrage'){
     notify('THE EMPEROR IS ENRAGED!', { type:'king' });
   } else if (d.p==='guard'){
@@ -1861,8 +1892,8 @@ function localHitCheck(now){
   if (me.lastHitAt.size > 400 && now - (localHitCheck._prune||0) > 4000){
     localHitCheck._prune = now;
     for (const k of me.lastHitAt.keys()){
-      if (typeof k === 'string' && k.startsWith('node:')){ if (!nodes.has(k.slice(5))) me.lastHitAt.delete(k); }
-      else if (!slimes.has(k)) me.lastHitAt.delete(k);
+      if (typeof k === 'string' && k.startsWith('node:')){ if (!world.nodes.has(k.slice(5))) me.lastHitAt.delete(k); }
+      else if (!world.slimes.has(k)) me.lastHitAt.delete(k);
     }
   }
   // blade = segment from hand (pointer) to tip along the sword's CURRENT
@@ -1886,7 +1917,7 @@ function localHitCheck(now){
     if (Math.abs(dA) > .02 && Math.abs(dA) < 1.4) testAngles = [me.prevSa, me.prevSa + dA/2, sa];
   }
   me.prevSa = sa;
-  for (const s of slimes.values()){
+  for (const s of world.slimes.values()){
     const last = me.lastHitAt.get(s.id)||0;
     if (now-last < myCd()) continue;
     const hit = testAngles.some(ang => segHit(s, ang));
@@ -1908,7 +1939,7 @@ function localHitCheck(now){
   }
   /* ---- mining: the same swept blade vs ore nodes (circle r .078).
      Only the PICKAXE sends a claim; any other weapon just CLINKs. ---- */
-  for (const n of nodes.values()){
+  for (const n of world.nodes.values()){
     const nk = 'node:'+n.id, nlast = me.lastHitAt.get(nk)||0;
     if (now - nlast < myCd()) continue;
     const hit = testAngles.some(ang => segHit(n, ang));
@@ -1919,8 +1950,8 @@ function localHitCheck(now){
       mineChips(n.x, n.y, 5);   // every connecting pickaxe swing sheds chips locally — mining reads as work, not just bookkeeping
       sfx.hit();
       const claim = { n:n.id, lv:wxpOf(6).lv, gf: unlocked.has('w62') ? 1 : 0, gr: now < me.gemRushUntil ? 1 : 0 };
-      if (isHost) hostMine(n.id, claim, me.id);
-      else if (sendMine) sendMine(claim);
+      if (world.isHost) hostMine(n.id, claim, me.id);
+      else if (world.sendMine) world.sendMine(claim);
     } else {
       addFloat(n.x, n.y-.09, 'CLINK', '#cfd8dc');
       if (now - lastPickToastAt > 3000){ lastPickToastAt = now; notify('You need the PICKAXE to mine ore — press 7'); }
@@ -1944,57 +1975,57 @@ function doHit(s, dmg, opts={}){
   else hitPool.play();
   spawnHitFx(s.x,s.y,s.color,4);
   dmgFloat(s.x+rand(-.01,.01), s.y-s.r-.015, dmg, !!opts.crit);   // ISW glyph damage number
-  if (isHost) hostApplyHit(s.id, dmg, me.id);
-  else if (sendHit) sendHit({ id:s.id, d:dmg });
+  if (world.isHost) hostApplyHit(s.id, dmg, me.id);
+  else if (world.sendHit) world.sendHit({ id:s.id, d:dmg });
   let treeSplash = 0;
   if (wHas(1,'w12')) treeSplash += .04;   // Sword tree: Sweeping Arc
   if (wHas(4,'w41')) treeSplash += .04;   // Greatsword tree: Wider Cleave
   if (wHas(5,'w52')) treeSplash += .03;   // Warhammer tree: Shockwave
   const spR = Math.max(S.splash, (myWeapon().splash||0) + treeSplash);   // swing weapons splash natively; passive + tree add more
   if (!opts.noSplash && spR>0){
-    for (const o of slimes.values())
+    for (const o of world.slimes.values())
       if (o!==s && dist2(o.x,o.y,s.x,s.y) < spR*spR)
-        setTimeout(()=>{ if (slimes.get(o.id)===o) doHit(o, Math.max(1,Math.ceil(dmg*.5)), {noSplash:true}); }, 40);
+        setTimeout(()=>{ if (world.slimes.get(o.id)===o) doHit(o, Math.max(1,Math.ceil(dmg*.5)), {noSplash:true}); }, 40);
   }
   if (!opts.noDouble && S.double>0 && Math.random()<S.double){
-    setTimeout(()=>{ if (slimes.get(s.id)===s) doHit(s, Math.max(1,Math.ceil(dmg*.6)), {noSplash:true, noDouble:true}); }, 100);
+    setTimeout(()=>{ if (world.slimes.get(s.id)===s) doHit(s, Math.max(1,Math.ceil(dmg*.6)), {noSplash:true, noDouble:true}); }, 100);
   }
 }
 function hostApplyHit(slimeId, dmg, byId){
-  const s = slimes.get(slimeId); if (!s) return;
+  const s = world.slimes.get(slimeId); if (!s) return;
   const now = performance.now();
   if (s.kind==='boss' && now < (s.guardUntil||0)) return;   // ROYAL GUARD: the Emperor is invulnerable — every claim bounces off the shield
-  const key = byId+':'+slimeId, last = hitClaimsAt.get(key)||0;
+  const key = byId+':'+slimeId, last = world.hitClaimsAt.get(key)||0;
   if (now-last < 60) return;                       // host anti-spam
-  hitClaimsAt.set(key, now);
+  world.hitClaimsAt.set(key, now);
   dmg = (typeof dmg === 'number') ? Math.round(dmg) : NaN;   // NO damage cap (Handler: 'No cap') — the full claimed damage lands
   if (!Number.isFinite(dmg) || dmg <= 0) return;              // sanitise: NaN / Infinity / zero / negative claims do no damage
   if (s.kind==='metal') dmg = 1;                   // METAL SLIME: host enforces the 1-damage rule on every claim too
   s.hp -= dmg; s.squish=1; s.flash=1; s.flinchUntil = performance.now()+220;
   // splash (warhammer)
-  const w = byId===me.id ? myWeapon() : WEAPONS.find(w=>w.id===(peers.get(byId)?.weaponId)) || WEAPONS[1];
+  const w = byId===me.id ? myWeapon() : WEAPONS.find(w=>w.id===(world.peers.get(byId)?.weaponId)) || WEAPONS[1];
   const splashDead = [];
-  if (w.splash){ for (const o of slimes.values()) if (o!==s && dist2(o.x,o.y,s.x,s.y) < w.splash*w.splash){ if (o.kind==='boss' && now < (o.guardUntil||0)) continue; o.hp -= o.kind==='metal' ? 1 : Math.ceil(dmg*.5); if (o.hp <= 0) splashDead.push(o); } }
+  if (w.splash){ for (const o of world.slimes.values()) if (o!==s && dist2(o.x,o.y,s.x,s.y) < w.splash*w.splash){ if (o.kind==='boss' && now < (o.guardUntil||0)) continue; o.hp -= o.kind==='metal' ? 1 : Math.ceil(dmg*.5); if (o.hp <= 0) splashDead.push(o); } }
   if (s.hp<=0) hostKill(s, byId);
   else queueWorld();
   /* splash can KILL: a neighbour taken to <=0 HP by the splash used to stay
      in the world as a 0-HP zombie (shown, hittable, contact-damaging)
      until some later hit happened to land on it. It dies now, credited to
      the hitter, through the same hostKill path as a direct kill. */
-  for (const o of splashDead) if (slimes.get(o.id) === o) hostKill(o, byId);
+  for (const o of splashDead) if (world.slimes.get(o.id) === o) hostKill(o, byId);
 }
 function hostKill(s, byId){
-  slimes.delete(s.id);
-  if (s.kind==='boss'){ bossSpawnAt = performance.now() + 240000; bossEnraged = false; bossFury = false; bossSummonAt = 0; }   // next Emperor 240s after the KILL; enrage/fury/summon state dies with him
+  world.slimes.delete(s.id);
+  if (s.kind==='boss'){ world.bossSpawnAt = performance.now() + 240000; world.bossEnraged = false; world.bossFury = false; world.bossSummonAt = 0; }   // next Emperor 240s after the KILL; enrage/fury/summon state dies with him
   // (a metal KILL deliberately does not touch lastMetalAt — the guarantee
   // clock moves only when a metal ENTERS the world; see hostTick)
   const k = SLIME_KINDS.find(k=>k.kind===s.kind);
   let coins = Math.round(k.coins * (s.mul||1)), xp = Math.round(k.xp * (s.mul||1));   // zone/elite reward scaling
   if (s.kind==='boss'){ const bs = s.bScale || 1; coins = Math.round(coins * bs); xp = Math.round(xp * bs); }   // a scaled Emperor pays scaled
-  scores[byId] = scores[byId] || { name: byId===me.id?me.name:(peers.get(byId)?.name||'Knight'), kills:0 };
-  scores[byId].kills++;
+  world.scores[byId] = world.scores[byId] || { name: byId===me.id?me.name:(world.peers.get(byId)?.name||'Knight'), kills:0 };
+  world.scores[byId].kills++;
   const fx = { id:s.id, x:s.x, y:s.y, c:s.color, by:byId, coins, xp, kind:s.kind, elite:!!s.elite, r:s.r };
-  if (sendKillFx && hasPeers()) sendKillFx(fx);
+  if (world.sendKillFx && hasPeers()) world.sendKillFx(fx);
   onKillFx(fx);
   if (s.kind==='splitter'){   // bursts into two babies where it died
     spawnSlime({ kind:'baby', x:clamp(s.x+rand(-.04,.04), .06, WORLD-.06), y:clamp(s.y+rand(-.04,.04), .1, WORLD-.06) });
@@ -2087,7 +2118,7 @@ function gainXp(n){
 /* The Emperor's scaled orb damage for THIS client: read off the local
    boss object (host sets it at spawn; clients get it from the world
    payload's boss block). Falls back to the unscaled 12 with no boss. */
-function bossOrbDmg(){ const b = [...slimes.values()].find(s=>s.kind==='boss'); return b ? (b.bOrb || 12) : 12; }
+function bossOrbDmg(){ const b = [...world.slimes.values()].find(s=>s.kind==='boss'); return b ? (b.bOrb || 12) : 12; }
 /* FLAT red damage screen — no vignette, no circle (Handler). Two layers
    summed into one solid rgba on #dmgFlash:
    - per-hit flash: alpha .22 the moment damagePlayer lands a hit,
@@ -2410,7 +2441,7 @@ function useItem(id){
     popRings.push({ x:me.x, y:me.y, r:.05, life:1, color:'#ffb52e' });
     spawnHitFx(me.x, me.y, '#ffb52e', 24);
     sfx.pop();
-    for (const s of [...slimes.values()])
+    for (const s of [...world.slimes.values()])
       if (dist2(s.x,s.y,me.x,me.y) < .38*.38) doHit(s, 150);   // normal claim flow — host still validates/caps
   }
   if (id==='shield'){
@@ -2425,43 +2456,41 @@ function useItem(id){
 
 /* ============================================================ networking */
 function electHost(){
-  const ids = [me.id, ...peers.keys()].sort();
+  const ids = [me.id, ...world.peers.keys()].sort();
   const newHost = ids[0];
-  const wasHost = isHost;
-  hostId = newHost; isHost = (newHost===me.id);
-  if (isHost && !wasHost){
+  const wasHost = world.isHost;
+  world.hostId = newHost; world.isHost = (newHost===me.id);
+  if (world.isHost && !wasHost){
     // adopt current world (host migration) or start fresh
-    if (slimes.size===0){ for(let i=0;i<50;i++) spawnSlime(); }
-    for (const s of slimes.values()){ s.tx=undefined; }
+    if (world.slimes.size===0){ for(let i=0;i<50;i++) spawnSlime(); }
+    for (const s of world.slimes.values()){ s.tx=undefined; }
     broadcastWorld();
-    if (started) notify(peers.size ? 'You are now the WORLD HOST' : 'Solo world — invite friends!', { ms:1800 });
+    if (started) notify(world.peers.size ? 'You are now the WORLD HOST' : 'Solo world — invite friends!', { ms:1800 });
   }
 }
-let worldTimer=null;
 /* NO PEERS, NO PAYLOAD. Trystero's send() JSON-stringifies, encodes and
    chunks the data BEFORE it looks for peers (trystero 0.21.6 room.js
    send), and worldPayload() itself walks every slime through toFixed —
    so a solo host paid a full ~8KB world serialise on EVERY hit, every
    kill and every 220ms, for nobody. Every outbound send now checks for
    a peer first. */
-const hasPeers = () => peers.size > 0;
-function broadcastWorld(){ if (isHost && sendWorld && hasPeers()) sendWorld(worldPayload()); }
+const hasPeers = () => world.peers.size > 0;
+function broadcastWorld(){ if (world.isHost && world.sendWorld && hasPeers()) world.sendWorld(worldPayload()); }
 /* Hit/kill/mine paths used to broadcast the whole world SYNCHRONOUSLY per
    claim — a splash swing that touched 6 slimes built and sent 6+ full
    payloads inside one frame. They now mark the world dirty; hostTick
    flushes ONE payload at the end of the frame (<= one frame of latency;
    the 220ms heartbeat is unchanged). */
-let worldDirty = false;
-function queueWorld(){ worldDirty = true; }
-function flushWorld(){ if (worldDirty){ worldDirty = false; broadcastWorld(); } }
+function queueWorld(){ world.worldDirty = true; }
+function flushWorld(){ if (world.worldDirty){ world.worldDirty = false; broadcastWorld(); } }
 function startBroadcastLoop(){
-  clearInterval(worldTimer);
-  worldTimer = setInterval(()=>{ if (isHost) broadcastWorld(); }, 220);
+  clearInterval(world.worldTimer);
+  world.worldTimer = setInterval(()=>{ if (world.isHost) broadcastWorld(); }, 220);
 }
 function joinWorld(roomCode){
   // Explicit big relays: Trystero's built-in default list is small/obscure relays,
   // several dead — with appId-seeded selection that silently killed peer discovery.
-  room = joinRoom({ appId:'slime-slash-poc-v1', relayUrls:[
+  world.room = joinRoom({ appId:'slime-slash-poc-v1', relayUrls:[
     'wss://relay.damus.io','wss://nos.lol','wss://relay.primal.net','wss://purplepag.es',
     'wss://relay.nostr.band','wss://nostr.wine','wss://relay.snort.social','wss://offchain.pub',
     'wss://relay.current.fyi','wss://nostr.mom'
@@ -2472,37 +2501,37 @@ function joinWorld(roomCode){
     { urls:'turn:openrelay.metered.ca:443', username:'openrelayproject', credential:'openrelayproject' },
     { urls:'turns:openrelay.metered.ca:443?transport=tcp', username:'openrelayproject', credential:'openrelayproject' },
   ] } }, roomCode);
-  room.onPeerJoin(id=>{ peers.set(id,{x:.5,y:.5,tx:.5,ty:.5,angle:0,name:'Knight',color:`hsl(${hashHue(id)} 80% 60%)`,weapon:1,level:1,trail:[],lastSeen:performance.now()}); electHost(); if(isHost) setTimeout(broadcastWorld,300); refreshPeers(); });
-  room.onPeerLeave(id=>{ peers.delete(id); delete scores[id]; electHost(); refreshPeers(); });
+  world.room.onPeerJoin(id=>{ world.peers.set(id,{x:.5,y:.5,tx:.5,ty:.5,angle:0,name:'Knight',color:`hsl(${hashHue(id)} 80% 60%)`,weapon:1,level:1,trail:[],lastSeen:performance.now()}); electHost(); if(world.isHost) setTimeout(broadcastWorld,300); refreshPeers(); });
+  world.room.onPeerLeave(id=>{ world.peers.delete(id); delete world.scores[id]; electHost(); refreshPeers(); });
 
-  const [sendP, onP] = room.makeAction('pos');  sendPos = sendP;
-  onP((d,id)=>{ const p=peers.get(id); if(!p||!d) return;
+  const [sendP, onP] = world.room.makeAction('pos');  world.sendPos = sendP;
+  onP((d,id)=>{ const p=world.peers.get(id); if(!p||!d) return;
     if (typeof d.x!=='number'||typeof d.y!=='number') return;
     p.tx=clamp(d.x,0,WORLD); p.ty=clamp(d.y,0,WORLD); p.angle=+d.a||0; p.ext=+d.e||0; p.weapon=clamp(d.w|0,0,WEAPONS.length-1); p.weaponId=WEAPONS[p.weapon].id;
     if (d.n) p.name=cleanName(d.n); if (d.c) p.color=String(d.c).slice(0,32);
     p.whirling = !!d.s; p.lastSeen=performance.now();
     if (typeof d.l==='number') p.level = clamp(d.l|0, 1, 999);   // peer level rides the pos payload — the host scales the Emperor to the strongest player present
-    if (scores[id]) scores[id].name=p.name;
+    if (world.scores[id]) world.scores[id].name=p.name;
   });
-  const [sendH, onH] = room.makeAction('hit'); sendHit = sendH;
-  onH((d,id)=>{ if (isHost && d && typeof d.id==='string') hostApplyHit(d.id, d.d, id); });
-  const [sendW, onW] = room.makeAction('wrld'); sendWorld = sendW;
-  onW((d,id)=>{ if (id===hostId || !hostId) applyWorld(d); else if (!isHost) applyWorld(d); });
-  const [sendK, onK] = room.makeAction('kill'); sendKillFx = sendK;
+  const [sendH, onH] = world.room.makeAction('hit'); world.sendHit = sendH;
+  onH((d,id)=>{ if (world.isHost && d && typeof d.id==='string') hostApplyHit(d.id, d.d, id); });
+  const [sendW, onW] = world.room.makeAction('wrld'); world.sendWorld = sendW;
+  onW((d,id)=>{ if (id===world.hostId || !world.hostId) applyWorld(d); else if (!world.isHost) applyWorld(d); });
+  const [sendK, onK] = world.room.makeAction('kill'); world.sendKillFx = sendK;
   onK(f=>{ if (f && typeof f.x==='number') onKillFx(f); });
-  const [sendB, onB] = room.makeAction('boss'); sendBoss = sendB;
+  const [sendB, onB] = world.room.makeAction('boss'); world.sendBoss = sendB;
   onB(d=>{ if (d) bossEvent(d); });
-  const [sendMn, onMn] = room.makeAction('mine'); sendMine = sendMn;
-  onMn((d,id)=>{ if (isHost && d && typeof d.n==='string') hostMine(d.n, d, id); });
-  const [sendMd, onMd] = room.makeAction('mined'); sendMined = sendMd;
+  const [sendMn, onMn] = world.room.makeAction('mine'); world.sendMine = sendMn;
+  onMn((d,id)=>{ if (world.isHost && d && typeof d.n==='string') hostMine(d.n, d, id); });
+  const [sendMd, onMd] = world.room.makeAction('mined'); world.sendMined = sendMd;
   onMd(d=>{ if (d) minedFx(d); });
 
-  joinedAt = performance.now();
+  world.joinedAt = performance.now();
   electHost(); startBroadcastLoop();
   setTimeout(refreshPeers, 15500);
 }
 setInterval(()=>{ // sword state @ ~20Hz
-  if (started && sendPos && hasPeers()){ const bl = bladeAt(performance.now()); sendPos({ x:+me.x.toFixed(3), y:+me.y.toFixed(3), a:+bl.ang.toFixed(2), e:+bl.ext.toFixed(2), w:me.weapon, n:me.name, c:me.color, s: performance.now()<me.whirlUntil, l: me.level }); }
+  if (started && world.sendPos && hasPeers()){ const bl = bladeAt(performance.now()); world.sendPos({ x:+me.x.toFixed(3), y:+me.y.toFixed(3), a:+bl.ang.toFixed(2), e:+bl.ext.toFixed(2), w:me.weapon, n:me.name, c:me.color, s: performance.now()<me.whirlUntil, l: me.level }); }
 }, 50);
 
 /* ============================================================ input */
@@ -2647,7 +2676,7 @@ function refreshHUD(){
   }
   // scoreboard — my own row always shows LIVE me.kills/me.name (local kills are
   // credited in a path that does not write into scores, so the table lagged)
-  const sEntries = Object.entries(scores);
+  const sEntries = Object.entries(world.scores);
   if (!sEntries.some(([id])=>id===me.id)) sEntries.push([me.id, { name:me.name, kills:me.kills }]);
   const rows = sEntries
     .map(([id,s])=> id===me.id ? [id, { name:me.name, kills:me.kills }] : [id, s])
@@ -2676,10 +2705,9 @@ function refreshHUD(){
   const _svNow = performance.now();
   if (_svNow - (refreshHUD._sv||0) > 2500){ refreshHUD._sv = _svNow; saveGame(); }
 }
-let joinedAt = 0;
 function refreshPeers(){
-  const n = peers.size;
-  const connecting = joinedAt && performance.now()-joinedAt<15000;
+  const n = world.peers.size;
+  const connecting = world.joinedAt && performance.now()-world.joinedAt<15000;
   // HUD badge: compact state ONLY (dot + 'Solo' / 'N online'); the long
   // string lives in the menu's MORE tab, next to the INVITE LINK button
   $('#peers').textContent = n===0 ? (connecting ? 'Connecting…' : 'Solo') : (n+1)+' online';
@@ -3329,10 +3357,10 @@ function updateBountyUI(){
 function scanKings(){
   if (!started) return;
   const fresh = performance.now() - startedAt >= 3000;   // never banner in the first 3s after PLAY
-  for (const s of slimes.values()){
+  for (const s of world.slimes.values()){
     if (s.kind==='boss' && !seenBosses.has(s.id) && fresh){ seenBosses.add(s.id); notify('THE SLIME EMPEROR HAS AWAKENED!', { type:'king' }); }
   }
-  for (const id of [...seenBosses]) if (!slimes.has(id)) seenBosses.delete(id);
+  for (const id of [...seenBosses]) if (!world.slimes.has(id)) seenBosses.delete(id);
 }
 /* zone toast: fires when the PLAYER crosses into a different ring */
 function checkZone(){
@@ -3377,7 +3405,7 @@ function resetRun(){
   $('#bankPanel').classList.add('hidden'); $('#shopPanel').classList.add('hidden'); $('#hospitalPanel').classList.add('hidden'); closeMenu();
   unlocked.clear(); recalc();   // one shared set: branch, weapon-path and cross nodes all reset
   combo=0; comboUntil=0; updateComboBadge(false);
-  if (scores[me.id]) scores[me.id].kills = 0;
+  if (world.scores[me.id]) world.scores[me.id].kills = 0;
   hintsSeen = { slash:false, skill:false, sphere:false };
   try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
   rollBounty();
@@ -3476,12 +3504,12 @@ function drawMinimap(){
   g.fillStyle = '#e5484d'; g.fillRect(SHOP_POS.x*S2-2.5, SHOP_POS.y*S2-2.5, 5, 5);
   g.fillStyle = '#ffffff'; g.fillRect(HOSPITAL_POS.x*S2-2.5, HOSPITAL_POS.y*S2-2.5, 5, 5);
   g.fillStyle = '#e5484d'; g.beginPath(); g.arc(HOSPITAL_POS.x*S2, HOSPITAL_POS.y*S2, 1.4, 0, 7); g.fill();
-  for (const s of slimes.values()){
+  for (const s of world.slimes.values()){
     g.fillStyle = (s.kind==='king' || s.kind==='boss') ? '#ffd94d' : s.kind==='metal' ? '#c3ced4' : 'rgba(30,90,20,.55)';
     g.beginPath(); g.arc(s.x*S2, s.y*S2, s.kind==='boss'?6 : s.kind==='king'?4.5 : s.kind==='metal'?4:2, 0, 7); g.fill();
     if (s.kind==='metal'){ g.strokeStyle = '#ffffff'; g.lineWidth = 1.5; g.beginPath(); g.arc(s.x*S2, s.y*S2, 4, 0, 7); g.stroke(); }   // silver dot, white halo — the old r3 pale dot was camouflage among 80 green dots
   }
-  for (const p of peers.values()){ g.fillStyle = '#4dabff'; g.beginPath(); g.arc(p.x*S2, p.y*S2, 3, 0, 7); g.fill(); }
+  for (const p of world.peers.values()){ g.fillStyle = '#4dabff'; g.beginPath(); g.arc(p.x*S2, p.y*S2, 3, 0, 7); g.fill(); }
   g.fillStyle = '#fff'; g.strokeStyle = '#5b3a1e'; g.lineWidth = 2;
   g.beginPath(); g.arc(me.x*S2, me.y*S2, 4, 0, 7); g.fill(); g.stroke();
 }
@@ -3519,7 +3547,7 @@ function tickActives(now, dt){
   waves = waves.filter(w => now - w.t0 < (w.life||780));
   for (const w of waves){
     w.x += Math.cos(w.ang)*dt*(w.spd||.00042); w.y += Math.sin(w.ang)*dt*(w.spd||.00042);
-    for (const s of slimes.values()){
+    for (const s of world.slimes.values()){
       if (w.hit.has(s.id)) continue;
       if (dist2(w.x,w.y,s.x,s.y) < (s.r+.035)**2){ w.hit.add(s.id); doHit(s, Math.round(myDamage()*(w.dmgMul||1.2))); }
     }
@@ -3545,7 +3573,7 @@ function tickActives(now, dt){
       m.boomed = true; sfx.pop();
       popRings.push({ x:m.x, y:m.y, r:.02, life:1, color:'#ff8a5e' });
       spawnHitFx(m.x, m.y, '#ffb52e', 16);
-      for (const s of [...slimes.values()])
+      for (const s of [...world.slimes.values()])
         if (dist2(m.x,m.y,s.x,s.y) < (.13+s.r)**2) doHit(s, 70 + myDamage());
     }
   }
@@ -3582,7 +3610,7 @@ function castWeaponSkill(){
     for (let i=0;i<=8;i++) particles.push({ x:x0+(x1-x0)*i/8, y:y0+(y1-y0)*i/8, vx:rand(-.03,.03), vy:rand(-.03,.03), life:1, color:wcol, r:rand(2,5) });
     capParticles();
     const dx = x1-x0, dy = y1-y0, L2 = dx*dx + dy*dy || 1e-6;
-    for (const s of [...slimes.values()]){
+    for (const s of [...world.slimes.values()]){
       const t = clamp(((s.x-x0)*dx + (s.y-y0)*dy)/L2, 0, 1);
       if (dist2(x0+dx*t, y0+dy*t, s.x, s.y) < .13*.13) doHit(s, Math.round(dmg*3));
     }
@@ -3592,7 +3620,7 @@ function castWeaponSkill(){
     beep(200,.15,'sawtooth',.08,600);
   } else if (me.weapon===1){   // SWORD — WHIRLWIND
     const R = myReach()*1.6;
-    for (const s of [...slimes.values()]) if (dist2(s.x,s.y,me.x,me.y) < R*R) doHit(s, Math.round(dmg*1.6));
+    for (const s of [...world.slimes.values()]) if (dist2(s.x,s.y,me.x,me.y) < R*R) doHit(s, Math.round(dmg*1.6));
     popRings.push({ x:me.x, y:me.y, r:myReach(), life:1, color:wcol });
     me.whirlUntil = now + 260;   // the sword spins for the WHIRLWIND render (peers see it via the pos s flag)
     sfx.whirl();
@@ -3603,14 +3631,14 @@ function castWeaponSkill(){
     shots.push({ x:me.x, y:me.y, vx:Math.cos(ang)*1.8, vy:Math.sin(ang)*1.8, dmg:Math.round(dmg*2.5), until:now+900, hitSet:new Set(), sparkAt:0 });
     beep(500,.12,'triangle',.08,300);
   } else if (me.weapon===4){   // GREATSWORD — EARTHSHAKER
-    for (const s of [...slimes.values()]) if (dist2(s.x,s.y,me.x,me.y) < .30*.30) doHit(s, Math.round(dmg*2.2));
+    for (const s of [...world.slimes.values()]) if (dist2(s.x,s.y,me.x,me.y) < .30*.30) doHit(s, Math.round(dmg*2.2));
     popRings.push({ x:me.x, y:me.y, r:.30, life:1, color:wcol });
     spawnHitFx(me.x, me.y, wcol, 30);
     sfx.pop();
   } else if (me.weapon===5){   // WARHAMMER — THUNDER SMASH at the sword tip
     const bl = bladeAt(now), reach = myReach() * (1 + bl.ext);
     const tx = me.x + Math.cos(bl.ang)*reach, ty = me.y + Math.sin(bl.ang)*reach;
-    for (const s of [...slimes.values()]) if (dist2(s.x,s.y,tx,ty) < .24*.24) doHit(s, Math.round(dmg*3));
+    for (const s of [...world.slimes.values()]) if (dist2(s.x,s.y,tx,ty) < .24*.24) doHit(s, Math.round(dmg*3));
     popRings.push({ x:tx, y:ty, r:.05, life:1, color:'#ffe082' });
     spawnPopFx(tx, ty, '#ffe082', 18, .02);
     beep(120,.2,'square',.1,40); setTimeout(()=>beep(880,.12,'square',.06,-200), 30);
@@ -4643,21 +4671,21 @@ function drawEntities(t){
      motes and the Emperor's 1.3x aura + name plate) touches the view are
      drawn now. Off-screen draws were invisible, so nothing on screen changes. */
   const vis = [];
-  for (const s of slimes.values()){
+  for (const s of world.slimes.values()){
     const m = s.r*4 + .3;
     if (s.x < cam.x-m || s.x > cam.x+vw+m || s.y < cam.y-m || s.y > cam.y+vh+m) continue;
     vis.push(s);
     ents.push({ baseY:s.y + s.r*.8, kind:'slime', s });
   }
   // ore nodes join the same depth order at their base (y + .07)
-  for (const n of nodes.values()){
+  for (const n of world.nodes.values()){
     if (n.x<cam.x-.55 || n.x>cam.x+vw+.55 || n.y<cam.y-.55 || n.y>cam.y+vh+.55) continue;   // view-culled like decor
     ents.push({ baseY:n.y + .07, kind:'node', n });
   }
   /* Boss orbs join the SAME y-sort (base = orb centre + its radius), so a
      tree or building in front of an orb occludes it exactly like a slime —
      orbs used to draw after the whole pass and floated over canopies. */
-  for (const b of bullets){
+  for (const b of world.bullets){
     if (b.x<cam.x-.1 || b.x>cam.x+vw+.1 || b.y<cam.y-.1 || b.y>cam.y+vh+.1) continue;   // view-culled
     ents.push({ baseY:b.y + .02, kind:'orb', b });
   }
@@ -4719,7 +4747,7 @@ function ghostHits(s, occluders, g){
    intersection of the two boxes. No HP bar / marks -- just the body. */
 function drawGhosts(t, occluders, list){
   const u = UNIT(), vw = W/u, vh = H/u;
-  for (const s of (list || slimes.values())){
+  for (const s of (list || world.slimes.values())){
     const baseR = s.r * SCALE() * (s.kind==='boss' ? 1.3 : 1);   // match drawSlime's visual radius (Emperor 1.3x)
     const g = slimeSpriteGeom(s, t, baseR);
     if (!g) continue;                            // vector-fallback slimes have no sprite to ghost
@@ -4816,7 +4844,7 @@ let lastT=performance.now(), posSendAcc=0;
    emitter per frame — during the boss fight, the heaviest moment). */
 var _bossT = -1, _bossS = null;   // var: refreshHUD (defined above) may call bossAt before this line runs
 function bossAt(now){
-  if (now !== _bossT){ _bossT = now; _bossS = null; for (const s of slimes.values()) if (s.kind==='boss'){ _bossS = s; break; } }
+  if (now !== _bossT){ _bossT = now; _bossS = null; for (const s of world.slimes.values()) if (s.kind==='boss'){ _bossS = s; break; } }
   return _bossS;
 }
 /* Screen-edge arrow for the GUARANTEED metal: while it lives and is
@@ -4828,7 +4856,7 @@ function bossAt(now){
 function drawMetalArrow(now){
   if (!started) return;
   let m = null;
-  for (const s of slimes.values()) if (s.kind==='metal' && s.guaranteed){ m = s; break; }
+  for (const s of world.slimes.values()) if (s.kind==='metal' && s.guaranteed){ m = s; break; }
   if (!m) return;
   const u = UNIT(), vw = W/u, vh = H/u;
   if (m.x >= cam.x && m.x <= cam.x + vw && m.y >= cam.y && m.y <= cam.y + vh) return;   // on screen: the slime itself is the marker
@@ -4863,30 +4891,30 @@ function frame(now){
   // .35/frame lerp converged twice as fast at 120Hz; rescaled by elapsed
   // time so it feels identical at any refresh (and freezes when paused)
   const interpK = 1 - Math.pow(.65, dt/16.667);
-  for (const s of slimes.values()){
-    if (!isHost && s.tx!==undefined){ s.x += (s.tx-s.x)*interpK; s.y += (s.ty-s.y)*interpK; s.squish=Math.max(0,s.squish-dt/160); s.flash=Math.max(0,s.flash-dt/120); }
+  for (const s of world.slimes.values()){
+    if (!world.isHost && s.tx!==undefined){ s.x += (s.tx-s.x)*interpK; s.y += (s.ty-s.y)*interpK; s.squish=Math.max(0,s.squish-dt/160); s.flash=Math.max(0,s.flash-dt/120); }
   }
-  if (isHost && started){ hostTick(now,dt); flushWorld(); }   // at most ONE coalesced world payload per frame (see queueWorld)
+  if (world.isHost && started){ hostTick(now,dt); flushWorld(); }   // at most ONE coalesced world payload per frame (see queueWorld)
   if (started && !paused) localHitCheck(now);
 
   /* ---- survival (ALL local — HP is never networked): slime contact damage,
      boss bullet hits, spiral emitters, out-of-combat regen ---- */
   if (started && !paused){
     if (now > me.invulnUntil){
-      for (const s of slimes.values()){
+      for (const s of world.slimes.values()){
         const rr = s.r + .022;
         if (dist2(me.x,me.y,s.x,s.y) < rr*rr){ damagePlayer(s.kind==='boss' ? (s.bCon || CONTACT_DMG.boss) : (CONTACT_DMG[s.kind]||6), now); break; }
       }
     }
-    for (let i=bullets.length-1;i>=0;i--){
-      const b = bullets[i];
+    for (let i=world.bullets.length-1;i>=0;i--){
+      const b = world.bullets[i];
       b.x += b.vx*dt/1000; b.y += b.vy*dt/1000;
-      if (now-b.born > b.life || b.x<-.1 || b.y<-.1 || b.x>WORLD+.1 || b.y>WORLD+.1){ bullets.splice(i,1); continue; }
-      if (now > me.invulnUntil && dist2(b.x,b.y,me.x,me.y) < .032*.032){ bullets.splice(i,1); damagePlayer(bossOrbDmg(), now); }
+      if (now-b.born > b.life || b.x<-.1 || b.y<-.1 || b.x>WORLD+.1 || b.y>WORLD+.1){ world.bullets.splice(i,1); continue; }
+      if (now > me.invulnUntil && dist2(b.x,b.y,me.x,me.y) < .032*.032){ world.bullets.splice(i,1); damagePlayer(bossOrbDmg(), now); }
     }
-    for (let i=spiralEmitters.length-1;i>=0;i--){
-      const em = spiralEmitters[i];
-      if (now >= em.until){ spiralEmitters.splice(i,1); continue; }
+    for (let i=world.spiralEmitters.length-1;i>=0;i--){
+      const em = world.spiralEmitters[i];
+      if (now >= em.until){ world.spiralEmitters.splice(i,1); continue; }
       if (em.nextAt < now-450) em.nextAt = now;   // never burst-spawn a backlog after a stall
       const bossS = bossAt(now);   // memoised per frame: was a 120-slime array spread per emitter per frame
       while (em.nextAt <= now){
@@ -4899,16 +4927,16 @@ function frame(now){
         }
       }
     }
-    for (let i=pendingVolleys.length-1;i>=0;i--){
-      const v = pendingVolleys[i];
+    for (let i=world.pendingVolleys.length-1;i>=0;i--){
+      const v = world.pendingVolleys[i];
       if (now < v.nextAt) continue;
       v.nextAt = now + 170; v.left--;
       const bossS = bossAt(now);   // memoised per frame: was a 120-slime array spread per emitter per frame
       if (bossS) for (let k=0;k<4;k++){ const a = v.aim + (k-1.5)*.18; spawnBullet(bossS.x, bossS.y, Math.cos(a)*.42*(v.sm||1), Math.sin(a)*.42*(v.sm||1), now); }
-      if (v.left<=0) pendingVolleys.splice(i,1);
+      if (v.left<=0) world.pendingVolleys.splice(i,1);
     }
-    for (let i=pendingBursts.length-1;i>=0;i--){
-      const bst = pendingBursts[i];
+    for (let i=world.pendingBursts.length-1;i>=0;i--){
+      const bst = world.pendingBursts[i];
       if (now < bst.nextAt) continue;
       bst.nextAt = now + 160; bst.left--;
       const bossS = bossAt(now);   // memoised per frame: was a 120-slime array spread per emitter per frame
@@ -4916,7 +4944,7 @@ function frame(now){
         // AIMED BURST: target re-picked at VOLLEY time from this client's
         // replicated player positions, so the shot tracks a moving player
         let tx=me.x, ty=me.y, td=dist2(bossS.x,bossS.y,me.x,me.y);
-        for (const pp of peers.values()){
+        for (const pp of world.peers.values()){
           const px=(pp.tx!==undefined?pp.tx:pp.x), py=(pp.ty!==undefined?pp.ty:pp.y);
           const dd=dist2(bossS.x,bossS.y,px,py);
           if (dd<td){ td=dd; tx=px; ty=py; }
@@ -4924,14 +4952,14 @@ function frame(now){
         const a = Math.atan2(ty-bossS.y, tx-bossS.x), sp = .55 * (bst.sm || 1);
         spawnBullet(bossS.x, bossS.y, Math.cos(a)*sp, Math.sin(a)*sp, now);
       }
-      if (bst.left<=0) pendingBursts.splice(i,1);
+      if (bst.left<=0) world.pendingBursts.splice(i,1);
     }
     // metal slimes shed silver sparkles every ~90ms while alive, at
     // pop-burst particle scale (r 3-6) — the old r2-4 sparkles at 120ms
     // were never once noticed in playtests. The guaranteed metal sheds
     // an extra, larger sparkle while it sits in its spawn-in freeze.
     // (client-local: every client sparkles the metals it can see)
-    for (const s of slimes.values()){
+    for (const s of world.slimes.values()){
       if (s.kind!=='metal' || now < (s._sparkAt||0)) continue;
       s._sparkAt = now + 90;
       particles.push({ x:s.x+rand(-s.r,s.r), y:s.y+rand(-s.r,s.r), vx:rand(-.02,.02), vy:rand(-.05,-.01), life:1, color:'#eef3f7', r:rand(3,6) });
@@ -4951,7 +4979,7 @@ function frame(now){
         particles.push({ x:sh.x, y:sh.y, vx:rand(-.04,.04), vy:rand(-.04,.04), life:1, color:'#ffd94d', r:rand(2.5,5) });
         capParticles();
       }
-      for (const s of slimes.values()){
+      for (const s of world.slimes.values()){
         if (sh.hitSet.has(s.id)) continue;
         if (dist2(sh.x,sh.y,s.x,s.y) < .05*.05){ sh.hitSet.add(s.id); doHit(s, sh.dmg); }
       }
@@ -5026,7 +5054,7 @@ function frame(now){
 
   // other players' swords (interpolation rescaled by dt like the slimes')
   const peerK = 1 - Math.pow(.6, dt/16.667);
-  for (const [id,p] of peers){
+  for (const [id,p] of world.peers){
     if (now-p.lastSeen>6000) continue;
     p.x += (p.tx-p.x)*peerK; p.y += (p.ty-p.y)*peerK;
     drawSword(NX(p.x),NY(p.y),p.angle,p.weapon,p.color,p.name,false,now,p.whirling,p.ext||0);
@@ -5147,10 +5175,10 @@ function frame(now){
 }
 requestAnimationFrame(frame);
 // title-screen ambient slimes (solo sim before joining)
-for(let i=0;i<9;i++){ const k=pickKind(); const id='amb'+i; slimes.set(id,{id,kind:k.kind,hp:k.hp,max:k.hp,r:k.r,x:rand(.08,.92),y:rand(.15,.9),vx:0,vy:0,dir:rand(0,7),turnAt:performance.now()+rand(800,2000),color:SLIME_COLORS[i%SLIME_COLORS.length],seed:Math.random()*10,squish:0,flash:0}); }
+for(let i=0;i<9;i++){ const k=pickKind(); const id='amb'+i; world.slimes.set(id,{id,kind:k.kind,hp:k.hp,max:k.hp,r:k.r,x:rand(.08,.92),y:rand(.15,.9),vx:0,vy:0,dir:rand(0,7),turnAt:performance.now()+rand(800,2000),color:SLIME_COLORS[i%SLIME_COLORS.length],seed:Math.random()*10,squish:0,flash:0}); }
 setInterval(()=>{ if(!started){ // ambient wander on title
   const now=performance.now();
-  for (const s of slimes.values()){ if(now>s.turnAt){s.dir=rand(0,7); s.turnAt=now+rand(900,2400);} s.x+=Math.cos(s.dir)*.0016; s.y+=Math.sin(s.dir)*.0011; s.x=clamp(s.x,.05,.95); s.y=clamp(s.y,.1,.93); }
+  for (const s of world.slimes.values()){ if(now>s.turnAt){s.dir=rand(0,7); s.turnAt=now+rand(900,2400);} s.x+=Math.cos(s.dir)*.0016; s.y+=Math.sin(s.dir)*.0011; s.x=clamp(s.x,.05,.95); s.y=clamp(s.y,.1,.93); }
 }},50);
 
 /* ============================================================ start */
@@ -5175,7 +5203,7 @@ $('#howtoBtn').onclick = ()=>{
 };
 $('#playBtn').onclick = ()=>{
   me.name = cleanName($('#nameIn').value);
-  scores[me.id]={name:me.name,kills:0};
+  world.scores[me.id]={name:me.name,kills:0};
   $('#title').classList.add('hidden');
   $('#hud').classList.remove('hidden');
   started=true; startedAt = performance.now();
@@ -5185,9 +5213,9 @@ $('#playBtn').onclick = ()=>{
   // the 9 title-screen ambient slimes (ids amb0..amb8, parked in the world's top-left
   // corner, no zone scaling) must not leak into the real world: with them
   // still in the map, electHost's slimes.size===0 check skipped the 50-slime seed
-  for (const id of [...slimes.keys()]) if (String(id).startsWith('amb')) slimes.delete(id);
+  for (const id of [...world.slimes.keys()]) if (String(id).startsWith('amb')) world.slimes.delete(id);
   try { joinWorld(WORLD_ID); }
-  catch(e){ notify('Multiplayer failed to start — playing solo. (' + e.message + ')', { ms:4000 }); isHost=true; hostId=me.id; if(slimes.size===0) for(let i=0;i<50;i++) spawnSlime(); }
+  catch(e){ notify('Multiplayer failed to start — playing solo. (' + e.message + ')', { ms:4000 }); world.isHost=true; world.hostId=me.id; if(world.slimes.size===0) for(let i=0;i<50;i++) spawnSlime(); }
   notify('Slash the slimes! One world — everyone with the link is in it.', { ms:2600 });
   beep(660,.1,'triangle',.1);
 };
