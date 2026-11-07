@@ -318,7 +318,6 @@ const WORLD = 3.4;
 const cam = { x: WORLD/2 - .5, y: WORLD/2 - .5 };
 const UNIT = () => Math.min(W,H);                   // px per world unit
 const NX = x => (x - cam.x) * UNIT(), NY = y => (y - cam.y) * UNIT();
-me.x = WORLD/2; me.y = WORLD/2 + .1;
 const SCALE = () => UNIT();
 
 const me = {
@@ -354,6 +353,7 @@ function bladeAt(now){
   }
   return { ang: swordAngleAt(now), ext: 0 };
 }
+me.x = WORLD/2; me.y = WORLD/2 + .1;   // start at world centre
 const peers = new Map();       // id -> {x,y,tx,ty,angle,name,color,weapon,trail,lastSeen}
 let slimes = new Map();        // id -> slime (local mirror; host owns truth)
 let particles = [], floats = [], popRings = [];
