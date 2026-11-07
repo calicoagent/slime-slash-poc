@@ -625,6 +625,31 @@ const sfx = {
 };
 Object.defineProperty(sfx, 'muted', { get:()=>muted, set:v=>{ muted = !!v; } });
 
+/* ---- Isekai Slime World combat FX (ported from bon5co/isekai-slime-world,
+   client-phaser combatFx/actors): sampled hit sounds, glyph damage numbers,
+   crit bursts and the 160ms flinch. The source's crit CAMERA SHAKE is
+   deliberately NOT ported — no screen shake in this game, ever. ---- */
+function makeAudioPool(src, vol){
+  const els = [];
+  for (let i=0;i<4;i++){ const a = new Audio(src); a.preload = 'auto'; a.volume = vol; els.push(a); }
+  return { els, i:0, last:0, vol,
+    play(v){
+      if (muted) return;
+      const now = performance.now();
+      if (now - this.last < 45) return;          // per-pool min interval: mass hits stay punchy, not noisy
+      this.last = now;
+      const a = this.els[this.i++ % this.els.length];
+      try { a.volume = (v===undefined ? this.vol : v); a.currentTime = 0; const p = a.play(); if (p && p.catch) p.catch(()=>{}); } catch(e){}
+    } };
+}
+const hitPool  = makeAudioPool('assets/fx/hit.mp3', .5);
+const critPool = makeAudioPool('assets/fx/critical-hit.mp3', .5);
+/* Digit atlas (Phaser-style JSON): n0..n9 normal glyphs, c0..c9 crit, 'c!' bang. */
+const DIGITS = { img:new Image(), frames:null };
+DIGITS.img.src = 'assets/fx/digits.png';
+fetch('assets/fx/digits.json').then(r=>r.json()).then(j=>{ DIGITS.frames = j.frames; }).catch(()=>{});
+const BURST_IMG = new Image(); BURST_IMG.src = 'assets/fx/crit-bursts.png';
+
 /* ============================================================ weapons */
 // Combat identities: SWING weapons sweep arcs and hit crowds (AoE).
 // STAB weapons (knives, polearms) thrust in a line — balanced by CRIT:
@@ -1167,7 +1192,7 @@ function applyWorld(p){
     const mul = a[8]!==undefined ? +a[8] : 1, elite = a[9]===1;   // appended fields (old payloads default safely)
     const old = slimes.get(id);
     if (old){
-      if (hp < old.hp){ old.squish=1; old.flash=1; spawnHitFx(old.x,old.y,old.color,3); }
+      if (hp < old.hp){ old.squish=1; old.flash=1; old.flinchUntil=performance.now()+160; spawnHitFx(old.x,old.y,old.color,3); }
       old.tx=x; old.ty=y; old.hp=hp; old.dir=dir; old.mul=mul; old.elite=elite;
       const kk = SLIME_KINDS.find(m=>m.kind===old.kind); if (kk) old.r = kk.r * (elite?1.35:1);
     } else {
@@ -1207,6 +1232,75 @@ function addFloat(x,y,text,color,opts={}){
     if (f.text===text && now-(f.t||0)<300 && dist2(f.x,f.y,x,y) < .03*.03) return;
   floats.push({x,y,text,color,life:1,big:!!opts.big,size:opts.size||0,t:now});
   if (floats.length>48) floats.splice(0, floats.length-48);
+}
+/* Glyph damage numbers — ONLY damage (and crits) render through these; every
+   other float (coins, gems, heals, CLINK...) stays on the text path above.
+   Timings are the ISW combatFx ones; px values scale by UNIT()/1000.
+   Until the atlas JSON lands, dmgFloat falls back to the old text float. */
+const dmgFloats = [];
+let dmgCue = 0;   // rotating stack counter so simultaneous numbers don't merge
+const _qOut = p => 1-(1-p)*(1-p), _qIn = p => p*p;
+const _backOut = p => { const c1=1.70158, c3=c1+1; return 1 + c3*Math.pow(p-1,3) + c1*Math.pow(p-1,2); };
+function dmgFloat(x, y, amount, crit){
+  amount = Math.max(1, Math.round(amount));
+  if (!DIGITS.frames){
+    let fsize = amount>=40 ? 23 : amount>=20 ? 19 : 0;
+    if (crit) fsize = (fsize || 17) + 4;
+    addFloat(x, y, (crit?'CRIT ':'')+'-'+amount, crit?'#ffd94d':'#fff', { size:fsize });
+    return;
+  }
+  const S = UNIT()/1000;
+  dmgFloats.push({ x, y, amt:amount, crit:!!crit, t0:performance.now(),
+    jx:(Math.random()*2-1)*14*S, stack:(dmgCue++ % 3)*10*S,
+    burst:(Math.random()*12)|0, brot:(Math.random()*2-1)*.5 });
+  if (dmgFloats.length > 40) dmgFloats.splice(0, dmgFloats.length-40);
+}
+function drawDmgFloats(now){
+  if (!dmgFloats.length || !DIGITS.frames || !imgOk(DIGITS.img)) return;
+  const S = UNIT()/1000;
+  for (let i = dmgFloats.length-1; i >= 0; i--){
+    const f = dmgFloats[i];
+    const P = f.crit ? { pop:1.6, hold:420, rise:720, risePx:44 } : { pop:1.35, hold:220, rise:620, risePx:34 };
+    const e = now - f.t0, riseStart = 80 + 110 + P.hold, total = riseStart + P.rise;
+    if (e >= total){ dmgFloats.splice(i,1); continue; }
+    let scale, alpha = 1, yOff = 0;
+    if (e < 80) scale = .4 + (P.pop - .4) * _qOut(e/80);                        // pop in (Quad easeOut)
+    else if (e < 190) scale = P.pop + (1 - P.pop) * _backOut((e-80)/110);       // settle (Back easeOut)
+    else if (e < riseStart) scale = 1;                                          // hold
+    else { const p = (e - riseStart)/P.rise; scale = 1; yOff = -P.risePx * S * _qIn(p); alpha = 1 - _qIn(p); }   // rise + fade (Quad easeIn)
+    const baseH = clamp(27 * S, 15, 40) * (f.crit ? 1.45 : 1);
+    const frs = [];
+    for (const ch of String(f.amt)){ const fr = DIGITS.frames[(f.crit?'c':'n') + ch]; if (fr) frs.push(fr.frame); }
+    if (f.crit && DIGITS.frames['c!']) frs.push(DIGITS.frames['c!'].frame);
+    if (!frs.length) continue;
+    // layout at scale 1: advance = glyph width * (1 - .2 overlap); the last glyph counts in full
+    const ws = frs.map(fr => baseH * fr.w / fr.h);
+    let rowW = 0;
+    for (let k = 0; k < ws.length; k++) rowW += ws[k] * (k < ws.length-1 ? .8 : 1);
+    const ax = NX(f.x) + f.jx, ay = NY(f.y) - f.stack + yOff;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, alpha);
+    if (f.crit && imgOk(BURST_IMG)){   // crit burst starburst behind the glyphs
+      let bs = 1, ba = 1;
+      if (e < 80) bs = .1 + .9 * _backOut(e/80);
+      else if (e >= riseStart){ const p = Math.min(1, (e - riseStart)/(P.rise*.7)); bs = 1 + .15*p; ba = 1 - p; }
+      const size = Math.max(rowW * 2.1, 64 * S) * bs;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, alpha * ba);
+      ctx.translate(ax, ay); ctx.rotate(f.brot);
+      ctx.drawImage(BURST_IMG, f.burst*240, 0, 240, 240, -size/2, -size/2, size, size);
+      ctx.restore();
+      ctx.globalAlpha = Math.max(0, alpha);
+    }
+    let cxp = ax - rowW * scale / 2;
+    const dh = baseH * scale;
+    for (let k = 0; k < frs.length; k++){
+      const fr = frs[k], dw = ws[k] * scale;
+      ctx.drawImage(DIGITS.img, fr.x, fr.y, fr.w, fr.h, cxp, ay - dh/2, dw, dh);
+      cxp += dw * .8;
+    }
+    ctx.restore();
+  }
 }
 function toast(msg,ms=2200){ const t=$('#toast'); t.textContent=msg; t.classList.remove('hidden'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.add('hidden'),ms); }
 let bubbleTimer=null;
@@ -1347,12 +1441,14 @@ function doHit(s, dmg, opts={}){
     const nowT = performance.now();
     if (nowT - lastTingAt > 60){ lastTingAt = nowT; sfx.ting(); }
   }
-  s.squish=1; s.flash=1; sfx.hit();
+  s.squish=1; s.flash=1; s.flinchUntil=performance.now()+160;   // ISW flinch: red flash + shudder for 160ms
+  // ISW sampled hits replace the synth beep on the damage path: crit sample
+  // on crits, hit sample otherwise; metal keeps its ting + a soft punch.
+  if (s.kind==='metal') hitPool.play(.3);
+  else if (opts.crit) critPool.play();
+  else hitPool.play();
   spawnHitFx(s.x,s.y,s.color,4);
-  // bigger hits print BIGGER: 19px at 20+ dmg, 23px at 40+, crits get +4px
-  let fsize = dmg>=40 ? 23 : dmg>=20 ? 19 : 0;
-  if (opts.crit) fsize = (fsize || 17) + 4;
-  addFloat(s.x+rand(-.01,.01), s.y-s.r-.015, (opts.crit?'CRIT ':'')+'-'+dmg, opts.crit?'#ffd94d':'#fff', { size:fsize });
+  dmgFloat(s.x+rand(-.01,.01), s.y-s.r-.015, dmg, !!opts.crit);   // ISW glyph damage number
   if (isHost) hostApplyHit(s.id, dmg, me.id);
   else if (sendHit) sendHit({ id:s.id, d:dmg });
   let treeSplash = 0;
@@ -1377,7 +1473,7 @@ function hostApplyHit(slimeId, dmg, byId){
   hitClaimsAt.set(key, now);
   dmg = clamp(Math.round(dmg)||1, 1, 120);         // host caps claimed damage
   if (s.kind==='metal') dmg = 1;                   // METAL SLIME: host enforces the 1-damage rule on every claim too
-  s.hp -= dmg; s.squish=1; s.flash=1;
+  s.hp -= dmg; s.squish=1; s.flash=1; s.flinchUntil = performance.now()+160;
   // splash (warhammer)
   const w = byId===me.id ? myWeapon() : WEAPONS.find(w=>w.id===(peers.get(byId)?.weaponId)) || WEAPONS[1];
   if (w.splash){ for (const o of slimes.values()) if (o!==s && dist2(o.x,o.y,s.x,s.y) < w.splash*w.splash) o.hp -= o.kind==='metal' ? 1 : Math.ceil(dmg*.5); }
@@ -2546,20 +2642,39 @@ function slimeSpriteGeom(s, t, baseR){
   const sqX = psx * bScaleX * (1 + s.squish * .28);
   const sqY = psy * bScaleY * (1 - s.squish * .35);
   const dw = baseR*2*1.04, dh = dw*0.88;   // rest footprint
-  const gx = NX(s.x), gy = NY(s.y) + baseR*.92;
+  let gx = NX(s.x);
+  if (t < (s.flinchUntil||0)) gx += ((Math.floor(t/30)%2) ? -4 : 4) * UNIT()/1000;   // ISW flinch shudder: ±4px, flips every 30ms
+  const gy = NY(s.y) + baseR*.92;
   return { img, liftW, liftN, sqX, sqY, dw, dh, gx, gy };
 }
 /* Draw ONLY the slime's sprite image with the normal transform math (no
    shadow, no HP bar / kind marks). Used by drawVideoSlime and the ghost
    pass; honours whatever clip / globalAlpha the caller set up. */
+/* Red-tinted sprite variants for the ISW flinch flash (#ff8080), rendered
+   once per slime image into an offscreen canvas (fill via 'source-atop',
+   so only the sprite's own pixels take the tint). */
+const RED_TINTS = new Map();
+function redTintOf(img){
+  let c = RED_TINTS.get(img);
+  if (c) return c;
+  c = document.createElement('canvas');
+  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  const g2 = c.getContext('2d');
+  g2.drawImage(img, 0, 0);
+  g2.globalCompositeOperation = 'source-atop';
+  g2.fillStyle = '#ff8080'; g2.fillRect(0, 0, c.width, c.height);
+  RED_TINTS.set(img, c);
+  return c;
+}
 function paintSlimeSprite(s, t, baseR, g){
   g = g || slimeSpriteGeom(s, t, baseR);
   if (!g) return false;
+  const flinch = t < (s.flinchUntil||0);
   ctx.save();
   ctx.translate(g.gx, g.gy - g.liftW * UNIT());   // bottom anchor, raised by the hop arc
   ctx.scale(g.sqX, g.sqY);
-  try{ ctx.filter = s.flash>0 ? 'brightness(1.9)' : 'none'; }catch(e){}
-  ctx.drawImage(g.img, -g.dw/2, -g.dh, g.dw, g.dh);
+  try{ ctx.filter = !flinch && s.flash>0 ? 'brightness(1.9)' : 'none'; }catch(e){}
+  ctx.drawImage(flinch ? redTintOf(g.img) : g.img, -g.dw/2, -g.dh, g.dw, g.dh);
   ctx.restore();
   return true;
 }
@@ -3328,6 +3443,7 @@ function frame(now){
   floats = floats.filter(f=>f.life>0);
   ctx.textAlign='center';
   for (const f of floats){ f.y-=dt*.00003; f.life-=dt/(f.big?1750:950); ctx.globalAlpha=Math.max(0,f.life); ctx.font = '900 '+(f.size || (f.big?26:17))+'px "Baloo 2",sans-serif'; ctx.lineWidth = (f.big || f.size>=20) ? 6 : 4; ctx.strokeStyle='rgba(60,40,10,.8)'; ctx.strokeText(f.text,NX(f.x),NY(f.y)); ctx.fillStyle=f.color; ctx.fillText(f.text,NX(f.x),NY(f.y)); ctx.globalAlpha=1; }
+  drawDmgFloats(now);   // ISW glyph damage numbers, on their own timeline
 
   // boss bullets: glowing bullet-hell orbs (outer halo / hot body / white core)
   for (const b of bullets){
