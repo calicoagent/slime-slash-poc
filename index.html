@@ -223,7 +223,12 @@ const WEAPONS = [
   { id:'great',  name:'Greatsword', dmg:30, reach:.205, cd:300, unlock:3, color:'#b0bec5', desc:'huge chops' },
   { id:'hammer', name:'Warhammer', dmg:42, reach:.150, cd:380, unlock:4, color:'#ffcc80', desc:'splash smash', splash:.07 },
 ];
-const weaponSVG = (w,locked)=>`
+const WEAPON_IMGS = {};
+for (const w of WEAPONS){ const im=new Image(); im.src='assets/weapons/'+w.id+'.png'; WEAPON_IMGS[w.id]=im; }
+const weaponSVG = (w,locked)=> locked
+ ? `<svg viewBox="0 0 40 40"><path d="M13 18v-3a7 7 0 0114 0v3h3v14H10V18h3zm7 4a3.2 3.2 0 00-2 5.4V30h4v-2.6a3.2 3.2 0 00-2-5.4z" fill="#8d6e63"/></svg>`
+ : `<img src="assets/weapons/${w.id}.png" alt="${w.name}" style="width:40px;height:40px;object-fit:contain;transform:rotate(-38deg)">`;
+const weaponSVG_unused = (w,locked)=>`
 <svg viewBox="0 0 40 40">${locked
  ? '<path d="M13 18v-3a7 7 0 0114 0v3h3v14H10V18h3zm7 4a3.2 3.2 0 00-2 5.4V30h4v-2.6a3.2 3.2 0 00-2-5.4z" fill="#8d6e63"/>'
  : w.id==='hammer'
@@ -251,7 +256,19 @@ const me = {
   weapon:1, coins:0, xp:0, level:1, kills:0,
   upg:{ dmg:0, reach:0, haste:0 },
   lastHitAt:new Map(), spinUntil:0, spinCdUntil:0, trail:[],
+  swingT0:0, swingDir:1,
 };
+// The sword sweeps an ARC when you flick: it cocks back, then whips past
+// your heading — direction follows the swipe (right swipe = clockwise arc…).
+function swordAngleAt(now){
+  if (now < me.spinUntil) return me.angle;
+  const el = now - me.swingT0;
+  if (me.swingT0 && el < 190){
+    const p = el/190, e = 1-Math.pow(1-p,3);
+    return me.angle + me.swingDir * (-2.05 + 2.65*e);
+  }
+  return me.angle;
+}
 const peers = new Map();       // id -> {x,y,tx,ty,angle,name,color,weapon,trail,lastSeen}
 let slimes = new Map();        // id -> slime (local mirror; host owns truth)
 let particles = [], floats = [], popRings = [];
@@ -264,7 +281,7 @@ const SLIME_KINDS = [
   { kind:'baby',  hp:12,  r:.020, coins:4,  xp:8,  speed:.014, weight:45 },
   { kind:'mid',   hp:30,  r:.030, coins:9,  xp:16, speed:.011, weight:35 },
   { kind:'big',   hp:75,  r:.045, coins:20, xp:34, speed:.008, weight:15 },
-  { kind:'king',  hp:260, r:.068, coins:90, xp:120,speed:.005, weight:5  },
+  { kind:'king',  hp:260, r:.10,  coins:90, xp:120,speed:.005, weight:5  },
 ];
 const SLIME_COLORS = ['#7ee787','#6fd3ff','#ffb3d9','#ffe066','#c39bff','#8affd1','#ffab7a'];
 function pickKind(){
@@ -332,10 +349,12 @@ function myReach(){ return myWeapon().reach * (1 + me.upg.reach*.12); }
 function myCd(){ return Math.max(50, myWeapon().cd * Math.pow(.88, me.upg.haste)); }
 
 function localHitCheck(now){
-  // blade = segment from hand (pointer) to tip along facing angle; spin = full circle
+  // blade = segment from hand (pointer) to tip along the sword's CURRENT
+  // angle — mid-swing that's somewhere along the arc; spin = full circle
   const spinning = now < me.spinUntil;
+  const sa = swordAngleAt(now);
   const reach = myReach() * (spinning?1.15:1);
-  const tipX = me.x + Math.cos(me.angle)*reach, tipY = me.y + Math.sin(me.angle)*reach*(H/W>0?1:1);
+  const tipX = me.x + Math.cos(sa)*reach, tipY = me.y + Math.sin(sa)*reach*(H/W>0?1:1);
   for (const s of slimes.values()){
     const last = me.lastHitAt.get(s.id)||0;
     if (now-last < myCd()) continue;
@@ -467,7 +486,7 @@ function joinWorld(roomCode){
   setTimeout(refreshPeers, 15500);
 }
 setInterval(()=>{ // sword state @ ~20Hz
-  if (started && sendPos) sendPos({ x:+me.x.toFixed(3), y:+me.y.toFixed(3), a:+me.angle.toFixed(2), w:me.weapon, n:me.name, c:me.color, s: performance.now()<me.spinUntil });
+  if (started && sendPos) sendPos({ x:+me.x.toFixed(3), y:+me.y.toFixed(3), a:+swordAngleAt(performance.now()).toFixed(2), w:me.weapon, n:me.name, c:me.color, s: performance.now()<me.spinUntil });
 }, 50);
 
 /* ============================================================ input */
@@ -478,6 +497,12 @@ addEventListener('pointermove', e=>{
   const d=Math.hypot(dx,dy);
   me.speed = d;
   if (d>.0015) me.angle = Math.atan2(dy,dx);
+  // a fast flick starts a swing; arc direction follows the swipe direction
+  const now=performance.now();
+  if (started && d>.013 && now-me.swingT0>200 && now>=me.spinUntil){
+    me.swingT0=now;
+    me.swingDir = Math.abs(dx)>=Math.abs(dy) ? (dx>=0?1:-1) : (dy>=0?1:-1);
+  }
   me.px=me.x; me.py=me.y; me.x=x; me.y=y;
 });
 addEventListener('pointerdown', e=>{
@@ -665,11 +690,37 @@ function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,spinning){
   const spinA = spinning ? (t/38)%(Math.PI*2) : 0;
   const a = spinning ? spinA : angle;
   const tipX = x+Math.cos(a)*reachPx, tipY = y+Math.sin(a)*reachPx;
+  // swing swoosh: translucent wedge over the arc swept in the last ~80ms
+  if (isMe && !spinning){
+    const span = a - swordAngleAt(t-80);
+    if (Math.abs(span) > .12){
+      ctx.save(); ctx.translate(x,y);
+      ctx.fillStyle = color; ctx.globalAlpha = .16;
+      ctx.beginPath(); ctx.moveTo(0,0);
+      ctx.arc(0,0,reachPx, Math.min(a-span,a), Math.max(a-span,a));
+      ctx.closePath(); ctx.fill(); ctx.restore(); ctx.globalAlpha = 1;
+    }
+  }
   // trail
   ctx.strokeStyle = color; ctx.globalAlpha=.28; ctx.lineWidth = weaponIdx>=3?13:9; ctx.lineCap='round';
   ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(tipX,tipY); ctx.stroke(); ctx.globalAlpha=1;
   ctx.save(); ctx.translate(x,y); ctx.rotate(a);
   const L=reachPx;
+  // generated weapon sprite (grip at hand, blade along +X)
+  const wimg = WEAPON_IMGS[w.id];
+  if (wimg && wimg.complete && wimg.naturalWidth){
+    const iw = L*1.18, ih = iw * (wimg.naturalHeight/wimg.naturalWidth);
+    ctx.fillStyle=color; ctx.beginPath(); ctx.arc(0,0,7,0,7); ctx.fill();
+    ctx.strokeStyle='#fff'; ctx.lineWidth=2.5; ctx.stroke();
+    ctx.drawImage(wimg, -L*.17, -ih/2, iw, ih);
+    ctx.restore();
+    if (name){
+      ctx.font='800 13px "Baloo 2",sans-serif'; ctx.textAlign='center';
+      ctx.lineWidth=4; ctx.strokeStyle='rgba(50,80,30,.75)';
+      ctx.strokeText(name, x, y-16); ctx.fillStyle='#fff'; ctx.fillText(name, x, y-16);
+    }
+    return {tipX,tipY};
+  }
   // blade by type
   ctx.lineJoin='round';
   if (w.id==='hammer'){
@@ -732,7 +783,7 @@ function frame(now){
     drawSword(NX(p.x),NY(p.y),p.angle,p.weapon,p.color,p.name,false,now,p.spinning);
   }
   // my sword on top
-  if (started || true) drawSword(NX(me.x),NY(me.y),me.angle,me.weapon,me.color, started?me.name:'', true, now, now<me.spinUntil);
+  if (started || true) drawSword(NX(me.x),NY(me.y),swordAngleAt(now),me.weapon,me.color, started?me.name:'', true, now, now<me.spinUntil);
   if (now<me.spinUntil && started) localHitCheck(now);
 
   // scoreboard refresh (cheap, 2/s)
