@@ -33,7 +33,7 @@
 
   /* ---------- pixel game UI ---------- */
   .badge {
-    position:fixed; z-index:20; display:flex; align-items:center; gap:8px;
+    position:fixed; z-index:20; pointer-events:none; display:flex; align-items:center; gap:8px;
     background:#fff6df; border:3px solid #3a2b23; border-radius:0;
     padding:6px 16px 6px 8px; color:#3a2b23; font-size:26px; line-height:1;
     box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 4px 4px 0 rgba(0,0,0,.30);
@@ -146,7 +146,7 @@
   #bountyBadge {
     position:fixed; z-index:20; top:238px; left:max(14px, env(safe-area-inset-left)); max-width:232px;
     background:#fff6df; border:3px solid #3a2b23; border-radius:0; padding:8px 14px;
-    color:#3a2b23; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 4px 4px 0 rgba(0,0,0,.30);
+    color:#3a2b23; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 4px 4px 0 rgba(0,0,0,.30); pointer-events:none;
   }
   #bountyBadge b { font-family:"Press Start 2P",monospace; font-size:8px; letter-spacing:0; color:#b8860b; display:block; margin-bottom:4px; }
   #bountyText { font-size:20px; line-height:1.2; }
@@ -154,7 +154,7 @@
   #comboBadge {
     position:fixed; z-index:22; bottom:108px; right:calc(50% + 118px);
     background:#ff8a2e; color:#fff; border:3px solid #3a2b23; border-radius:0;
-    padding:10px 16px; font-family:"Press Start 2P",monospace; font-size:14px; white-space:nowrap;
+    padding:10px 16px; font-family:"Press Start 2P",monospace; font-size:14px; white-space:nowrap; pointer-events:none;
     box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
   }
   #comboBadge.fire { background:#e5484d; }
@@ -298,9 +298,9 @@
   #interactPrompt:active { transform:translateX(-50%) translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
   /* z-index 40: the items cluster sits ABOVE world-space labels/prompts
      (an INN sign once covered the BOMB button) and below modal panels */
-  #items { position:fixed; left:max(14px, env(safe-area-inset-left)); bottom:222px; z-index:40; display:flex; flex-direction:column; gap:10px; }
+  #items { position:fixed; left:max(14px, env(safe-area-inset-left)); bottom:222px; z-index:40; display:flex; flex-direction:column; gap:10px; pointer-events:none; }
   .ibtn {
-    position:relative; width:84px; min-height:78px; border-radius:0; cursor:pointer; touch-action:manipulation;
+    position:relative; width:84px; min-height:78px; border-radius:0; cursor:pointer; touch-action:manipulation; pointer-events:auto;
     border:3px solid #3a2b23; background:#fff6df; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
     display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; padding:5px 3px;
   }
@@ -382,13 +382,14 @@
   #nodeCard button:disabled { filter:grayscale(.6); opacity:.55; cursor:default; }
 
   #minimap {
-    position:fixed; left:max(14px, env(safe-area-inset-left)); bottom:86px; z-index:19; width:124px; height:124px;
+    position:fixed; left:max(14px, env(safe-area-inset-left)); bottom:86px; z-index:19; width:124px; height:124px; pointer-events:none;
     border:3px solid #3a2b23; border-radius:0; background:#79c25f;
     box-shadow:4px 4px 0 rgba(0,0,0,.30);
   }
 
   /* ---------- active skill buttons ---------- */
-  #actives { position:fixed; right:14px; bottom:calc(var(--dockH, 229px) + 10px); z-index:21; display:flex; flex-direction:column; gap:10px; }
+  #actives { position:fixed; right:14px; bottom:calc(var(--dockH, 229px) + 10px); z-index:21; display:flex; flex-direction:column; gap:10px; pointer-events:none; }
+  #actives > * { pointer-events:auto; }
   .abtn {
     position:relative; width:58px; height:58px; border-radius:0; cursor:pointer; overflow:hidden;
     border:3px solid #3a2b23; background:#fff6df; color:#3a2b23;
@@ -564,6 +565,37 @@
     body.boss-on #lvlBadge { top:104px; }
     body.boss-on #gemBadge { top:212px; }
     body.boss-on #bountyBadge { top:244px; }
+  }
+
+  /* ---------- urgent mobile fix: HUD shrink (<=640px only) ----------
+     Desktop sizes are untouched. Goal: the centre ~60% of a phone screen
+     carries no HUD at all, and every remaining touch target is >=44px. */
+  @media (max-width:640px) {
+    /* item buttons: compact 58px thumb squares, icon + count badge only */
+    #items { gap:6px; }
+    .ibtn { width:58px; min-height:58px; padding:3px; }
+    .ibtn svg { width:26px; height:26px; }
+    .ibtn .ilabel { display:none; }
+    .ibtn .cnt { min-width:22px; height:22px; }
+    /* dock stack (SPHERE / SKILLS / GEMS): tight padding, ~12px type,
+       still a full 44px-tall touch target */
+    #forgeBtn, #treeBtn, #gemBtn { font-size:11px; padding:6px 12px; min-height:44px; }
+    /* weapon rack: expanded cards capped at ~42px tall (icon 16 + name 11
+       + xp bar 4 + padding 4 + border 6); socket pips move to the GEMS
+       panel on phones to make the cap */
+    .wcard { padding:2px 1px; }
+    .wcard svg { width:16px; height:16px; }
+    .wcard img { width:16px !important; height:16px !important; }
+    .wcard .wn { font-size:11px; line-height:1; }
+    .wcard .wxpbar { margin-top:1px; height:3px; }
+    .wcard .wpips { display:none; }
+    /* minimap: 74px was unreadable — 96px, still clear of the centre */
+    #minimap { width:96px; height:96px; }
+    /* top-left badge cluster: bars never wider than 38vw */
+    #xpTrack, #hpTrack, #mpTrack { max-width:38vw; }
+    #lvlBadge { padding:3px 8px; gap:2px; }
+    /* boss bar: at most 70vw on phones */
+    #bossBar { width:min(70vw,520px); }
   }
 </style>
 </head>
