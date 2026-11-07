@@ -437,7 +437,13 @@ function joinWorld(roomCode){
     'wss://relay.damus.io','wss://nos.lol','wss://relay.primal.net','wss://purplepag.es',
     'wss://relay.nostr.band','wss://nostr.wine','wss://relay.snort.social','wss://offchain.pub',
     'wss://relay.current.fyi','wss://nostr.mom'
-  ] }, roomCode);
+  ], rtcConfig:{ iceServers:[
+    { urls:'stun:stun.l.google.com:19302' }, { urls:'stun:stun1.l.google.com:19302' },
+    { urls:'stun:stun.cloudflare.com:3478' },
+    { urls:'turn:openrelay.metered.ca:80', username:'openrelayproject', credential:'openrelayproject' },
+    { urls:'turn:openrelay.metered.ca:443', username:'openrelayproject', credential:'openrelayproject' },
+    { urls:'turns:openrelay.metered.ca:443?transport=tcp', username:'openrelayproject', credential:'openrelayproject' },
+  ] } }, roomCode);
   room.onPeerJoin(id=>{ peers.set(id,{x:.5,y:.5,tx:.5,ty:.5,angle:0,name:'Knight',color:`hsl(${hashHue(id)} 80% 60%)`,weapon:1,trail:[],lastSeen:performance.now()}); electHost(); if(isHost) setTimeout(broadcastWorld,300); refreshPeers(); });
   room.onPeerLeave(id=>{ peers.delete(id); delete scores[id]; electHost(); refreshPeers(); });
 
@@ -755,7 +761,7 @@ function frame(now){
   if (now<me.spinUntil && started) localHitCheck(now);
 
   // scoreboard refresh (cheap, 2/s)
-  if (started && now-(frame._b||0)>500){ frame._b=now; refreshHUD(); }
+  if (started && now-(frame._b||0)>500){ frame._b=now; refreshHUD(); refreshPeers(); }
 }
 requestAnimationFrame(frame);
 // title-screen ambient slimes (solo sim before joining)

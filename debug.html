@@ -10,7 +10,14 @@ try {
   const nostr = await import('https://cdn.jsdelivr.net/npm/trystero@0.21.6/nostr/+esm');
   log('nostr module loaded, selfId=' + nostr.selfId);
   const RELAYS = ['wss://relay.damus.io','wss://nos.lol','wss://relay.primal.net','wss://purplepag.es','wss://relay.nostr.band','wss://nostr.wine','wss://relay.snort.social','wss://offchain.pub','wss://relay.current.fyi','wss://nostr.mom'];
-  const room = nostr.joinRoom({ appId:'slime-slash-poc-v1', relayUrls: RELAYS }, 'slime-world-1');
+  const RTC = { iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' },
+    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turns:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+  ]};
+  const room = nostr.joinRoom({ appId:'slime-slash-poc-v1', relayUrls: RELAYS, rtcConfig: RTC }, 'slime-world-1');
   const peers = new Set();
   room.onPeerJoin(id => { peers.add(id); log('NOSTR PEER JOIN ' + id + ' total=' + peers.size); });
   room.onPeerLeave(id => { peers.delete(id); log('NOSTR PEER LEAVE ' + id + ' total=' + peers.size); });
@@ -25,7 +32,13 @@ try {
       const s = nostr.getRelaySockets();
       socks = Object.entries(s).map(([u, ws]) => u.replace('wss://','') + '=' + ws.readyState).join(' ');
     } catch(e) { socks = 'err ' + e.message; }
-    log('t=' + n*5 + 's peers=' + peers.size + ' sockets: ' + socks);
+    let pcInfo = 'none';
+    try {
+      const gp = room.getPeers();
+      const entries = Object.entries(gp);
+      pcInfo = entries.length ? entries.map(([id, pc]) => id.slice(0,6) + ':ice=' + (pc.iceConnectionState||'?') + '/sig=' + (pc.signalingState||'?')).join(' ') : 'none';
+    } catch(e) { pcInfo = 'err ' + e.message; }
+    log('t=' + n*5 + 's peers=' + peers.size + ' rtcPeers: ' + pcInfo + ' sockets: ' + socks);
   }, 5000);
 } catch(e) {
   log('FATAL ' + e.message);
