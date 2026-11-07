@@ -669,9 +669,9 @@ const NODES = [
 const nodePos = n => {
   const idx = NODES.filter(m=>m.b===n.b).indexOf(n);
   const a = BRANCHES[n.b].ang * Math.PI/180;
-  const dist = 15 + idx*6.4;                                   // % of board from centre
+  const dist = 13.5 + idx*5.6;                                 // % of board from centre
   const perp = (idx===0 ? 0 : (idx%2 ? 4.2 : -4.2)) * Math.PI/180;
-  const x = 50 + Math.cos(a+perp)*dist*1.55, y = 50 + Math.sin(a+perp)*dist*1.55;
+  const x = 50 + Math.cos(a+perp)*dist, y = 50 + Math.sin(a+perp)*dist;
   return { x, y, idx };
 };
 const unlocked = new Set();
