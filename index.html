@@ -568,8 +568,8 @@ function makeVid(src, key, screen){
   const c=document.createElement('canvas'); c.width=c.height=256;
   SLIME_VIDS[key]={ v, c, x:c.getContext('2d',{willReadFrequently:true}), screen, ready:false };
 }
-makeVid('assets/slime-green.mp4','green','magenta');
 makeVid('assets/slime-pink.mp4','pink','green');
+makeVid('assets/slime-green.mp4','green','magenta');
 makeVid('assets/slime-king.mp4','king','green');
 function keyFrame(vd){
   const {v,c,x,screen}=vd;
@@ -587,16 +587,16 @@ function keyFrame(vd){
   vd.ready=true;
 }
 const COLOR2VID = {
-  '#7ee787':['green',0], '#8affd1':['green',-18], '#ffe066':['green',-58], '#6fd3ff':['green',82],
-  '#ffb3d9':['pink',0], '#ffab7a':['pink',38], '#c39bff':['pink',-64],
+  '#7ee787':['green',0], '#8affd1':['green',-15], '#ffe066':['green',-55], '#6fd3ff':['green',85],
+  '#ffb3d9':['pink',0], '#ffab7a':['pink',35], '#c39bff':['pink',-80],
 };
 function drawVideoSlime(s,t,baseR){
-  const pick = s.kind==='king' ? ['king',0] : (COLOR2VID[s.color]||['green',0]);
+  const pick = s.kind==='king' ? ['king',0] : (COLOR2VID[s.color]||['pink',0]);
   const vd = SLIME_VIDS[pick[0]];
   if (!vd || !vd.ready) return false;
   const wob = Math.sin(t/280 + s.seed*7)*0.06;
   const sq = 1 + wob - s.squish*.30;
-  const occ = pick[0]==='king' ? .84 : .68;              // how much of the frame the slime fills
+  const occ = pick[0]==='king' ? .88 : .62;              // how much of the frame the slime fills
   const dw = baseR*2*(2-sq)*.95/occ, dh = dw*sq;
   ctx.save(); ctx.translate(NX(s.x), NY(s.y));
   try{ ctx.filter = `hue-rotate(${pick[1]}deg)` + (s.flash>0 ? ' brightness(1.7)' : ''); }catch(e){}
