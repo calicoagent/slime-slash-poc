@@ -2003,7 +2003,7 @@ function onKillFx(f){
       bounty.have++;
       if (bounty.have >= bounty.need){
         const payout = Math.round(bounty.reward * (1 + S.bounty));   // Bounty Hunter passive
-        me.coins += payout; me.sp += 1;
+        me.coins += payout; me.sp += 1; saveGame();   // SP + coins: persist on the event
         notify('BOUNTY COMPLETE! +' + payout + ' coins +1 SP', { type:'success' });
         sfx.buy();
         rollBounty();
@@ -3136,7 +3136,7 @@ function renderNodeCard(){
   else { btn.textContent = 'UNLOCK — '+n.cost+' SP'; btn.disabled = false; }
   btn.onclick = ()=>{
     if (me.sp < n.cost || !nodeAvail(n)) return;
-    me.sp -= n.cost; unlocked.add(n.id); recalc(); sfx.buy();
+    me.sp -= n.cost; unlocked.add(n.id); recalc(); sfx.buy(); saveGame();   // an unlock is an event: persist now (the HUD-cadence save is throttled to 2.5s)
     bubble(n.name.toUpperCase()+'!', me.x, me.y, 1000);
     buildSphere(); buildActives(); refreshHUD();
   };
@@ -3307,6 +3307,12 @@ function loadGame(){
   }
   setMuted(!!d.muted);
 }
+/* SAVE ON HIDE: iOS Safari can discard a backgrounded tab without warning,
+   and since the HUD-cadence save is throttled to 2.5s, up to 2.5s of
+   coins / XP / kills could be lost on every app switch or lock. pagehide
+   and visibilitychange->hidden are the last events iOS reliably delivers. */
+addEventListener('pagehide', ()=>saveGame());
+document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState === 'hidden') saveGame(); });
 
 /* ============================================================ minimap */
 function drawMinimap(){
@@ -3490,8 +3496,8 @@ $('#interactPrompt').addEventListener('pointerdown', e=>{
   e.stopPropagation();   // fire on pointerDOWN so sword movement can't steal the click
   if (nearBuilding==='bank') openBank(); else if (nearBuilding==='shop') openShop(); else if (nearBuilding==='hospital') openHospital();
 });
-$('#depBtn').onclick = ()=>{ me.banked += me.coins; me.coins = 0; sfx.buy(); updateBankPanel(); refreshHUD(); };
-$('#wdBtn').onclick = ()=>{ me.coins += me.banked; me.banked = 0; sfx.coin(); updateBankPanel(); refreshHUD(); };
+$('#depBtn').onclick = ()=>{ me.banked += me.coins; me.coins = 0; sfx.buy(); updateBankPanel(); refreshHUD(); saveGame(); };   // a deposit must be on disk before the next death or tab kill
+$('#wdBtn').onclick = ()=>{ me.coins += me.banked; me.banked = 0; sfx.coin(); updateBankPanel(); refreshHUD(); saveGame(); };
 $('#buySpBtn').onclick = buySpherePoint;
 $('#bankCloseBtn').onclick = ()=>$('#bankPanel').classList.add('hidden');
 $('#shopCloseBtn').onclick = ()=>$('#shopPanel').classList.add('hidden');
