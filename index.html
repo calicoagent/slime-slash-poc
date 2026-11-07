@@ -1075,7 +1075,7 @@ function hostTick(now,dt){
     if (now>s.turnAt){ s.dir=rand(0,Math.PI*2); s.turnAt=now+rand(800,2600); }
     const k = SLIME_KINDS.find(k=>k.kind===s.kind);
     let sp = k.speed*dt*60/1000, mult = 1;   // mult: steering speed multiplier, applied to hop distance
-    if (s.kind==='dart') s.dir += Math.sin(now/90 + s.seed*9)*.095;   // zigzag — punchy, reads as a darter
+    if (s.kind==='dart') s.dir += Math.sin(now/90 + s.seed*9)*.095*(dt/16.667);   // zigzag — punchy, reads as a darter (dt-scaled: the raw per-frame += steered twice as hard at 120Hz)
     if (s.kind==='gold' || s.kind==='metal'){
       // gold & metal slimes FLEE the nearest player — catch one if you can
       let bx=me.x, by=me.y, bd=dist2(s.x,s.y,me.x,me.y);
@@ -1143,8 +1143,11 @@ function hostTick(now,dt){
   }
   const target = Math.min(120, 80 + peers.size*8);
   if (slimes.size < target){
-    if (Math.random()<.55) spawnSlime();
-    if (slimes.size < target-4 && Math.random()<.55) spawnSlime();   // refill in pairs while well under target
+    // spawn probability rescaled by dt: a flat .55/frame trickle would
+    // refill the world twice as fast at 120Hz as at 60Hz
+    const spawnP = 1 - Math.pow(.45, dt/16.667);
+    if (Math.random()<spawnP) spawnSlime();
+    if (slimes.size < target-4 && Math.random()<spawnP) spawnSlime();   // refill in pairs while well under target
   }
   /* METAL SLIME GUARANTEE: a REACHABLE metal at least every ~75s. The old
      rule ("none alive AND 75s since the last spawn") starved forever in
@@ -3600,18 +3603,23 @@ function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,spinning,ext=0){
 
 /* ============================================================ main loop */
 let lastT=performance.now(), posSendAcc=0;
-let lastFrameAt=0;
 function frame(now){
   requestAnimationFrame(frame);
-  if (now - lastFrameAt < 15.9) return;              // hard cap: 60 FPS
-  lastFrameAt = now;
+  // NO frame skip (Handler: the 60 FPS gate felt like a fighting-game
+  // frame skip — annoying). Render on EVERY rAF: 120Hz phones and 144Hz
+  // monitors get their native rate. Everything simulated is dt-scaled or
+  // timestamp-based (see audit in the commit), so refresh rate can never
+  // speed the game up.
   const dt = paused ? 0 : Math.min(50, now-lastT); lastT=now;   // pause freezes local dt only; world/netcode keep running
   me.ptrSpeedPx *= Math.exp(-dt/110);   // pointer-speed memory decays fast — a stopped hand stops cutting within ~a few hundred ms
   ctx.setTransform(DPR,0,0,DPR,0,0);
 
-  // remote slime interpolation
+  // remote slime interpolation — frame-rate independent: the old constant
+  // .35/frame lerp converged twice as fast at 120Hz; rescaled by elapsed
+  // time so it feels identical at any refresh (and freezes when paused)
+  const interpK = 1 - Math.pow(.65, dt/16.667);
   for (const s of slimes.values()){
-    if (!isHost && s.tx!==undefined){ s.x += (s.tx-s.x)*.35; s.y += (s.ty-s.y)*.35; s.squish=Math.max(0,s.squish-dt/160); s.flash=Math.max(0,s.flash-dt/120); }
+    if (!isHost && s.tx!==undefined){ s.x += (s.tx-s.x)*interpK; s.y += (s.ty-s.y)*interpK; s.squish=Math.max(0,s.squish-dt/160); s.flash=Math.max(0,s.flash-dt/120); }
   }
   if (isHost && started) hostTick(now,dt);
   if (started && !paused) localHitCheck(now);
@@ -3744,10 +3752,11 @@ function frame(now){
     ctx.restore();
   }
 
-  // other players' swords
+  // other players' swords (interpolation rescaled by dt like the slimes')
+  const peerK = 1 - Math.pow(.6, dt/16.667);
   for (const [id,p] of peers){
     if (now-p.lastSeen>6000) continue;
-    p.x += (p.tx-p.x)*.4; p.y += (p.ty-p.y)*.4;
+    p.x += (p.tx-p.x)*peerK; p.y += (p.ty-p.y)*peerK;
     drawSword(NX(p.x),NY(p.y),p.angle,p.weapon,p.color,p.name,false,now,p.spinning,p.ext||0);
   }
   // my sword on top, with the slash trail: the full blade segment (grip +
