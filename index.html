@@ -723,7 +723,7 @@
     <button class="pbtn" id="wdBtn">WITHDRAW ALL</button>
     <div class="bankLine" style="text-align:center">SPHERE POINTS: <b id="bankSp">0</b></div>
     <button class="pbtn" id="buySpBtn">BUY 1 SP — 300c</button>
-    <div class="pcontrols">Kings no longer grant SP. Coins do.</div>
+    <div class="pcontrols">Emperors drop Sphere Points. Bank price rises with every purchase.</div>
     <button class="pbtn" id="bankCloseBtn">CLOSE</button>
   </div>
 </div>
@@ -1061,7 +1061,7 @@ const me = {
   id: selfId, name:'Knight', color:`hsl(${hashHue(selfId)} 80% 55%)`,
   x:.5, y:.6, px:.5, py:.6, angle:-Math.PI/4, speed:0,
   weapon:1, coins:0, xp:0, level:1, kills:0,
-  sp:0, actCd:{ wave:0, meteor:0, frenzy:0, goldrush:0 }, frenzyUntil:0, goldRushUntil:0,
+  sp:0, spBuys:0, actCd:{ wave:0, meteor:0, frenzy:0, goldrush:0 }, frenzyUntil:0, goldRushUntil:0,
   // survival + economy (HP is LOCAL only — never networked)
   hp:100, maxHp:100, spawnAt:null, invulnUntil:0, lastDmgAt:0, shieldUntil:0,
   mp:100, maxMp:100, wSkillCdUntil:0,   // MP is LOCAL only too — never networked, never persisted (loads full, like HP)
@@ -1993,6 +1993,11 @@ function onKillFx(f){
     me.coins += cg; me.kills++;
     me.mp = Math.min(me.maxMp, me.mp + 2);   // +2 MP per kill (own kills only)
     gainWxp(me.weapon, 10);   // +10 XP to the EQUIPPED weapon (all weapons level this way)
+    /* SPHERE POINTS from the big kills (Handler: 'Sphere point gained from
+       farming emperor') — the Emperor pays +3 SP, a Slime King +1 SP,
+       awarded HERE, the same single place soul gems drop. */
+    if (f.kind==='boss'){ me.sp += 3; notify('SPHERE POINT +3', { type:'success' }); saveGame(); }
+    else if (f.kind==='king'){ me.sp += 1; notify('SPHERE POINT +1', { type:'success' }); saveGame(); }
     /* SOUL GEM drops — rolled HERE, the single place local kill rewards
        are granted (remote kills and host/client overlap can't double-fire:
        this block runs once, for my kills only) */
@@ -2096,18 +2101,25 @@ function death(){
 /* ============================================================ bank & shop */
 function openBank(){ $('#bankPanel').classList.remove('hidden'); updateBankPanel(); }
 function openShop(){ $('#shopPanel').classList.remove('hidden'); buildShopRows(); }
-const SP_EXCHANGE_COST = 300;   // the Bank sells Sphere Points for coins — kings no longer grant SP
+/* Bank SP exchange — ESCALATING price (Handler: SP comes from farming the
+   Emperor, 'or increasingly more expensive'): the Nth lifetime purchase
+   costs round(300 * 1.5^N). spBuys persists in the save. Kings grant +1 SP
+   and the Emperor +3 SP on kill (onKillFx) — the farm is the real source;
+   the Bank is the expensive shortcut. */
+function spPrice(){ return Math.round(300 * Math.pow(1.5, me.spBuys || 0)); }
 function updateBankPanel(){
   $('#bankCarried').textContent = me.coins;
   $('#bankBanked').textContent = me.banked;
   $('#bankSp').textContent = me.sp;
-  $('#buySpBtn').disabled = (me.banked + me.coins) < SP_EXCHANGE_COST;
+  $('#buySpBtn').textContent = 'BUY 1 SP — ' + spPrice() + 'c';
+  $('#buySpBtn').disabled = (me.banked + me.coins) < spPrice();
 }
 function buySpherePoint(){
-  if (me.banked + me.coins < SP_EXCHANGE_COST) return;
-  const fromBank = Math.min(me.banked, SP_EXCHANGE_COST);   // banked coins are spent first, carried covers the rest
-  me.banked -= fromBank; me.coins -= (SP_EXCHANGE_COST - fromBank);
-  me.sp++; sfx.buy(); notify('SPHERE POINT BOUGHT!', { type:'success' });
+  const price = spPrice();
+  if (me.banked + me.coins < price) return;
+  const fromBank = Math.min(me.banked, price);   // banked coins are spent first, carried covers the rest
+  me.banked -= fromBank; me.coins -= (price - fromBank);
+  me.sp++; me.spBuys++; sfx.buy(); notify('SPHERE POINT BOUGHT!', { type:'success' });
   updateBankPanel(); refreshHUD(); saveGame();
 }
 const SHOP_ITEMS = [
@@ -3070,7 +3082,7 @@ function setMuted(v){
   const mb = $('#menuSoundBtn'); if (mb) mb.textContent = label;   // the menu's MORE tab mirrors the pause toggle
 }
 function resetRun(){
-  me.level=1; me.xp=0; me.coins=0; me.kills=0; me.sp=0; me.weapon=0; me.owned=new Set([0,6]);
+  me.level=1; me.xp=0; me.coins=0; me.kills=0; me.sp=0; me.spBuys=0; me.weapon=0; me.owned=new Set([0,6]);
   me.gems=freshGems(); me.wxp={}; me.gemRushUntil=0; me.gemBag=[]; me.sockets={};
   me.hp=me.maxHp; me.mp=me.maxMp; me.wSkillCdUntil=0; me.banked=0; me.items={ potion:0, bomb:0, shield:0 }; me.purse=false; me.shieldUntil=0; me.spawnAt=null;
   $('#bankPanel').classList.add('hidden'); $('#shopPanel').classList.add('hidden'); $('#hospitalPanel').classList.add('hidden'); closeMenu();
@@ -3090,7 +3102,7 @@ function saveGame(){
   if (!started) return;
   try{
     localStorage.setItem(SAVE_KEY, JSON.stringify({
-      level:me.level, xp:me.xp, coins:me.coins, kills:me.kills, sp:me.sp,
+      level:me.level, xp:me.xp, coins:me.coins, kills:me.kills, sp:me.sp, spBuys:me.spBuys,
       unlocked:[...unlocked], weapon:me.weapon, name:me.name, muted, hintsSeen,
       banked:me.banked, items:me.items, purse:me.purse, owned:[...me.owned],
       gems:me.gems, wxp:me.wxp, rackCollapsed, spawnAt: me.spawnAt || null,
@@ -3106,6 +3118,7 @@ function loadGame(){
   me.level = Math.max(1, d.level|0 || 1);
   me.xp = Math.max(0, d.xp|0); me.coins = Math.max(0, d.coins|0);
   me.kills = Math.max(0, d.kills|0); me.sp = Math.max(0, d.sp|0);
+  me.spBuys = Math.max(0, d.spBuys|0);   // lifetime Bank SP purchases (escalating price); old saves default to 0
   if (Array.isArray(d.unlocked)) for (const id of d.unlocked) if (NODES.some(n=>n.id===id) || WTREE_IDS.has(id)) unlocked.add(id);
   // SOUL GEMS restore BEFORE recalc, so socketed vitality counts toward
   // the derived maxHp. Validated: known stat, rarity 0-4, string id;
