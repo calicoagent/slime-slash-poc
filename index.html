@@ -1259,7 +1259,7 @@ function hostTick(now,dt){
       boss = spawnSlime({ kind:'boss', x:bx, y:by });
     }
   }
-  if (boss && sendBoss){
+  if (boss){
     if (!bossFireAt) bossFireAt = now + 1200;
     if (now >= bossFireAt){
       bossFireAt = now + 1500;
@@ -1276,8 +1276,18 @@ function hostTick(now,dt){
         payload = { p, x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now, aim:+Math.atan2(by-boss.y, bx-boss.x).toFixed(3) };
       }
       else payload = { p:'spiral', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now };
-      sendBoss(payload);
+      /* LOCAL SIM FIRST, NETWORK SECOND — never gate gameplay on the
+         network handle. This block used to read `if (boss && sendBoss)`
+         with sendBoss() called before bossEvent(): in the solo fallback
+         (joinWorld threw -> PLAY's catch makes you host with sendBoss
+         still null) the Emperor spawned but NEVER fired a single orb —
+         bullet hell silently gone while everything else worked; and a
+         synchronous send throw (channel closing mid-peer-churn) would
+         have skipped the local sim AND aborted the rest of hostTick.
+         Every other system (hits, mining) already calls its local
+         handler directly when host — the boss now does the same. */
       bossEvent(payload);   // Trystero does not echo to the sender — the host's own client sims it too
+      if (sendBoss){ try { sendBoss(payload); } catch(e){} }   // broadcast is best-effort; a dead channel must not kill the volley
     }
   } else if (!boss) bossFireAt = 0;
   /* ---- ore nodes: keep 12 in the world. A depleted node's replacement
