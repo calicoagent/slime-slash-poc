@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Slime Slash! — Multiplayer POC</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#79c25f; font-family:"Baloo 2","Comic Sans MS",system-ui,sans-serif; touch-action:none; user-select:none; -webkit-user-select:none; }
+  #game { position:fixed; inset:0; display:block; cursor:none; }
+  .hidden { display:none !important; }
+
+  /* ---------- chunky game UI ---------- */
+  .badge {
+    position:fixed; z-index:20; display:flex; align-items:center; gap:8px;
+    background:#fff8e7; border:4px solid #5b3a1e; border-radius:999px;
+    padding:6px 16px 6px 8px; font-weight:800; color:#5b3a1e; font-size:20px;
+    box-shadow:0 5px 0 #5b3a1e, 0 10px 18px rgba(0,0,0,.25);
+  }
+  .badge svg { width:28px; height:28px; flex:none; }
+  #coinBadge { top:14px; left:14px; }
+  #peerBadge { top:14px; right:14px; padding:6px 16px; font-size:17px; }
+  #peerBadge .dot { width:12px; height:12px; border-radius:50%; background:#c33; border:2px solid #5b3a1e; }
+  #peerBadge.on .dot { background:#37c978; }
+  #lvlBadge { top:74px; left:14px; font-size:16px; padding:5px 14px 5px 10px; flex-direction:column; align-items:stretch; gap:3px; border-radius:22px; }
+  #xpTrack { width:130px; height:12px; background:#e4d3ac; border:2px solid #5b3a1e; border-radius:99px; overflow:hidden; }
+  #xpFill { height:100%; width:0%; background:linear-gradient(90deg,#ffb52e,#ff8a2e); transition:width .3s; }
+  #boardBadge { top:74px; right:14px; font-size:14px; padding:8px 14px; border-radius:22px; flex-direction:column; align-items:flex-start; gap:2px; max-width:210px; }
+  #boardBadge b { font-size:15px; }
+  #boardBadge .row { display:flex; gap:6px; white-space:nowrap; }
+  #boardBadge .row.me { color:#d2691e; }
+
+  /* weapon rack */
+  #rack { position:fixed; z-index:20; bottom:14px; left:50%; transform:translateX(-50%); display:flex; gap:10px; }
+  .wcard {
+    width:74px; padding:8px 4px 6px; text-align:center; cursor:pointer; position:relative;
+    background:#fff8e7; border:4px solid #5b3a1e; border-radius:18px;
+    box-shadow:0 5px 0 #5b3a1e; transition:transform .08s;
+  }
+  .wcard:active { transform:translateY(4px); box-shadow:0 1px 0 #5b3a1e; }
+  .wcard.sel { background:#ffd94d; transform:translateY(-8px) scale(1.07); box-shadow:0 10px 0 #5b3a1e; }
+  .wcard.locked { filter:grayscale(.9); opacity:.65; }
+  .wcard svg { width:38px; height:38px; }
+  .wcard .wn { font-size:12px; font-weight:800; color:#5b3a1e; line-height:1.05; }
+  .wcard .wl { position:absolute; top:-10px; right:-8px; background:#5b3a1e; color:#ffd94d; font-size:11px; font-weight:800; border-radius:99px; padding:2px 8px; }
+  .wcard .key { position:absolute; top:-10px; left:-8px; background:#fff; border:2px solid #5b3a1e; color:#5b3a1e; font-size:11px; font-weight:800; border-radius:8px; padding:1px 6px; }
+
+  #forgeBtn {
+    position:fixed; z-index:21; bottom:14px; right:14px; cursor:pointer;
+    background:#ff8a2e; border:4px solid #5b3a1e; border-radius:20px; color:#fff;
+    font-family:inherit; font-weight:800; font-size:18px; padding:12px 18px;
+    box-shadow:0 6px 0 #5b3a1e; text-shadow:0 2px 0 rgba(0,0,0,.25);
+  }
+  #forgeBtn:active { transform:translateY(4px); box-shadow:0 2px 0 #5b3a1e; }
+  #shareBtn {
+    position:fixed; z-index:21; bottom:14px; left:14px; cursor:pointer;
+    background:#4dabff; border:4px solid #5b3a1e; border-radius:20px; color:#fff;
+    font-family:inherit; font-weight:800; font-size:16px; padding:12px 16px;
+    box-shadow:0 6px 0 #5b3a1e; text-shadow:0 2px 0 rgba(0,0,0,.25);
+  }
+  #shareBtn:active { transform:translateY(4px); box-shadow:0 2px 0 #5b3a1e; }
+
+  /* forge popup */
+  #forge {
+    position:fixed; z-index:30; bottom:110px; right:14px; width:290px;
+    background:#fff8e7; border:5px solid #5b3a1e; border-radius:26px; padding:16px;
+    box-shadow:0 10px 0 rgba(91,58,30,.8), 0 24px 40px rgba(0,0,0,.35);
+    animation:pop .18s cubic-bezier(.2,2.2,.4,1);
+  }
+  @keyframes pop { from { transform:scale(.7) translateY(20px); opacity:0; } }
+  #forge h3 { color:#5b3a1e; font-size:22px; margin-bottom:10px; text-align:center; }
+  .upg { display:flex; align-items:center; gap:10px; background:#fff; border:3px solid #5b3a1e; border-radius:16px; padding:8px 10px; margin-bottom:8px; }
+  .upg .info { flex:1; }
+  .upg .info b { color:#5b3a1e; font-size:15px; display:block; }
+  .upg .info span { color:#97754a; font-size:12px; font-weight:700; }
+  .upg button {
+    font-family:inherit; font-weight:800; font-size:14px; cursor:pointer; white-space:nowrap;
+    background:#ffd94d; border:3px solid #5b3a1e; border-radius:12px; padding:7px 10px; color:#5b3a1e;
+    box-shadow:0 3px 0 #5b3a1e;
+  }
+  .upg button:active { transform:translateY(2px); box-shadow:0 1px 0 #5b3a1e; }
+  .upg button:disabled { filter:grayscale(1); opacity:.5; cursor:default; }
+
+  #toast {
+    position:fixed; z-index:40; top:130px; left:50%; transform:translateX(-50%);
+    background:#5b3a1e; color:#ffd94d; font-weight:800; font-size:19px; text-align:center;
+    padding:10px 24px; border-radius:999px; border:4px solid #ffd94d;
+    box-shadow:0 8px 20px rgba(0,0,0,.35); animation:pop .2s cubic-bezier(.2,2.2,.4,1); pointer-events:none;
+    max-width:92vw;
+  }
+  #bubble {
+    position:fixed; z-index:25; pointer-events:none; background:#fff; color:#5b3a1e; font-weight:800; font-size:15px;
+    padding:6px 14px; border:3px solid #5b3a1e; border-radius:16px; transform:translate(-50%,-130%);
+    box-shadow:0 4px 0 rgba(91,58,30,.6); white-space:nowrap;
+  }
+  #bubble:after { content:""; position:absolute; left:50%; bottom:-10px; transform:translateX(-50%); border:6px solid transparent; border-top:8px solid #5b3a1e; border-bottom:0; }
+
+  /* ---------- title screen ---------- */
+  #title {
+    position:fixed; inset:0; z-index:50; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px;
+    background:radial-gradient(ellipse at center, transparent 30%, rgba(30,70,20,.45) 100%);
+    padding:20px;
+  }
+  #logo {
+    font-size:min(15vw,96px); font-weight:900; color:#fff; letter-spacing:1px; text-align:center; line-height:.95;
+    -webkit-text-stroke:3px #3c7a27; text-shadow:0 6px 0 #3c7a27, 0 12px 0 rgba(0,0,0,.2), 0 20px 34px rgba(0,0,0,.4);
+    animation:bob 2.2s ease-in-out infinite;
+  }
+  #logo .slash { color:#ffd94d; -webkit-text-stroke:3px #8a5a12; text-shadow:0 6px 0 #8a5a12, 0 12px 0 rgba(0,0,0,.2); }
+  @keyframes bob { 0%,100% { transform:rotate(-1.5deg) translateY(0); } 50% { transform:rotate(1.5deg) translateY(-10px); } }
+  #tagline { color:#fff; font-weight:800; font-size:min(5vw,21px); text-shadow:0 3px 0 rgba(0,0,0,.35); text-align:center; }
+  .sign {
+    background:#a06a35; border:5px solid #5b3a1e; border-radius:20px; padding:14px 20px;
+    box-shadow:0 8px 0 #5b3a1e, inset 0 0 0 3px rgba(255,255,255,.15);
+    display:flex; flex-direction:column; gap:10px; width:min(92vw,380px);
+  }
+  .sign label { color:#ffe9bd; font-weight:800; font-size:14px; letter-spacing:1px; }
+  .sign input {
+    font-family:inherit; font-weight:800; font-size:20px; color:#5b3a1e; text-align:center;
+    background:#fff8e7; border:3px solid #5b3a1e; border-radius:12px; padding:9px; width:100%; outline:none;
+    text-transform:none;
+  }
+  .sign input.code { text-transform:uppercase; letter-spacing:4px; }
+  #playBtn {
+    font-family:inherit; font-size:34px; font-weight:900; color:#fff; cursor:pointer;
+    background:linear-gradient(180deg,#57d93d,#35b01e); border:5px solid #1e6410; border-radius:999px;
+    padding:14px 64px; box-shadow:0 10px 0 #1e6410, 0 20px 30px rgba(0,0,0,.35);
+    text-shadow:0 3px 0 rgba(0,0,0,.25); animation:pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { transform:scale(1); } 50% { transform:scale(1.05); } }
+  #playBtn:active { transform:translateY(6px); box-shadow:0 4px 0 #1e6410; }
+  #howto { color:#fff; font-weight:700; font-size:15px; text-shadow:0 2px 0 rgba(0,0,0,.4); text-align:center; max-width:520px; line-height:1.5; }
+  @media (max-width:640px) {
+    .wcard { width:58px; } .wcard svg { width:30px; height:30px; } .wcard .wn { font-size:10px; }
+    #shareBtn { display:none; } #boardBadge { display:none; }
+    #forge { right:50%; transform:translateX(50%); bottom:104px; }
+    .badge { font-size:16px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- HUD (scattered corner badges, no top bar) -->
+<div id="hud" class="hidden">
+  <div class="badge" id="coinBadge">
+    <svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="16" fill="#ffd94d" stroke="#b8860b" stroke-width="3"/><circle cx="20" cy="20" r="10" fill="none" stroke="#b8860b" stroke-width="2.5"/><path d="M20 13v14M15.5 16.5c0-2 2-3 4.5-3s4.5 1.2 4.5 3-1.8 2.8-4.5 3.4-4.5 1.4-4.5 3.4 2 3 4.5 3 4.5-1 4.5-3" stroke="#b8860b" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg>
+    <span id="coins">0</span>
+  </div>
+  <div class="badge" id="lvlBadge">
+    <div>LV <span id="lvl">1</span> &nbsp;<span id="kills" style="color:#97754a;font-size:13px;">0 kills</span></div>
+    <div id="xpTrack"><div id="xpFill"></div></div>
+  </div>
+  <div class="badge" id="peerBadge"><span class="dot"></span><span id="peers">Solo</span></div>
+  <div class="badge" id="boardBadge"><b>TOP SLAYERS</b><div id="board"></div></div>
+
+  <div id="rack"></div>
+  <button id="shareBtn">INVITE LINK</button>
+  <button id="forgeBtn">FORGE</button>
+
+  <div id="forge" class="hidden">
+    <h3>THE FORGE</h3>
+    <div class="upg"><div class="info"><b>Damage +2</b><span id="upgDmgInfo"></span></div><button id="upgDmg"></button></div>
+    <div class="upg"><div class="info"><b>Reach +12%</b><span id="upgReachInfo"></span></div><button id="upgReach"></button></div>
+    <div class="upg"><div class="info"><b>Swift Hands</b><span id="upgHasteInfo">Hit again faster</span></div><button id="upgHaste"></button></div>
+    <div style="text-align:center;color:#97754a;font-weight:700;font-size:12px;">Keys 1-5 switch weapons</div>
+  </div>
+</div>
+
+<div id="toast" class="hidden"></div>
+<div id="bubble" class="hidden"></div>
+
+<!-- TITLE -->
+<div id="title">
+  <div id="logo">SLIME<br><span class="slash">SLASH!</span></div>
+  <div id="tagline">Your finger is the sword. Shared world, real-time.</div>
+  <div class="sign">
+    <div><label>YOUR NAME</label><input id="nameIn" maxlength="12" autocomplete="off"></div>
+    <div><label>ROOM CODE (same code = same world)</label><input id="roomIn" class="code" maxlength="8" autocomplete="off"></div>
+  </div>
+  <button id="playBtn">PLAY</button>
+  <div id="howto">Move mouse / drag finger to swing your sword through slimes.<br>Tap or click for a SPIN SLASH. Earn coins, level up, unlock bigger weapons in the rack.<br>Send the INVITE LINK to friends — they join the same world instantly. No install, no sign-up.</div>
+</div>
+
+<script type="module">
+import { joinRoom, selfId } from 'https://cdn.jsdelivr.net/npm/trystero@0.21.6/nostr/+esm';
+
+/* ============================================================ utils */
+const $ = s => document.querySelector(s);
+const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+const rand = (a,b)=>a+Math.random()*(b-a);
+const dist2 = (x1,y1,x2,y2)=>{const dx=x2-x1,dy=y2-y1;return dx*dx+dy*dy;};
+const hashHue = s => { let h=0; for (const c of s) h=(h*31+c.charCodeAt(0))>>>0; return h%360; };
+const cleanName = s => (s||'').replace(/[<>&"'`]/g,'').trim().slice(0,12) || 'Knight';
+const esc = s => s.replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ============================================================ audio */
+let AC=null, muted=false;
+function beep(freq,dur,type='sine',gain=.12,slide=0){
+  try{
+    if(!AC) AC=new (window.AudioContext||window.webkitAudioContext)();
+    if(AC.state==='suspended') AC.resume();
+    const o=AC.createOscillator(), g=AC.createGain(), t=AC.currentTime;
+    o.type=type; o.frequency.setValueAtTime(freq,t);
+    if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(30,freq+slide),t+dur);
+    g.gain.setValueAtTime(gain,t); g.gain.exponentialRampToValueAtTime(.001,t+dur);
+    o.connect(g).connect(AC.destination); o.start(t); o.stop(t+dur);
+  }catch(e){}
+}
+const sfx = {
+  hit:  ()=>beep(rand(280,340),.07,'square',.06,-160),
+  pop:  ()=>{ beep(520,.12,'sine',.14,420); beep(180,.1,'triangle',.08,80); },
+  coin: ()=>{ beep(950,.07,'square',.07); setTimeout(()=>beep(1420,.12,'square',.07),55); },
+  lvl:  ()=>{ [523,659,784,1046].forEach((f,i)=>setTimeout(()=>beep(f,.14,'triangle',.1),i*80)); },
+  buy:  ()=>{ beep(700,.08,'triangle',.1); setTimeout(()=>beep(980,.12,'triangle',.1),70); },
+  spin: ()=>beep(300,.16,'sawtooth',.045,700),
+};
+
+/* ============================================================ weapons */
+const WEAPONS = [
+  { id:'dagger', name:'Dagger',     dmg:6,  reach:.085, cd:110, unlock:1, color:'#cfd8dc', desc:'fast & nippy' },
+  { id:'sword',  name:'Sword',      dmg:11, reach:.125, cd:170, unlock:1, color:'#ffe082', desc:'the classic' },
+  { id:'katana', name:'Katana',     dmg:16, reach:.165, cd:150, unlock:2, color:'#f8bbd0', desc:'long & swift' },
+  { id:'great',  name:'Greatsword', dmg:30, reach:.205, cd:300, unlock:3, color:'#b0bec5', desc:'huge chops' },
+  { id:'hammer', name:'Warhammer', dmg:42, reach:.150, cd:380, unlock:4, color:'#ffcc80', desc:'splash smash', splash:.07 },
+];
+const weaponSVG = (w,locked)=>`
+<svg viewBox="0 0 40 40">${locked
+ ? '<path d="M13 18v-3a7 7 0 0114 0v3h3v14H10V18h3zm7 4a3.2 3.2 0 00-2 5.4V30h4v-2.6a3.2 3.2 0 00-2-5.4z" fill="#8d6e63"/>'
+ : w.id==='hammer'
+ ? '<rect x="7" y="6" width="26" height="13" rx="4" fill="#90a4ae" stroke="#5b3a1e" stroke-width="2.5"/><rect x="17" y="17" width="6" height="17" rx="3" fill="#a06a35" stroke="#5b3a1e" stroke-width="2.5"/>'
+ : w.id==='dagger'
+ ? '<path d="M20 3 L24 20 L20 24 L16 20 Z" fill="'+w.color+'" stroke="#5b3a1e" stroke-width="2"/><rect x="12" y="23" width="16" height="4" rx="2" fill="#a06a35"/><rect x="17.5" y="27" width="5" height="9" rx="2.5" fill="#5b3a1e"/>'
+ : w.id==='katana'
+ ? '<path d="M14 4 Q30 14 27 30 L23 31 Q22 16 11 7 Z" fill="'+w.color+'" stroke="#5b3a1e" stroke-width="2"/><rect x="21" y="29" width="6" height="9" rx="3" transform="rotate(38 24 33)" fill="#37474f"/>'
+ : w.id==='great'
+ ? '<path d="M20 2 L27 24 L20 29 L13 24 Z" fill="'+w.color+'" stroke="#5b3a1e" stroke-width="2.2"/><rect x="9" y="27" width="22" height="5" rx="2.5" fill="#a06a35"/><rect x="17" y="32" width="6" height="7" rx="3" fill="#5b3a1e"/>'
+ : '<path d="M20 3 L25 22 L20 26 L15 22 Z" fill="'+w.color+'" stroke="#5b3a1e" stroke-width="2"/><rect x="11" y="25" width="18" height="4.5" rx="2.2" fill="#a06a35"/><rect x="17.5" y="29" width="5" height="8" rx="2.5" fill="#5b3a1e"/>'}
+</svg>`;
+
+/* ============================================================ state */
+const cv = $('#game'), ctx = cv.getContext('2d');
+let W=0,H=0,DPR=1;
+function resize(){ DPR=Math.min(2,devicePixelRatio||1); W=innerWidth; H=innerHeight; cv.width=W*DPR; cv.height=H*DPR; cv.style.width=W+'px'; cv.style.height=H+'px'; }
+addEventListener('resize',resize); resize();
+const NX = x => x*W, NY = y => y*H;                 // world is normalized 0..1 x 0..1
+const SCALE = () => Math.min(W,H);
+
+const me = {
+  id: selfId, name:'Knight', color:`hsl(${hashHue(selfId)} 80% 55%)`,
+  x:.5, y:.6, px:.5, py:.6, angle:-Math.PI/4, speed:0,
+  weapon:1, coins:0, xp:0, level:1, kills:0,
+  upg:{ dmg:0, reach:0, haste:0 },
+  lastHitAt:new Map(), spinUntil:0, spinCdUntil:0, trail:[],
+};
+const peers = new Map();       // id -> {x,y,tx,ty,angle,name,color,weapon,trail,lastSeen}
+let slimes = new Map();        // id -> slime (local mirror; host owns truth)
+let particles = [], floats = [], popRings = [];
+let started=false, room=null, sendPos=null, sendHit=null, sendWorld=null, sendKillFx=null;
+let isHost=false, hostId=null, lastWorldAt=0, scores = {}; // id -> {name,kills}
+const hitClaimsAt = new Map(); // host-side rate limiting
+
+/* ============================================================ slimes */
+const SLIME_KINDS = [
+  { kind:'baby',  hp:12,  r:.020, coins:4,  xp:8,  speed:.014, weight:45 },
+  { kind:'mid',   hp:30,  r:.030, coins:9,  xp:16, speed:.011, weight:35 },
+  { kind:'big',   hp:75,  r:.045, coins:20, xp:34, speed:.008, weight:15 },
+  { kind:'king',  hp:260, r:.068, coins:90, xp:120,speed:.005, weight:5  },
+];
+const SLIME_COLORS = ['#7ee787','#6fd3ff','#ffb3d9','#ffe066','#c39bff','#8affd1','#ffab7a'];
+function pickKind(){
+  let tot = SLIME_KINDS.reduce((s,k)=>s+k.weight,0), r = Math.random()*tot;
+  for (const k of SLIME_KINDS){ if((r-=k.weight)<=0) return k; } return SLIME_KINDS[0];
+}
+let slimeSeq = 1;
+function spawnSlime(){
+  const k = pickKind();
+  const id = (hostId||me.id).slice(0,4)+'-'+(slimeSeq++);
+  const s = { id, kind:k.kind, hp:k.hp, max:k.hp, r:k.r,
+    x:rand(.06,.94), y:rand(.12,.9), vx:0, vy:0, dir:rand(0,Math.PI*2), turnAt:performance.now()+rand(800,2600),
+    color:SLIME_COLORS[Math.floor(Math.random()*SLIME_COLORS.length)], seed:Math.random()*10, squish:0, flash:0 };
+  slimes.set(id,s); return s;
+}
+function hostTick(now,dt){
+  // wander + spawn
+  for (const s of slimes.values()){
+    if (now>s.turnAt){ s.dir=rand(0,Math.PI*2); s.turnAt=now+rand(800,2600); }
+    const k = SLIME_KINDS.find(k=>k.kind===s.kind);
+    const sp = k.speed*dt*60/1000;
+    s.x += Math.cos(s.dir)*sp; s.y += Math.sin(s.dir)*sp*.7;
+    if (s.x<s.r+ .01){s.x=s.r+.01; s.dir=Math.PI-s.dir;} if (s.x>1-s.r-.01){s.x=1-s.r-.01; s.dir=Math.PI-s.dir;}
+    if (s.y<s.r+.08){s.y=s.r+.08; s.dir=-s.dir;} if (s.y>0.97-s.r){s.y=0.97-s.r; s.dir=-s.dir;}
+    s.squish = Math.max(0, s.squish - dt/160); s.flash = Math.max(0, s.flash - dt/120);
+  }
+  const target = 10 + Math.min(6, peers.size*2);
+  if (slimes.size < target && Math.random()<.25) spawnSlime();
+}
+function worldPayload(){
+  return { s:[...slimes.values()].map(s=>[s.id, +s.x.toFixed(3), +s.y.toFixed(3), Math.ceil(s.hp), s.max, s.kind, s.color, +s.dir.toFixed(2)]),
+           sc: scores, h: hostId };
+}
+function applyWorld(p){
+  if (!p || !Array.isArray(p.s)) return;
+  lastWorldAt = performance.now();
+  const seen = new Set();
+  for (const a of p.s){
+    const [id,x,y,hp,max,kind,color,dir] = a; seen.add(id);
+    const old = slimes.get(id);
+    if (old){
+      if (hp < old.hp){ old.squish=1; old.flash=1; spawnHitFx(old.x,old.y,old.color,3); }
+      old.tx=x; old.ty=y; old.hp=hp; old.dir=dir;
+    } else {
+      const k = SLIME_KINDS.find(k=>k.kind===kind) || SLIME_KINDS[0];
+      slimes.set(id,{id,kind,hp,max,r:k.r,x,y,tx:x,ty:y,dir,color,seed:Math.random()*10,squish:1,flash:0});
+    }
+  }
+  for (const id of [...slimes.keys()]) if (!seen.has(id) && !isHost) slimes.delete(id);
+  if (p.sc) scores = p.sc;
+}
+
+/* ============================================================ fx */
+function spawnHitFx(x,y,color,n=6){ for(let i=0;i<n;i++) particles.push({x,y,vx:rand(-.12,.12),vy:rand(-.16,.02),life:1,color,r:rand(2,5)}); }
+function spawnPopFx(x,y,color){ for(let i=0;i<22;i++){ const a=rand(0,Math.PI*2),v=rand(.04,.22); particles.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-.05,life:1,color,r:rand(2,7)});} popRings.push({x,y,r:.01,life:1,color}); }
+function addFloat(x,y,text,color){ floats.push({x,y,text,color,life:1}); }
+function toast(msg,ms=2200){ const t=$('#toast'); t.textContent=msg; t.classList.remove('hidden'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.add('hidden'),ms); }
+let bubbleTimer=null;
+function bubble(text,x,y,ms=1600){ const b=$('#bubble'); b.textContent=text; b.style.left=NX(x)+'px'; b.style.top=NY(y)+'px'; b.classList.remove('hidden'); clearTimeout(bubbleTimer); bubbleTimer=setTimeout(()=>b.classList.add('hidden'),ms); }
+
+/* ============================================================ combat */
+function myWeapon(){ return WEAPONS[me.weapon]; }
+function myDamage(){ return myWeapon().dmg + me.upg.dmg*2 + (me.level-1); }
+function myReach(){ return myWeapon().reach * (1 + me.upg.reach*.12); }
+function myCd(){ return Math.max(50, myWeapon().cd * Math.pow(.88, me.upg.haste)); }
+
+function localHitCheck(now){
+  // blade = segment from hand (pointer) to tip along facing angle; spin = full circle
+  const spinning = now < me.spinUntil;
+  const reach = myReach() * (spinning?1.15:1);
+  const tipX = me.x + Math.cos(me.angle)*reach, tipY = me.y + Math.sin(me.angle)*reach*(H/W>0?1:1);
+  for (const s of slimes.values()){
+    const last = me.lastHitAt.get(s.id)||0;
+    if (now-last < myCd()) continue;
+    let hit=false;
+    if (spinning){ hit = dist2(me.x,me.y,s.x,s.y) < (reach + s.r)*(reach + s.r); }
+    else {
+      // distance from slime centre to blade segment (in x-normalized space, y corrected by aspect)
+      const ax=me.x, ay=me.y*(H/W), bx=tipX, by=tipY*(H/W);
+      const cx=s.x, cy=s.y*(H/W);
+      const dx=bx-ax, dy=by-ay, L2=dx*dx+dy*dy||1e-6;
+      const t=clamp(((cx-ax)*dx+(cy-ay)*dy)/L2,0,1);
+      hit = dist2(ax+dx*t, ay+dy*t, cx, cy) < (s.r*(H/W)+.012)**2;
+    }
+    if (hit){
+      me.lastHitAt.set(s.id, now);
+      doHit(s, myDamage());
+    }
+  }
+}
+function doHit(s, dmg){
+  s.squish=1; s.flash=1; sfx.hit();
+  spawnHitFx(s.x,s.y,s.color,4);
+  addFloat(s.x+rand(-.01,.01), s.y-s.r-.015, '-'+dmg, '#fff');
+  if (isHost) hostApplyHit(s.id, dmg, me.id);
+  else if (sendHit) sendHit({ id:s.id, d:dmg });
+}
+function hostApplyHit(slimeId, dmg, byId){
+  const s = slimes.get(slimeId); if (!s) return;
+  const now = performance.now();
+  const key = byId+':'+slimeId, last = hitClaimsAt.get(key)||0;
+  if (now-last < 60) return;                       // host anti-spam
+  hitClaimsAt.set(key, now);
+  dmg = clamp(Math.round(dmg)||1, 1, 120);         // host caps claimed damage
+  s.hp -= dmg; s.squish=1; s.flash=1;
+  // splash (warhammer)
+  const w = byId===me.id ? myWeapon() : WEAPONS.find(w=>w.id===(peers.get(byId)?.weaponId)) || WEAPONS[1];
+  if (w.splash){ for (const o of slimes.values()) if (o!==s && dist2(o.x,o.y,s.x,s.y) < w.splash*w.splash) o.hp -= Math.ceil(dmg*.5); }
+  if (s.hp<=0) hostKill(s, byId);
+  else broadcastWorld();
+}
+function hostKill(s, byId){
+  slimes.delete(s.id);
+  const k = SLIME_KINDS.find(k=>k.kind===s.kind);
+  scores[byId] = scores[byId] || { name: byId===me.id?me.name:(peers.get(byId)?.name||'Knight'), kills:0 };
+  scores[byId].kills++;
+  if (sendKillFx) sendKillFx({ id:s.id, x:s.x, y:s.y, c:s.color, by:byId, coins:k.coins, xp:k.xp, kind:s.kind });
+  onKillFx({ x:s.x, y:s.y, c:s.color, by:byId, coins:k.coins, xp:k.xp, kind:s.kind });
+  spawnSlime(); broadcastWorld();
+}
+function onKillFx(f){
+  spawnPopFx(f.x,f.y,f.c); sfx.pop();
+  if (f.kind==='king') toast('THE SLIME KING HAS FALLEN!');
+  if (f.by===me.id){
+    me.coins += f.coins; me.kills++;
+    gainXp(f.xp); sfx.coin();
+    addFloat(f.x, f.y-.04, '+'+f.coins+' coins', '#ffd94d');
+    refreshHUD();
+    if (f.kind==='king') bubble('KING SLAYER!', me.x, me.y);
+  }
+}
+function gainXp(n){
+  me.xp += n;
+  const need = me.level*100;
+  if (me.xp >= need){
+    me.xp -= need; me.level++; sfx.lvl();
+    toast('LEVEL '+me.level+'!');
+    bubble('LEVEL UP!', me.x, me.y);
+    const w = WEAPONS.find(w=>w.unlock===me.level);
+    if (w) setTimeout(()=>toast('UNLOCKED: '+w.name.toUpperCase()+' — check the rack!'), 900);
+    buildRack();
+  }
+  refreshHUD();
+}
+
+/* ============================================================ networking */
+function electHost(){
+  const ids = [me.id, ...peers.keys()].sort();
+  const newHost = ids[0];
+  const wasHost = isHost;
+  hostId = newHost; isHost = (newHost===me.id);
+  if (isHost && !wasHost){
+    // adopt current world (host migration) or start fresh
+    if (slimes.size===0){ for(let i=0;i<11;i++) spawnSlime(); }
+    for (const s of slimes.values()){ s.tx=undefined; }
+    broadcastWorld();
+    if (started) toast(peers.size? 'You are now the WORLD HOST' : 'Solo world — invite friends!', 1800);
+  }
+}
+let worldTimer=null;
+function broadcastWorld(){ if (isHost && sendWorld) sendWorld(worldPayload()); }
+function startBroadcastLoop(){
+  clearInterval(worldTimer);
+  worldTimer = setInterval(()=>{ if (isHost) broadcastWorld(); }, 220);
+}
+function joinWorld(roomCode){
+  room = joinRoom({ appId:'slime-slash-poc-v1' }, roomCode);
+  room.onPeerJoin(id=>{ peers.set(id,{x:.5,y:.5,tx:.5,ty:.5,angle:0,name:'Knight',color:`hsl(${hashHue(id)} 80% 60%)`,weapon:1,trail:[],lastSeen:performance.now()}); electHost(); if(isHost) setTimeout(broadcastWorld,300); refreshPeers(); });
+  room.onPeerLeave(id=>{ peers.delete(id); delete scores[id]; electHost(); refreshPeers(); });
+
+  const [sendP, onP] = room.makeAction('pos');  sendPos = sendP;
+  onP((d,id)=>{ const p=peers.get(id); if(!p||!d) return;
+    if (typeof d.x!=='number'||typeof d.y!=='number') return;
+    p.tx=clamp(d.x,0,1); p.ty=clamp(d.y,0,1); p.angle=+d.a||0; p.weapon=clamp(d.w|0,0,WEAPONS.length-1); p.weaponId=WEAPONS[p.weapon].id;
+    if (d.n) p.name=cleanName(d.n); if (d.c) p.color=String(d.c).slice(0,32);
+    p.spinning = !!d.s; p.lastSeen=performance.now();
+    if (scores[id]) scores[id].name=p.name;
+  });
+  const [sendH, onH] = room.makeAction('hit'); sendHit = sendH;
+  onH((d,id)=>{ if (isHost && d && typeof d.id==='string') hostApplyHit(d.id, d.d, id); });
+  const [sendW, onW] = room.makeAction('wrld'); sendWorld = sendW;
+  onW((d,id)=>{ if (id===hostId || !hostId) applyWorld(d); else if (!isHost) applyWorld(d); });
+  const [sendK, onK] = room.makeAction('kill'); sendKillFx = sendK;
+  onK(f=>{ if (f && typeof f.x==='number') onKillFx(f); });
+
+  electHost(); startBroadcastLoop();
+}
+setInterval(()=>{ // sword state @ ~20Hz
+  if (started && sendPos) sendPos({ x:+me.x.toFixed(3), y:+me.y.toFixed(3), a:+me.angle.toFixed(2), w:me.weapon, n:me.name, c:me.color, s: performance.now()<me.spinUntil });
+}, 50);
+
+/* ============================================================ input */
+let pointerDown=false;
+addEventListener('pointermove', e=>{
+  const x=e.clientX/W, y=e.clientY/H;
+  const dx=x-me.x, dy=y-me.y;
+  const d=Math.hypot(dx,dy);
+  me.speed = d;
+  if (d>.0015) me.angle = Math.atan2(dy,dx);
+  me.px=me.x; me.py=me.y; me.x=x; me.y=y;
+});
+addEventListener('pointerdown', e=>{
+  if (!started) return;
+  if (e.target.closest('#hud') && !e.target.closest('#game')) { /* UI taps handled by buttons */ }
+  if (e.target===cv) trySpin();
+});
+addEventListener('touchmove', e=>{ e.preventDefault(); }, {passive:false});
+addEventListener('keydown', e=>{
+  if (!started) return;
+  const n = parseInt(e.key);
+  if (n>=1 && n<=WEAPONS.length) equip(n-1);
+  if (e.key===' ') { e.preventDefault(); trySpin(); }
+  if (e.key==='f'||e.key==='F') toggleForge();
+});
+function trySpin(){
+  const now=performance.now();
+  if (now < me.spinCdUntil) return;
+  me.spinUntil = now+260; me.spinCdUntil = now+900;
+  sfx.spin();
+}
+
+/* ============================================================ HUD */
+function refreshHUD(){
+  $('#coins').textContent = me.coins;
+  $('#lvl').textContent = me.level;
+  $('#kills').textContent = me.kills+' kills';
+  $('#xpFill').style.width = clamp(me.xp/(me.level*100)*100,0,100)+'%';
+  // scoreboard
+  const rows = Object.entries(scores).sort((a,b)=>b[1].kills-a[1].kills).slice(0,5);
+  $('#board').innerHTML = rows.length ? rows.map(([id,s])=>`<div class="row ${id===me.id?'me':''}"><span>${esc(s.name)}</span><b>${s.kills}</b></div>`).join('') : '<div class="row"><span>No kills yet</span></div>';
+  // forge prices
+  const cd=20+me.upg.dmg*25, cr=30+me.upg.reach*35, ch=30+me.upg.haste*35;
+  $('#upgDmgInfo').textContent = 'Now: '+myDamage()+' dmg per hit';
+  $('#upgReachInfo').textContent = 'Now: '+Math.round(myReach()/WEAPONS[me.weapon].reach*100)+'% of base';
+  $('#upgDmg').textContent = cd+' coins';  $('#upgDmg').disabled = me.coins<cd;
+  $('#upgReach').textContent = cr+' coins'; $('#upgReach').disabled = me.coins<cr || me.upg.reach>=8;
+  $('#upgHaste').textContent = ch+' coins'; $('#upgHaste').disabled = me.coins<ch || me.upg.haste>=8;
+}
+function refreshPeers(){
+  const n = peers.size;
+  $('#peers').textContent = n===0 ? 'Solo — invite friends!' : (n+1)+' players in world';
+  $('#peerBadge').classList.toggle('on', n>0);
+  refreshHUD();
+}
+function buildRack(){
+  const rack=$('#rack'); rack.innerHTML='';
+  WEAPONS.forEach((w,i)=>{
+    const locked = me.level < w.unlock;
+    const d=document.createElement('div');
+    d.className='wcard'+(me.weapon===i?' sel':'')+(locked?' locked':'');
+    d.innerHTML = weaponSVG(w,locked)+`<div class="wn">${w.name}</div>`+(locked?`<div class="wl">LV ${w.unlock}</div>`:`<div class="key">${i+1}</div>`);
+    d.title = w.name+' — '+w.dmg+' dmg, '+w.desc+(locked?(' (unlocks LV '+w.unlock+')'):'');
+    d.onclick=()=>equip(i);
+    rack.appendChild(d);
+  });
+}
+function equip(i){
+  const w=WEAPONS[i];
+  if (me.level < w.unlock){ toast(w.name+' unlocks at LEVEL '+w.unlock); return; }
+  me.weapon=i; me.lastHitAt.clear(); buildRack(); beep(600,.06,'triangle',.08);
+  bubble(w.name.toUpperCase()+'!', me.x, me.y, 900);
+}
+function toggleForge(){ $('#forge').classList.toggle('hidden'); refreshHUD(); }
+$('#forgeBtn').onclick = toggleForge;
+$('#upgDmg').onclick = ()=>buy('dmg');
+$('#upgReach').onclick = ()=>buy('reach');
+$('#upgHaste').onclick = ()=>buy('haste');
+function buy(k){
+  const cost = k==='dmg'? 20+me.upg.dmg*25 : k==='reach'? 30+me.upg.reach*35 : 30+me.upg.haste*35;
+  if (me.coins<cost) return;
+  me.coins-=cost; me.upg[k]++; sfx.buy(); refreshHUD(); bubble('UPGRADED!', me.x, me.y, 900);
+}
+$('#shareBtn').onclick = async ()=>{
+  const url = location.href;
+  try{ await navigator.clipboard.writeText(url); toast('Invite link copied! Send it to your friends.'); }
+  catch(e){ toast('Copy this page address and send it to friends!'); }
+  if (navigator.share){ try{ await navigator.share({title:'Slime Slash!', url}); }catch(e){} }
+};
+
+/* ============================================================ drawing */
+const FLOWERS = Array.from({length:70},(_,i)=>({x:(Math.sin(i*127.1)*.5+.5), y:(Math.cos(i*311.7)*.5+.5), c:['#fff','#ffd1e8','#fff3a0'][i%3], s:2+(i%3)}));
+function drawField(t){
+  const g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#8fd06e'); g.addColorStop(1,'#69b84e');
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='rgba(255,255,255,.05)';
+  const stripe=90; for(let i=0;i<W/stripe;i+=2) ctx.fillRect(i*stripe,0,stripe,H);
+  for (const f of FLOWERS){ ctx.fillStyle=f.c; ctx.beginPath(); ctx.arc(f.x*W, f.y*H, f.s, 0, 7); ctx.fill(); }
+}
+function drawSlime(s,t){
+  const x=NX(s.x), y=NY(s.y), baseR=s.r*SCALE();
+  const wob = Math.sin(t/280 + s.seed*7)*0.08;
+  const sq = 1 + wob - s.squish*.35;
+  const rX = baseR*(2-sq)*.95, rY = baseR*sq*.82;
+  ctx.save(); ctx.translate(x,y);
+  if (s.flash>0){ ctx.shadowColor='#fff'; ctx.shadowBlur=18; }
+  // body
+  const g=ctx.createRadialGradient(-rX*.3,-rY*.5,rX*.15, 0,0, rX*1.25);
+  g.addColorStop(0,'#ffffff'); g.addColorStop(.25,s.color); g.addColorStop(1, shade(s.color,-28));
+  ctx.fillStyle=g;
+  ctx.beginPath(); ctx.ellipse(0,0,rX,rY,0,0,7); ctx.fill();
+  ctx.strokeStyle='rgba(60,90,40,.35)'; ctx.lineWidth=2; ctx.stroke();
+  // shine
+  ctx.fillStyle='rgba(255,255,255,.75)';
+  ctx.beginPath(); ctx.ellipse(-rX*.34,-rY*.42,rX*.20,rY*.13,-.5,0,7); ctx.fill();
+  // cheeks
+  ctx.fillStyle='rgba(255,110,140,.5)';
+  ctx.beginPath(); ctx.ellipse(-rX*.48,rY*.12,rX*.13,rY*.10,0,0,7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse( rX*.48,rY*.12,rX*.13,rY*.10,0,0,7); ctx.fill();
+  // eyes look at my sword
+  const la=Math.atan2(me.y-s.y, me.x-s.x), ex=Math.cos(la)*rX*.09, ey=Math.sin(la)*rY*.09;
+  const hurt = s.hp < s.max*.35;
+  ctx.fillStyle='#263238';
+  for (const sx of [-1,1]){
+    ctx.beginPath();
+    if (hurt) ctx.ellipse(sx*rX*.26+ex, -rY*.08+ey, rX*.085, rY*.05, sx*.5, 0, 7);
+    else ctx.ellipse(sx*rX*.26+ex, -rY*.08+ey, rX*.075, rY*.13, 0, 0, 7);
+    ctx.fill();
+  }
+  ctx.fillStyle='#fff';
+  ctx.beginPath(); ctx.arc(-rX*.26+ex+rX*.025, -rY*.15+ey, rX*.028, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc( rX*.26+ex+rX*.025, -rY*.15+ey, rX*.028, 0, 7); ctx.fill();
+  // mouth
+  ctx.strokeStyle='#263238'; ctx.lineWidth=Math.max(1.6,baseR*.06); ctx.lineCap='round';
+  ctx.beginPath();
+  if (hurt) ctx.arc(0, rY*.34, rX*.13, Math.PI*1.15, Math.PI*1.85);
+  else ctx.arc(0, rY*.08, rX*.14, Math.PI*.2, Math.PI*.8);
+  ctx.stroke();
+  // crown for king
+  if (s.kind==='king'){
+    ctx.fillStyle='#ffd94d'; ctx.strokeStyle='#b8860b'; ctx.lineWidth=2;
+    const cw=rX*.8, ch=rY*.5, cy=-rY*.92;
+    ctx.beginPath(); ctx.moveTo(-cw/2,cy); ctx.lineTo(-cw/2,cy-ch*.5); ctx.lineTo(-cw/4,cy-ch*.15); ctx.lineTo(0,cy-ch); ctx.lineTo(cw/4,cy-ch*.15); ctx.lineTo(cw/2,cy-ch*.5); ctx.lineTo(cw/2,cy); ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
+  ctx.restore();
+  // hp bar
+  if (s.hp < s.max){
+    const bw=rX*1.7, bh=Math.max(5,baseR*.14), bx=x-bw/2, by=y-rY-baseR*.32;
+    ctx.fillStyle='rgba(40,30,20,.65)'; roundRect(bx-2,by-2,bw+4,bh+4,5); ctx.fill();
+    ctx.fillStyle='#e5484d'; roundRect(bx,by,bw,bh,3); ctx.fill();
+    ctx.fillStyle='#57d93d'; roundRect(bx,by,bw*clamp(s.hp/s.max,0,1),bh,3); ctx.fill();
+  }
+}
+function shade(hex,amt){
+  const n=parseInt(hex.slice(1),16);
+  const r=clamp((n>>16)+amt,0,255), g=clamp(((n>>8)&255)+amt,0,255), b=clamp((n&255)+amt,0,255);
+  return `rgb(${r},${g},${b})`;
+}
+function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.roundRect(x,y,w,h,r); }
+function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,spinning){
+  const w=WEAPONS[weaponIdx];
+  const reachPx = (isMe?myReach():(w.reach)) * W;
+  const spinA = spinning ? (t/38)%(Math.PI*2) : 0;
+  const a = spinning ? spinA : angle;
+  const tipX = x+Math.cos(a)*reachPx, tipY = y+Math.sin(a)*reachPx;
+  // trail
+  ctx.strokeStyle = color; ctx.globalAlpha=.28; ctx.lineWidth = weaponIdx>=3?13:9; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(tipX,tipY); ctx.stroke(); ctx.globalAlpha=1;
+  ctx.save(); ctx.translate(x,y); ctx.rotate(a);
+  const L=reachPx;
+  // blade by type
+  ctx.lineJoin='round';
+  if (w.id==='hammer'){
+    ctx.fillStyle='#a06a35'; ctx.fillRect(L*.25,-3.5,L*.45,7);
+    ctx.fillStyle='#90a4ae'; ctx.strokeStyle='#455a64'; ctx.lineWidth=2.5;
+    roundRect(L*.62,-L*.16,L*.36,L*.32,6); ctx.fill(); ctx.stroke();
+  } else {
+    const bw = w.id==='great'? L*.11 : w.id==='dagger'? L*.10 : L*.075;
+    ctx.fillStyle=w.color; ctx.strokeStyle='rgba(70,70,70,.55)'; ctx.lineWidth=1.6;
+    ctx.beginPath();
+    if (w.id==='katana'){ ctx.moveTo(L*.16,0); ctx.quadraticCurveTo(L*.6,-bw*1.5, L, -bw*.4); ctx.quadraticCurveTo(L*.6, bw*.3, L*.16, bw*.6); }
+    else { ctx.moveTo(L*.16,-bw); ctx.lineTo(L*.92,0); ctx.lineTo(L*.16,bw); }
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='#a06a35'; ctx.fillRect(L*.03,-bw*1.7, L*.05, bw*3.4); // guard-ish
+    ctx.fillStyle='#5b3a1e'; ctx.fillRect(-L*.10,-3.2, L*.13, 6.4);       // grip
+  }
+  // hand pommel dot in player colour
+  ctx.fillStyle=color; ctx.beginPath(); ctx.arc(0,0,7,0,7); ctx.fill();
+  ctx.strokeStyle='#fff'; ctx.lineWidth=2.5; ctx.stroke();
+  ctx.restore();
+  if (name){
+    ctx.font='800 13px "Baloo 2",sans-serif'; ctx.textAlign='center';
+    ctx.lineWidth=4; ctx.strokeStyle='rgba(50,80,30,.75)';
+    ctx.strokeText(name, x, y-16); ctx.fillStyle='#fff'; ctx.fillText(name, x, y-16);
+  }
+  return {tipX,tipY};
+}
+
+/* ============================================================ main loop */
+let lastT=performance.now(), posSendAcc=0;
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt=Math.min(50, now-lastT); lastT=now;
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+
+  // remote slime interpolation
+  for (const s of slimes.values()){
+    if (!isHost && s.tx!==undefined){ s.x += (s.tx-s.x)*.35; s.y += (s.ty-s.y)*.35; s.squish=Math.max(0,s.squish-dt/160); s.flash=Math.max(0,s.flash-dt/120); }
+  }
+  if (isHost && started) hostTick(now,dt);
+  if (started) localHitCheck(now);
+
+  drawField(now);
+  // slimes sorted by y for fake depth
+  [...slimes.values()].sort((a,b)=>a.y-b.y).forEach(s=>drawSlime(s,now));
+
+  // particles & rings & floats
+  popRings = popRings.filter(r=>r.life>0);
+  for (const r of popRings){ r.r+=dt*.00045; r.life-=dt/380; ctx.strokeStyle=r.color; ctx.globalAlpha=Math.max(0,r.life); ctx.lineWidth=4; ctx.beginPath(); ctx.arc(NX(r.x),NY(r.y),r.r*SCALE(),0,7); ctx.stroke(); ctx.globalAlpha=1; }
+  particles = particles.filter(p=>p.life>0);
+  for (const p of particles){ p.x+=p.vx*dt/60; p.y+=p.vy*dt/60; p.vy+=.0009*dt/16; p.life-=dt/480; ctx.globalAlpha=Math.max(0,p.life); ctx.fillStyle=p.color; ctx.beginPath(); ctx.arc(NX(p.x),NY(p.y),p.r,0,7); ctx.fill(); ctx.globalAlpha=1; }
+  floats = floats.filter(f=>f.life>0);
+  ctx.textAlign='center';
+  for (const f of floats){ f.y-=dt*.00003; f.life-=dt/950; ctx.globalAlpha=Math.max(0,f.life); ctx.font='900 17px "Baloo 2",sans-serif'; ctx.lineWidth=4; ctx.strokeStyle='rgba(60,40,10,.8)'; ctx.strokeText(f.text,NX(f.x),NY(f.y)); ctx.fillStyle=f.color; ctx.fillText(f.text,NX(f.x),NY(f.y)); ctx.globalAlpha=1; }
+
+  // other players' swords
+  for (const [id,p] of peers){
+    if (now-p.lastSeen>6000) continue;
+    p.x += (p.tx-p.x)*.4; p.y += (p.ty-p.y)*.4;
+    drawSword(NX(p.x),NY(p.y),p.angle,p.weapon,p.color,p.name,false,now,p.spinning);
+  }
+  // my sword on top
+  if (started || true) drawSword(NX(me.x),NY(me.y),me.angle,me.weapon,me.color, started?me.name:'', true, now, now<me.spinUntil);
+  if (now<me.spinUntil && started) localHitCheck(now);
+
+  // scoreboard refresh (cheap, 2/s)
+  if (started && now-(frame._b||0)>500){ frame._b=now; refreshHUD(); }
+}
+requestAnimationFrame(frame);
+// title-screen ambient slimes (solo sim before joining)
+for(let i=0;i<9;i++){ const k=pickKind(); const id='amb'+i; slimes.set(id,{id,kind:k.kind,hp:k.hp,max:k.hp,r:k.r,x:rand(.08,.92),y:rand(.15,.9),vx:0,vy:0,dir:rand(0,7),turnAt:performance.now()+rand(800,2000),color:SLIME_COLORS[i%SLIME_COLORS.length],seed:Math.random()*10,squish:0,flash:0}); }
+setInterval(()=>{ if(!started){ // ambient wander on title
+  const now=performance.now();
+  for (const s of slimes.values()){ if(now>s.turnAt){s.dir=rand(0,7); s.turnAt=now+rand(900,2400);} s.x+=Math.cos(s.dir)*.0016; s.y+=Math.sin(s.dir)*.0011; s.x=clamp(s.x,.05,.95); s.y=clamp(s.y,.1,.93); }
+}},50);
+
+/* ============================================================ start */
+const params = new URLSearchParams(location.search);
+$('#roomIn').value = (params.get('room')||'SLIME1').toUpperCase();
+$('#nameIn').value = 'Knight-' + Math.floor(rand(10,99));
+$('#playBtn').onclick = ()=>{
+  me.name = cleanName($('#nameIn').value);
+  const code = ($('#roomIn').value||'SLIME1').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,8)||'SLIME1';
+  const url = new URL(location.href); url.searchParams.set('room',code); history.replaceState(null,'',url);
+  scores[me.id]={name:me.name,kills:0};
+  $('#title').classList.add('hidden');
+  $('#hud').classList.remove('hidden');
+  started=true;
+  buildRack(); refreshHUD(); refreshPeers();
+  try { joinWorld(code); }
+  catch(e){ toast('Multiplayer failed to start — playing solo. ('+e.message+')', 4000); isHost=true; hostId=me.id; if(slimes.size===0) for(let i=0;i<11;i++) spawnSlime(); }
+  toast('Slash the slimes! Same room code = same world.', 2600);
+  beep(660,.1,'triangle',.1);
+};
+// Enter key starts
+addEventListener('keydown', e=>{ if(!started && e.key==='Enter') $('#playBtn').click(); });
+</script>
+</body>
+</html>
