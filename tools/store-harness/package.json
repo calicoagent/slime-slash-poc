@@ -1,0 +1,6 @@
+{
+  "name": "slimeslash-store-harness",
+  "private": true,
+  "description": "Headless checks for the zustand store refactor: boot with real CDN imports, perf, save/load equivalence. See REFACTOR_NOTES.md.",
+  "dependencies": { "playwright-core": "1.56.1" }
+}
