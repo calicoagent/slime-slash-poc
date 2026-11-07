@@ -1,27 +1,41 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 176">
   <defs>
     <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#d2f7b0"/>
-      <stop offset="0.55" stop-color="#8fe06a"/>
-      <stop offset="1" stop-color="#4fbb45"/>
+      <stop offset="0" stop-color="#d9ffd2"/>
+      <stop offset="0.45" stop-color="#8fe388"/>
+      <stop offset="1" stop-color="#57bd4b"/>
     </linearGradient>
+    <radialGradient id="gloss" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="0.6" stop-color="#ffffff" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="clip"><path d="M14,148 C12,116 26,88 54,68 C73,54 88,47 94,40 C97,36 98,34 100,33 C102,34 103,36 106,40 C112,47 127,54 146,68 C174,88 188,116 186,148 C183,161 142,168 100,168 C58,168 17,161 16,148 Z"/></clipPath>
   </defs>
-  <!-- floating bubbles -->
-  <circle cx="152" cy="18" r="7" fill="#d2f7b0" fill-opacity="0.85" stroke="#2f8f33" stroke-width="2"/>
-  <circle cx="168" cy="8" r="4" fill="#d2f7b0" fill-opacity="0.85" stroke="#2f8f33" stroke-width="1.6"/>
-  <!-- body: flat-bottomed jelly dome with a subtle top bump -->
-  <path d="M16,152 C11,104 32,52 76,33 C87,28 93,21 100,21 C107,21 113,28 124,33 C168,52 189,104 184,152 C184,161 176,166 100,166 C24,166 16,161 16,152 Z"
-        fill="url(#body)" stroke="#2f8f33" stroke-width="3.5" stroke-linejoin="round"/>
-  <!-- soft base shade -->
-  <path d="M24,140 C50,156 150,156 176,140 C174,152 170,158 100,158 C30,158 26,152 24,140 Z" fill="#4fbb45" opacity="0.45"/>
-  <!-- glossy highlight -->
-  <ellipse cx="66" cy="62" rx="25" ry="13" fill="#ffffff" opacity="0.55" transform="rotate(-24 66 62)"/>
-  <circle cx="52" cy="86" r="5" fill="#ffffff" opacity="0.4"/>
-  <!-- face: small low oval eyes + tiny smile -->
-  <ellipse cx="79" cy="106" rx="5.5" ry="8.5" fill="#2b2130"/>
-  <ellipse cx="121" cy="106" rx="5.5" ry="8.5" fill="#2b2130"/>
-  <circle cx="77.2" cy="102.5" r="1.9" fill="#ffffff"/>
-  <circle cx="119.2" cy="102.5" r="1.9" fill="#ffffff"/>
-  <path d="M91,124 Q100,132 109,124" fill="none" stroke="#8a3057" stroke-width="3.2" stroke-linecap="round"/>
-  
+  <!-- body: glossy teardrop with a soft pointed tip -->
+  <path d="M14,148 C12,116 26,88 54,68 C73,54 88,47 94,40 C97,36 98,34 100,33 C102,34 103,36 106,40 C112,47 127,54 146,68 C174,88 188,116 186,148 C183,161 142,168 100,168 C58,168 17,161 16,148 Z" fill="url(#body)"/>
+  <g clip-path="url(#clip)">
+    <!-- deep base shade -->
+    <ellipse cx="100" cy="186" rx="86" ry="34" fill="#57bd4b" opacity="0.55"/>
+    <!-- bottom rim light -->
+    <ellipse cx="100" cy="174" rx="82" ry="22" fill="#ffffff" opacity="0.14"/>
+    <!-- big glossy highlight, upper left -->
+    <ellipse cx="64" cy="66" rx="30" ry="19" fill="url(#gloss)" transform="rotate(-28 64 66)"/>
+    <!-- sheen streak up the tip -->
+    <ellipse cx="90" cy="44" rx="4.5" ry="10" fill="#ffffff" opacity="0.35" transform="rotate(18 90 44)"/>
+    <!-- secondary bounce light, lower right -->
+    <ellipse cx="152" cy="118" rx="16" ry="9" fill="#ffffff" opacity="0.20" transform="rotate(-32 152 118)"/>
+  </g>
+  <path d="M14,148 C12,116 26,88 54,68 C73,54 88,47 94,40 C97,36 98,34 100,33 C102,34 103,36 106,40 C112,47 127,54 146,68 C174,88 188,116 186,148 C183,161 142,168 100,168 C58,168 17,161 16,148 Z" fill="none" stroke="#3a8a33" stroke-width="2.5" stroke-linejoin="round" opacity="0.18"/>
+  <!-- face: droopy sleepy-cute eyes + tiny smile -->
+  <g>
+    <ellipse cx="80" cy="112" rx="5.4" ry="8.6" fill="#2b2130"/>
+    <ellipse cx="120" cy="112" rx="5.4" ry="8.6" fill="#2b2130"/>
+    <!-- droopy lids: soft arcs resting on top of the eyes -->
+    <path d="M73,105 Q80,101 87,108" fill="none" stroke="#2b2130" stroke-width="2.8" stroke-linecap="round"/>
+    <path d="M113,108 Q120,101 127,105" fill="none" stroke="#2b2130" stroke-width="2.8" stroke-linecap="round"/>
+    <circle cx="78" cy="108" r="2" fill="#ffffff"/>
+    <circle cx="118" cy="108" r="2" fill="#ffffff"/>
+    <path d="M91,128 Q100,136 109,128" fill="none" stroke="#2c6126" stroke-width="3.2" stroke-linecap="round"/>
+  </g>
 </svg>
