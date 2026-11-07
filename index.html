@@ -815,6 +815,7 @@ addEventListener('pointerdown', e=>{
     me.px=me.x; me.py=me.y;
     me.x=clamp(cam.x + e.clientX/UNIT(), .02, WORLD-.02);
     me.y=clamp(cam.y + ptrY(e)/UNIT(), .02, WORLD-.02);
+    me.trailBreak = true;   // sword teleported to the tap point — don't streak the trail across the screen
     // spin fires on pointerUP, and only for a genuine tap (see pointerup) —
     // releasing a drag must NOT spin
     downInfo = { t:performance.now(), travel:0 };
@@ -1520,17 +1521,27 @@ function frame(now){
       const ang = spinningNow ? (now/38)%(Math.PI*2) : bl.ang;
       const reach = myReach() * (spinningNow?1.15:1) * (1 + bl.ext);
       const tipX = me.x + Math.cos(ang)*reach, tipY = me.y + Math.sin(ang)*reach;
+      if (me.trailBreak){ myTrail.length = 0; me.trailBreak = false; }
       const lastP = myTrail[myTrail.length-1];
-      const movedPx = lastP ? Math.hypot((tipX-lastP.x)*UNIT(), (tipY-lastP.y)*UNIT()) : Infinity;
-      if (movedPx > UNIT()*.45) myTrail.length = 0;        // teleport/tap-snap: don't streak across the screen
-      if (!lastP || movedPx > 6){
+      if (!lastP){
         myTrail.push({ x:tipX, y:tipY, t:now });
-        if (myTrail.length > 22) myTrail.splice(0, myTrail.length-22);
+      } else {
+        const dx = tipX-lastP.x, dy = tipY-lastP.y;
+        const movedPx = Math.hypot(dx*UNIT(), dy*UNIT());
+        if (movedPx > 4){
+          // interpolate along big jumps (coarse pointer events / fast flicks)
+          // so the ribbon follows the path instead of being cleared by them
+          const steps = Math.min(10, Math.floor(movedPx/14));
+          for (let s2=1; s2<=steps; s2++)
+            myTrail.push({ x:lastP.x + dx*s2/(steps+1), y:lastP.y + dy*s2/(steps+1), t:now });
+          myTrail.push({ x:tipX, y:tipY, t:now });
+        }
       }
-      myTrail = myTrail.filter(p => now - p.t < 300);
+      if (myTrail.length > 26) myTrail.splice(0, myTrail.length-26);
+      myTrail = myTrail.filter(p => now - p.t < 380);
       if (myTrail.length > 1){
-        // screen-space points, each with age 1 (fresh) -> 0 (300ms old)
-        const pts = myTrail.map(p => ({ x:NX(p.x), y:NY(p.y), age: clamp(1-(now-p.t)/300, 0, 1) }));
+        // screen-space points, each with age 1 (fresh) -> 0 (380ms old)
+        const pts = myTrail.map(p => ({ x:NX(p.x), y:NY(p.y), age: clamp(1-(now-p.t)/380, 0, 1) }));
         // perpendicular offset per point: half-width tapers 15px (newest) -> 2px (oldest)
         const edge = pts.map((p,i)=>{
           const a = pts[Math.max(0,i-1)], b = pts[Math.min(pts.length-1,i+1)];
@@ -1539,10 +1550,10 @@ function frame(now){
           return { lx:p.x-dy*hw, ly:p.y+dx*hw, rx:p.x+dy*hw, ry:p.y-dx*hw };
         });
         ctx.save(); ctx.lineCap='round'; ctx.lineJoin='round';
-        // coloured ribbon body in the player's colour, alpha up to .55
+        // coloured ribbon body in the player's colour, alpha up to .7
         ctx.fillStyle = me.color;
         for (let i=1; i<pts.length; i++){
-          ctx.globalAlpha = .55 * pts[i].age;
+          ctx.globalAlpha = .7 * pts[i].age;
           ctx.beginPath();
           ctx.moveTo(edge[i-1].lx, edge[i-1].ly);
           ctx.lineTo(edge[i].lx, edge[i].ly);
