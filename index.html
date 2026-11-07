@@ -173,13 +173,12 @@
 <!-- TITLE -->
 <div id="title">
   <div id="logo">SLIME<br><span class="slash">SLASH!</span></div>
-  <div id="tagline">Your finger is the sword. Shared world, real-time.</div>
+  <div id="tagline">Your finger is the sword. ONE world, everyone in it, real-time.</div>
   <div class="sign">
     <div><label>YOUR NAME</label><input id="nameIn" maxlength="12" autocomplete="off"></div>
-    <div><label>ROOM CODE (same code = same world)</label><input id="roomIn" class="code" maxlength="8" autocomplete="off"></div>
   </div>
   <button id="playBtn">PLAY</button>
-  <div id="howto">Move mouse / drag finger to swing your sword through slimes.<br>Tap or click for a SPIN SLASH. Earn coins, level up, unlock bigger weapons in the rack.<br>Send the INVITE LINK to friends — they join the same world instantly. No install, no sign-up.</div>
+  <div id="howto">Move mouse / drag finger to swing your sword through slimes.<br>Tap or click for a SPIN SLASH. Earn coins, level up, unlock bigger weapons in the rack.<br>There is only ONE world — send the link to friends and they drop straight into it with you. No rooms, no codes, no sign-up.</div>
 </div>
 
 <script type="module">
@@ -702,21 +701,19 @@ setInterval(()=>{ if(!started){ // ambient wander on title
 }},50);
 
 /* ============================================================ start */
-const params = new URLSearchParams(location.search);
-$('#roomIn').value = (params.get('room')||'SLIME1').toUpperCase();
+// ONE single world for everyone — fixed Trystero room id under the hood, never shown to players.
+const WORLD_ID = 'slime-world-1';
 $('#nameIn').value = 'Knight-' + Math.floor(rand(10,99));
 $('#playBtn').onclick = ()=>{
   me.name = cleanName($('#nameIn').value);
-  const code = ($('#roomIn').value||'SLIME1').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,8)||'SLIME1';
-  const url = new URL(location.href); url.searchParams.set('room',code); history.replaceState(null,'',url);
   scores[me.id]={name:me.name,kills:0};
   $('#title').classList.add('hidden');
   $('#hud').classList.remove('hidden');
   started=true;
   buildRack(); refreshHUD(); refreshPeers();
-  try { joinWorld(code); }
+  try { joinWorld(WORLD_ID); }
   catch(e){ toast('Multiplayer failed to start — playing solo. ('+e.message+')', 4000); isHost=true; hostId=me.id; if(slimes.size===0) for(let i=0;i<11;i++) spawnSlime(); }
-  toast('Slash the slimes! Same room code = same world.', 2600);
+  toast('Slash the slimes! One world — everyone with the link is in it.', 2600);
   beep(660,.1,'triangle',.1);
 };
 // Enter key starts

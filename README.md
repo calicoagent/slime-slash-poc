@@ -2,7 +2,7 @@
 
 Your mouse / finger **is** the sword. Shared real-time world via **Trystero** (Nostr strategy, WebRTC P2P, no server).
 
-- Same **room code** = same world. Host (lowest peer id) owns slime spawning/HP; host migrates automatically if they leave.
+- ONE single world for everyone (fixed Trystero room id under the hood, no rooms/codes in the UI). Host (lowest peer id) owns slime spawning/HP; host migrates automatically if they leave.
 - Slash cute slimes → coins + XP → level up → unlock weapons (Dagger, Sword, Katana, Greatsword, Warhammer) in the rack, buy upgrades at the FORGE (Damage / Reach / Swift Hands).
 - Tap / click / Space = spin slash. Keys 1–5 switch weapons.
 - Solo works too: with no peers you are the host of your own world.
