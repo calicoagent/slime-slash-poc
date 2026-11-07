@@ -3958,18 +3958,44 @@ function drawEliteAura(x, y, baseR, seed, t){
 }
 function drawKindMarks(s, x, y, baseR, t){
   if (s.kind==='tank'){
-    /* Tank mark: two slate PAULDRONS (pixel squares) on the body's upper
-       sides. This used to be a slate RING stroked around the whole body
-       (arc at baseR*1.04) — in playtest screenshots that ring read as a
-       stray grey circle around slimes, cutting across faces and HP bars,
-       so the circle is GONE; squares keep the tank readable, circle-free. */
-    const pw = baseR*.36, ph = baseR*.30;
-    ctx.fillStyle = 'rgba(88,99,114,.95)';
-    ctx.fillRect(x - baseR*.92, y - baseR*.34, pw, ph);
-    ctx.fillRect(x + baseR*.92 - pw, y - baseR*.34, pw, ph);
-    ctx.fillStyle = 'rgba(55,65,78,.95)';
-    ctx.fillRect(x - baseR*.92, y - baseR*.34, pw, Math.max(2, baseR*.07));
-    ctx.fillRect(x + baseR*.92 - pw, y - baseR*.34, pw, Math.max(2, baseR*.07));
+    /* Tank mark: two steel PAULDRONS hugging the body's shoulders. The
+       first replacement for the old slate RING was two flat squares —
+       Handler: 'Doesn't convey armor. Place it properly, align to the
+       slime, make it armor shape.' So: a rounded shoulder plate (dome
+       top, flat bottom edge) per side, tilted ~20 deg to follow the
+       dome's contour, inner ~25% of the plate OVERLAPPING the body so it
+       reads as worn, not floating. Flat pixel fills only: base slate
+       steel, a darker shadow band along the bottom edge, a pale rim
+       stroked over the dome, one rivet. Drawn here (marks space: x, y,
+       baseR) so both the sprite and vector paths get the same plates. */
+    const w = baseR*.72, h = baseR*.40, tilt = .349;   // ~20 degrees
+    const platePath = () => {
+      ctx.beginPath();
+      ctx.moveTo(-w/2, h/2);
+      ctx.lineTo(-w/2, -h*.08);
+      ctx.quadraticCurveTo(-w/2, -h/2, 0, -h/2);
+      ctx.quadraticCurveTo(w/2, -h/2, w/2, -h*.08);
+      ctx.lineTo(w/2, h/2);
+      ctx.closePath();
+    };
+    for (const side of [-1, 1]){
+      ctx.save();
+      ctx.translate(x + side*baseR*1.02, y - baseR*.19);
+      ctx.rotate(side * tilt);        // outer end dips down the dome
+      ctx.scale(side, 1);             // local +x points outward
+      platePath(); ctx.fillStyle = '#5b6b7f'; ctx.fill();
+      ctx.save(); platePath(); ctx.clip();
+      ctx.fillStyle = '#42505f'; ctx.fillRect(-w/2, h*.18, w, h);        // shadow band on the lower edge
+      ctx.restore();
+      ctx.beginPath();                // pale steel rim over the dome
+      ctx.moveTo(-w/2, -h*.08);
+      ctx.quadraticCurveTo(-w/2, -h/2, 0, -h/2);
+      ctx.quadraticCurveTo(w/2, -h/2, w/2, -h*.08);
+      ctx.strokeStyle = '#9db2c8'; ctx.lineWidth = Math.max(2, h*.20); ctx.stroke();
+      ctx.fillStyle = '#d7e3ee';      // the rivet
+      ctx.beginPath(); ctx.arc(w*.16, h*.04, Math.max(1.6, h*.11), 0, 7); ctx.fill();
+      ctx.restore();
+    }
   }
   if (s.kind==='gold'){
     const p = 1 + Math.sin(t/140)*.25, r = baseR*.30*p, sx = x, sy = y - baseR*1.3;
