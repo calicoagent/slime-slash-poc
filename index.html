@@ -127,6 +127,20 @@
     pointer-events:none; white-space:nowrap;
   }
   #kingBanner.show { animation:kingIn 2.5s ease forwards; }
+  #streakBanner {
+    position:fixed; z-index:35; top:22%; left:50%; transform:translateX(-50%);
+    font-size:min(6vw,30px); font-weight:900; color:#ff8a2e; letter-spacing:1px; text-align:center;
+    -webkit-text-stroke:1.5px #8a4a12; text-shadow:0 3px 0 #8a4a12, 0 8px 20px rgba(0,0,0,.35);
+    pointer-events:none; white-space:nowrap;
+  }
+  #streakBanner.show { animation:kingIn 1.6s ease forwards; }
+  #zoneBanner {
+    position:fixed; z-index:34; top:64px; left:50%; transform:translateX(-50%);
+    background:#fff8e7; border:4px solid #5b3a1e; border-radius:999px; padding:8px 22px;
+    color:#5b3a1e; font-weight:900; font-size:19px; letter-spacing:.5px; text-align:center;
+    box-shadow:0 5px 0 #5b3a1e, 0 10px 22px rgba(0,0,0,.3); pointer-events:none;
+  }
+  #zoneBanner small { display:block; font-size:12.5px; font-weight:800; color:#97754a; }
   @keyframes kingIn { 0% { opacity:0; transform:translateX(-50%) scale(.6); } 12% { opacity:1; transform:translateX(-50%) scale(1.08); } 20% { transform:translateX(-50%) scale(1); } 80% { opacity:1; } 100% { opacity:0; transform:translateX(-50%) scale(1); } }
   #pauseBtn {
     position:fixed; z-index:21; left:14px; bottom:224px; width:46px; height:46px; border-radius:50%;
@@ -175,6 +189,7 @@
     #comboBadge { right:auto; left:8px; bottom:160px; font-size:15px; padding:5px 12px; border-width:3px; box-shadow:0 3px 0 #5b3a1e; }
     #hint { bottom:160px; font-size:13px; max-width:72vw; white-space:normal; text-align:center; padding:6px 12px; }
     #toast { top:auto; bottom:208px; font-size:14px; padding:7px 16px; border-width:3px; }
+    #zoneBanner { font-size:15px; padding:6px 14px; max-width:94vw; }
   }
 
   /* ---------- sphere grid ---------- */
@@ -325,6 +340,8 @@
 <div id="toast" class="hidden"></div>
 <div id="bubble" class="hidden"></div>
 <div id="kingBanner" class="hidden">THE SLIME KING HAS APPEARED!</div>
+<div id="streakBanner" class="hidden"></div>
+<div id="zoneBanner" class="hidden"></div>
 <div id="hint" class="hidden"></div>
 <div id="pauseMenu" class="hidden">
   <div class="pauseCard">
@@ -423,7 +440,7 @@ function resize(){ DPR=Math.min(2,devicePixelRatio||1); W=innerWidth; H=innerHei
 addEventListener('resize',resize); resize();
 /* The world is WORLD x WORLD units — much bigger than one screen.
    1 unit ≈ one screenful. The camera (cam = top-left, world coords) follows your sword. */
-const WORLD = 3.4;
+const WORLD = 6.0;
 const cam = { x: WORLD/2 - .5, y: WORLD/2 - .5 };
 const UNIT = () => Math.min(W,H);                   // px per world unit
 const NX = x => (x - cam.x) * UNIT(), NY = y => (y - cam.y) * UNIT();
@@ -433,7 +450,7 @@ const me = {
   id: selfId, name:'Knight', color:`hsl(${hashHue(selfId)} 80% 55%)`,
   x:.5, y:.6, px:.5, py:.6, angle:-Math.PI/4, speed:0,
   weapon:1, coins:0, xp:0, level:1, kills:0,
-  sp:0, actCd:{ wave:0, meteor:0, frenzy:0 }, frenzyUntil:0,
+  sp:0, actCd:{ wave:0, meteor:0, frenzy:0, goldrush:0 }, frenzyUntil:0, goldRushUntil:0,
   stabT0:0, stabAng:0,
   ptrSpeedPx:0,   // latest pointer speed (px/s, max of recent events, decayed per frame) — an idle blade must not cut
   lastHitAt:new Map(), spinUntil:0, spinCdUntil:0, trail:[],
@@ -488,20 +505,42 @@ const SLIME_KINDS = [
   { kind:'mid',   hp:30,  r:.030, coins:9,  xp:16, speed:.011, weight:35 },
   { kind:'big',   hp:75,  r:.045, coins:20, xp:34, speed:.008, weight:15 },
   { kind:'king',  hp:260, r:.10,  coins:90, xp:120,speed:.005, weight:5  },
+  { kind:'dart',  hp:8,   r:.016, coins:5,  xp:10, speed:.030, weight:18 },
+  { kind:'tank',  hp:190, r:.062, coins:34, xp:60, speed:.005, weight:8  },
+  { kind:'splitter', hp:46, r:.040, coins:14, xp:24, speed:.010, weight:12 },
+  { kind:'gold',  hp:10,  r:.022, coins:60, xp:30, speed:.026, weight:3  },
 ];
 const SLIME_COLORS = ['#7ee787','#6fd3ff','#ffb3d9','#ffe066','#c39bff','#8affd1','#ffab7a'];
-function pickKind(){
-  let tot = SLIME_KINDS.reduce((s,k)=>s+k.weight,0), r = Math.random()*tot;
-  for (const k of SLIME_KINDS){ if((r-=k.weight)<=0) return k; } return SLIME_KINDS[0];
+/* ---- zones: rings around the world centre — richer & deadlier outward ---- */
+const ZONES = [
+  { name:'THE MEADOW', hp:1,   mul:1,   blurb:'gentle hunting grounds' },
+  { name:'THE GROVE',  hp:1.8, mul:1.7, blurb:'stronger slimes, richer loot' },
+  { name:'THE WILDS',  hp:3.2, mul:2.8, blurb:'deadly, but the richest hunting' },
+];
+function zoneOf(x,y){
+  const d = Math.hypot(x - WORLD/2, y - WORLD/2);
+  return d < 1.1 ? 0 : d < 2.1 ? 1 : 2;
+}
+let myZone = -1;   // player's current zone (banner fires on change; -1 = unset)
+function pickKind(zone=0){
+  let tot = 0;
+  const ws = SLIME_KINDS.map(k=>{
+    let w = k.weight;
+    if (zone===2){ if (k.kind==='king' || k.kind==='tank') w *= 2; if (k.kind==='baby') w *= .5; }
+    tot += w; return w;
+  });
+  let r = Math.random()*tot;
+  for (let i=0;i<SLIME_KINDS.length;i++){ if ((r-=ws[i])<=0) return SLIME_KINDS[i]; }
+  return SLIME_KINDS[0];
 }
 let slimeSeq = 1;
-function spawnSlime(){
-  const k = pickKind();
-  const id = (hostId||me.id).slice(0,4)+'-'+(slimeSeq++);
-  // ~60% of spawns land near a player (within ~0.9 units) so the action
-  // finds the players instead of the field emptying out; rest spawn anywhere.
+function spawnSlime(opts={}){
+  // position FIRST: the zone (and therefore kind odds + scaling) depends on it
   let sx, sy;
-  if (Math.random() < .6){
+  if (opts.x !== undefined){ sx = opts.x; sy = opts.y; }
+  else if (opts.nearPlayer !== false && Math.random() < .6){
+    // ~60% of spawns land near a player (within ~0.9 units) so the action
+    // finds the players instead of the field emptying out; rest spawn anywhere.
     const spots = [{x:me.x, y:me.y}];
     for (const p of peers.values()) spots.push({ x:(p.tx!==undefined?p.tx:p.x), y:(p.ty!==undefined?p.ty:p.y) });
     const c = spots[Math.floor(Math.random()*spots.length)];
@@ -511,9 +550,21 @@ function spawnSlime(){
   } else {
     sx = rand(.06,WORLD-.06); sy = rand(.1,WORLD-.06);
   }
-  const s = { id, kind:k.kind, hp:k.hp, max:k.hp, r:k.r,
+  const zi = zoneOf(sx, sy), zone = ZONES[zi];
+  const k = opts.kind ? (SLIME_KINDS.find(m=>m.kind===opts.kind) || SLIME_KINDS[0]) : pickKind(zi);
+  const id = (hostId||me.id).slice(0,4)+'-'+(slimeSeq++);
+  const hp = Math.round(k.hp * zone.hp);
+  const s = { id, kind:k.kind, hp, max:hp, r:k.r,
     x:sx, y:sy, vx:0, vy:0, dir:rand(0,Math.PI*2), turnAt:performance.now()+rand(800,2600),
-    color:SLIME_COLORS[Math.floor(Math.random()*SLIME_COLORS.length)], seed:Math.random()*10, squish:0, flash:0 };
+    color: k.kind==='gold' ? '#ffe066' : SLIME_COLORS[Math.floor(Math.random()*SLIME_COLORS.length)],
+    seed:Math.random()*10, squish:0, flash:0, mul:zone.mul, elite:false };
+  // ELITES: rare, tougher, much richer
+  if (k.kind !== 'king' && Math.random() < .08){
+    s.elite = true;
+    s.hp = s.max = Math.round(s.hp * 3);
+    s.r = k.r * 1.35;
+    s.mul = +(zone.mul * 3).toFixed(2);
+  }
   slimes.set(id,s); return s;
 }
 function hostTick(now,dt){
@@ -522,6 +573,17 @@ function hostTick(now,dt){
     if (now>s.turnAt){ s.dir=rand(0,Math.PI*2); s.turnAt=now+rand(800,2600); }
     const k = SLIME_KINDS.find(k=>k.kind===s.kind);
     let sp = k.speed*dt*60/1000;
+    if (s.kind==='dart') s.dir += Math.sin(now/90 + s.seed*9)*.055;   // zigzag
+    if (s.kind==='gold'){
+      // gold slimes FLEE the nearest player — catch one if you can
+      let bx=me.x, by=me.y, bd=dist2(s.x,s.y,me.x,me.y);
+      for (const p of peers.values()){
+        const px=(p.tx!==undefined?p.tx:p.x), py=(p.ty!==undefined?p.ty:p.y);
+        const d=dist2(s.x,s.y,px,py);
+        if (d<bd){ bd=d; bx=px; by=py; }
+      }
+      s.dir = Math.atan2(s.y-by, s.x-bx);
+    }
     if (s.kind==='king'){
       // the King HUNTS: it steers straight at the nearest player, faster than its wander
       let bx=me.x, by=me.y, bd=dist2(s.x,s.y,me.x,me.y);
@@ -538,14 +600,14 @@ function hostTick(now,dt){
     if (s.y<s.r+.02){s.y=s.r+.02; s.dir=-s.dir;} if (s.y>WORLD-s.r-.03){s.y=WORLD-s.r-.03; s.dir=-s.dir;}
     s.squish = Math.max(0, s.squish - dt/160); s.flash = Math.max(0, s.flash - dt/120);
   }
-  const target = Math.min(64, 40 + peers.size*4);
+  const target = Math.min(120, 80 + peers.size*8);
   if (slimes.size < target){
     if (Math.random()<.55) spawnSlime();
     if (slimes.size < target-4 && Math.random()<.55) spawnSlime();   // refill in pairs while well under target
   }
 }
 function worldPayload(){
-  return { s:[...slimes.values()].map(s=>[s.id, +s.x.toFixed(3), +s.y.toFixed(3), Math.ceil(s.hp), s.max, s.kind, s.color, +s.dir.toFixed(2)]),
+  return { s:[...slimes.values()].map(s=>[s.id, +s.x.toFixed(3), +s.y.toFixed(3), Math.ceil(s.hp), s.max, s.kind, s.color, +s.dir.toFixed(2), Math.round((s.mul||1)*100)/100, s.elite?1:0]),
            sc: scores, h: hostId };
 }
 function applyWorld(p){
@@ -554,13 +616,15 @@ function applyWorld(p){
   const seen = new Set();
   for (const a of p.s){
     const [id,x,y,hp,max,kind,color,dir] = a; seen.add(id);
+    const mul = a[8]!==undefined ? +a[8] : 1, elite = a[9]===1;   // appended fields (old payloads default safely)
     const old = slimes.get(id);
     if (old){
       if (hp < old.hp){ old.squish=1; old.flash=1; spawnHitFx(old.x,old.y,old.color,3); }
-      old.tx=x; old.ty=y; old.hp=hp; old.dir=dir;
+      old.tx=x; old.ty=y; old.hp=hp; old.dir=dir; old.mul=mul; old.elite=elite;
+      const kk = SLIME_KINDS.find(m=>m.kind===old.kind); if (kk) old.r = kk.r * (elite?1.35:1);
     } else {
       const k = SLIME_KINDS.find(k=>k.kind===kind) || SLIME_KINDS[0];
-      slimes.set(id,{id,kind,hp,max,r:k.r,x,y,tx:x,ty:y,dir,color,seed:Math.random()*10,squish:1,flash:0});
+      slimes.set(id,{id,kind,hp,max,r:k.r*(elite?1.35:1),x,y,tx:x,ty:y,dir,color,seed:Math.random()*10,squish:1,flash:0,mul,elite});
     }
   }
   for (const id of [...slimes.keys()]) if (!seen.has(id) && !isHost) slimes.delete(id);
@@ -570,13 +634,13 @@ function applyWorld(p){
 /* ============================================================ fx */
 function capParticles(){ if (particles.length>420) particles.splice(0, particles.length-420); }
 function spawnHitFx(x,y,color,n=6){ for(let i=0;i<n;i++) particles.push({x,y,vx:rand(-.12,.12),vy:rand(-.16,.02),life:1,color,r:rand(2,5)}); capParticles(); }
-function spawnPopFx(x,y,color){ for(let i=0;i<22;i++){ const a=rand(0,Math.PI*2),v=rand(.04,.22); particles.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-.05,life:1,color,r:rand(2,7)});} capParticles(); popRings.push({x,y,r:.01,life:1,color}); }
+function spawnPopFx(x,y,color,n=22,r0=.01){ for(let i=0;i<n;i++){ const a=rand(0,Math.PI*2),v=rand(.04,.22); particles.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-.05,life:1,color,r:rand(2,7)});} capParticles(); popRings.push({x,y,r:r0,life:1,color}); }
 function addFloat(x,y,text,color,opts={}){
   const now = performance.now();
   // dedupe: an identical float already alive at (nearly) the same spot is enough
   for (const f of floats)
     if (f.text===text && now-(f.t||0)<300 && dist2(f.x,f.y,x,y) < .03*.03) return;
-  floats.push({x,y,text,color,life:1,big:!!opts.big,t:now});
+  floats.push({x,y,text,color,life:1,big:!!opts.big,size:opts.size||0,t:now});
   if (floats.length>48) floats.splice(0, floats.length-48);
 }
 function toast(msg,ms=2200){ const t=$('#toast'); t.textContent=msg; t.classList.remove('hidden'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.add('hidden'),ms); }
@@ -637,6 +701,7 @@ function localHitCheck(now){
       let dmg = myDamage();
       if (now < me.frenzyUntil) dmg *= 1.5;
       if (s.kind==='king') dmg *= (1 + S.kingBane);
+      if (S.exec && s.hp < s.max*.35) dmg *= (1 + S.exec);   // Executioner: finish wounded slimes harder
       let crit = false;
       if (Math.random() < myWeapon().crit + S.crit){ dmg *= myWeapon().critDmg; crit = true; }
       doHit(s, Math.round(dmg), { crit });
@@ -646,7 +711,10 @@ function localHitCheck(now){
 function doHit(s, dmg, opts={}){
   s.squish=1; s.flash=1; sfx.hit();
   spawnHitFx(s.x,s.y,s.color,4);
-  addFloat(s.x+rand(-.01,.01), s.y-s.r-.015, (opts.crit?'CRIT ':'')+'-'+dmg, opts.crit?'#ffd94d':'#fff');
+  // bigger hits print BIGGER: 19px at 20+ dmg, 23px at 40+, crits get +4px
+  let fsize = dmg>=40 ? 23 : dmg>=20 ? 19 : 0;
+  if (opts.crit) fsize = (fsize || 17) + 4;
+  addFloat(s.x+rand(-.01,.01), s.y-s.r-.015, (opts.crit?'CRIT ':'')+'-'+dmg, opts.crit?'#ffd94d':'#fff', { size:fsize });
   if (isHost) hostApplyHit(s.id, dmg, me.id);
   else if (sendHit) sendHit({ id:s.id, d:dmg });
   const spR = Math.max(S.splash, myWeapon().splash||0);   // swing weapons splash natively; passive adds more
@@ -676,34 +744,47 @@ function hostApplyHit(slimeId, dmg, byId){
 function hostKill(s, byId){
   slimes.delete(s.id);
   const k = SLIME_KINDS.find(k=>k.kind===s.kind);
+  const coins = Math.round(k.coins * (s.mul||1)), xp = Math.round(k.xp * (s.mul||1));   // zone/elite reward scaling
   scores[byId] = scores[byId] || { name: byId===me.id?me.name:(peers.get(byId)?.name||'Knight'), kills:0 };
   scores[byId].kills++;
-  if (sendKillFx) sendKillFx({ id:s.id, x:s.x, y:s.y, c:s.color, by:byId, coins:k.coins, xp:k.xp, kind:s.kind });
-  onKillFx({ x:s.x, y:s.y, c:s.color, by:byId, coins:k.coins, xp:k.xp, kind:s.kind });
+  const fx = { id:s.id, x:s.x, y:s.y, c:s.color, by:byId, coins, xp, kind:s.kind, elite:!!s.elite, r:s.r };
+  if (sendKillFx) sendKillFx(fx);
+  onKillFx(fx);
+  if (s.kind==='splitter'){   // bursts into two babies where it died
+    spawnSlime({ kind:'baby', x:clamp(s.x+rand(-.04,.04), .06, WORLD-.06), y:clamp(s.y+rand(-.04,.04), .1, WORLD-.06) });
+    spawnSlime({ kind:'baby', x:clamp(s.x+rand(-.04,.04), .06, WORLD-.06), y:clamp(s.y+rand(-.04,.04), .1, WORLD-.06) });
+  }
   spawnSlime(); broadcastWorld();
 }
+const STREAKS = { 10:'RAMPAGE!', 20:'SLIME STORM!', 30:'UNSTOPPABLE!', 50:'SLIME APOCALYPSE!' };
 function onKillFx(f){
-  spawnPopFx(f.x,f.y,f.c); sfx.pop();
+  // death bursts scale with the prize: king 46, elite 34, normal 22; ring starts at the slime's radius
+  spawnPopFx(f.x, f.y, f.c, f.kind==='king' ? 46 : f.elite ? 34 : 22, f.r || .01);
+  sfx.pop();
+  if (f.elite) addFloat(f.x, f.y-.09, 'ELITE DOWN!', '#ffd94d', {big:true});
   if (f.kind==='king') toast('THE SLIME KING HAS FALLEN!');
   if (f.by===me.id){
     const now = performance.now();
-    const cg = Math.round(f.coins * (1 + S.coin));
+    let cg = Math.round(f.coins * (1 + S.coin));
+    if (now < me.goldRushUntil) cg *= 2;   // GOLD RUSH: double coins
     me.coins += cg; me.kills++;
     gainXp(f.xp); sfx.coin();
     addFloat(f.x, f.y-.04, '+'+cg+' coins', '#ffd94d');
     if (f.kind==='king'){ me.sp++; bubble('KING SLAYER! +1 SP', me.x, me.y); setTimeout(()=>toast('KING BONUS: +1 Sphere Point!'), 600); }
-    // combo chain: kills within 2.5s of each other keep it alive
+    // combo chain: kills within the window of each other keep it alive (Combo Charm stretches it)
     combo = (now < comboUntil) ? combo+1 : 1;
-    comboUntil = now + 2500;
+    comboUntil = now + 2500 * (1 + S.comboWin);
     updateComboBadge(true);
-    if (combo===5 || combo===10 || combo===15 || combo===25){ addFloat(f.x, f.y-.06, 'COMBO x'+combo, '#ff8a2e', {big:true}); sfx.combo(); }
+    if ([5,10,15,20,25,30,50].includes(combo)){ addFloat(f.x, f.y-.06, 'COMBO x'+combo, '#ff8a2e', {big:true}); sfx.combo(); }
+    if (STREAKS[combo]) showStreak(STREAKS[combo]);
     if (combo===15) toast('ON FIRE! +15% damage while the combo lives!');
     // bounty progress (my kills only, matched by colour or kind)
     if (bounty && ((bounty.type==='color' && f.c===bounty.key) || (bounty.type==='kind' && f.kind===bounty.key))){
       bounty.have++;
       if (bounty.have >= bounty.need){
-        me.coins += bounty.reward; me.sp += 1;
-        toast('BOUNTY COMPLETE! +'+bounty.reward+' coins +1 SP');
+        const payout = Math.round(bounty.reward * (1 + S.bounty));   // Bounty Hunter passive
+        me.coins += payout; me.sp += 1;
+        toast('BOUNTY COMPLETE! +'+payout+' coins +1 SP');
         sfx.buy();
         rollBounty();
       }
@@ -718,7 +799,9 @@ function gainXp(n){
   const need = me.level*100;
   if (me.xp >= need){
     me.xp -= need; me.level++; me.sp++; sfx.lvl();
-    toast('LEVEL '+me.level+'! +1 Sphere Point — press F');
+    let spMsg = '+1 Sphere Point';
+    if (me.level % 3 === 0){ me.sp++; spMsg = '+2 Sphere Points (every-3rd-level bonus!)'; }
+    toast('LEVEL '+me.level+'! '+spMsg+' — press F');
     bubble('LEVEL UP!', me.x, me.y);
     const w = WEAPONS.find(w=>w.unlock===me.level);
     if (w) setTimeout(()=>toast('UNLOCKED: '+w.name.toUpperCase()+' — check the rack!'), 900);
@@ -735,7 +818,7 @@ function electHost(){
   hostId = newHost; isHost = (newHost===me.id);
   if (isHost && !wasHost){
     // adopt current world (host migration) or start fresh
-    if (slimes.size===0){ for(let i=0;i<30;i++) spawnSlime(); }
+    if (slimes.size===0){ for(let i=0;i<50;i++) spawnSlime(); }
     for (const s of slimes.values()){ s.tx=undefined; }
     broadcastWorld();
     if (started) toast(peers.size? 'You are now the WORLD HOST' : 'Solo world — invite friends!', 1800);
@@ -858,6 +941,7 @@ addEventListener('keydown', e=>{
   if (lk==='q') castActive('wave');
   if (lk==='e') castActive('meteor');
   if (lk==='r') castActive('frenzy');
+  if (lk==='t') castActive('goldrush');
 });
 function trySpin(){
   const now=performance.now();
@@ -929,8 +1013,9 @@ $('#forgeBtn').onclick = toggleForge;
    node before it on its branch is yours. Stats / Passives / Active skills. */
 const BRANCHES = [
   { name:'POWER',   color:'#ff6b5e', ang:-90 },
-  { name:'FINESSE', color:'#57d93d', ang:150 },
-  { name:'ARCANE',  color:'#5eb2ff', ang:30  },
+  { name:'FINESSE', color:'#57d93d', ang:180 },
+  { name:'ARCANE',  color:'#5eb2ff', ang:0   },
+  { name:'FORTUNE', color:'#ffb52e', ang:90  },
 ];
 const NODES = [
   {id:'p1', b:0, t:'stat',    icon:'ATK', name:'Power +2',      desc:'Damage +2 on every hit.', cost:1, fx:{dmg:2}},
@@ -939,23 +1024,37 @@ const NODES = [
   {id:'p4', b:0, t:'passive', icon:'SPL', name:'Splash Pact',   desc:'PASSIVE: your hits splash slimes near the target for half damage.', cost:2, fx:{splash:.06}},
   {id:'p5', b:0, t:'passive', icon:'BANE',name:'King Bane',     desc:'PASSIVE: +50% damage to Slime Kings.', cost:2, fx:{kingBane:.5}},
   {id:'p6', b:0, t:'active',  icon:'MET', name:'METEOR CHOP',   desc:'ACTIVE SKILL (key E): a giant chop crashes down on your sword — huge damage in a big circle.', cost:2, fx:{active:'meteor'}},
+  {id:'p7', b:0, t:'passive', icon:'EXEC',name:'Executioner',   desc:'PASSIVE: +50% damage to slimes under 35% HP.', cost:2, fx:{exec:.5}},
+  {id:'p8', b:0, t:'stat',    icon:'ATK', name:'Power +4',      desc:'Damage +4 on every hit.', cost:1, fx:{dmg:4}},
   {id:'f1', b:1, t:'stat',    icon:'SPD', name:'Quick Hands',   desc:'Hit again 10% faster.', cost:1, fx:{cd:-.10}},
   {id:'f2', b:1, t:'stat',    icon:'CRT', name:'Keen Eye',      desc:'+8% crit chance. Crits deal DOUBLE damage.', cost:1, fx:{crit:.08}},
   {id:'f3', b:1, t:'stat',    icon:'RCH', name:'Long Arm',      desc:'Reach +10%.', cost:1, fx:{reach:.10}},
   {id:'f4', b:1, t:'passive', icon:'DBL', name:'Double Strike', desc:'PASSIVE: 15% chance a hit strikes a second time.', cost:2, fx:{double:.15}},
   {id:'f5', b:1, t:'passive', icon:'ARC', name:'Wide Arc',      desc:'PASSIVE: your swing arc is wider — it clips slimes much more easily.', cost:2, fx:{arcWide:.014}},
   {id:'f6', b:1, t:'active',  icon:'WAV', name:'BLADE WAVE',    desc:'ACTIVE SKILL (key Q): send a crescent wave flying in your sword direction, cutting everything it passes.', cost:2, fx:{active:'wave'}},
+  {id:'f7', b:1, t:'stat',    icon:'SPD', name:'Rapid Hands',   desc:'Hit again 8% faster.', cost:1, fx:{cd:-.08}},
+  {id:'f8', b:1, t:'passive', icon:'ARC', name:'Crescent Arc',  desc:'PASSIVE: your swing arc is even wider — it clips slimes much more easily.', cost:2, fx:{arcWide:.012}},
   {id:'a1', b:2, t:'stat',    icon:'XP',  name:'Scholar',       desc:'+20% XP from every kill.', cost:1, fx:{xp:.20}},
   {id:'a2', b:2, t:'stat',    icon:'GLD', name:'Greed',         desc:'+20% coins from every kill.', cost:1, fx:{coin:.20}},
   {id:'a3', b:2, t:'stat',    icon:'SPD', name:'Quick Hands',   desc:'Hit again 10% faster.', cost:1, fx:{cd:-.10}},
   {id:'a4', b:2, t:'passive', icon:'SPN', name:'Swift Spin',    desc:'PASSIVE: Spin Slash recharges 40% faster.', cost:2, fx:{spinCd:-.40}},
   {id:'a5', b:2, t:'stat',    icon:'ATK', name:'Power +3',      desc:'Damage +3 on every hit.', cost:1, fx:{dmg:3}},
   {id:'a6', b:2, t:'active',  icon:'FRZ', name:'FRENZY',        desc:'ACTIVE SKILL (key R): 5 seconds of +50% damage and much faster hits.', cost:2, fx:{active:'frenzy'}},
+  {id:'a7', b:2, t:'stat',    icon:'XP',  name:'Scholar II',    desc:'+15% XP from every kill.', cost:1, fx:{xp:.15}},
+  {id:'a8', b:2, t:'passive', icon:'BANE',name:'Regicide',      desc:'PASSIVE: +30% damage to Slime Kings.', cost:2, fx:{kingBane:.3}},
+  {id:'g1', b:3, t:'stat',    icon:'GLD', name:'Coin Charm',    desc:'+25% coins from every kill.', cost:1, fx:{coin:.25}},
+  {id:'g2', b:3, t:'stat',    icon:'XP',  name:'Treasure Sense',desc:'+25% XP from every kill.', cost:1, fx:{xp:.25}},
+  {id:'g3', b:3, t:'passive', icon:'BNT', name:'Bounty Hunter', desc:'PASSIVE: +50% bounty rewards.', cost:2, fx:{bounty:.5}},
+  {id:'g4', b:3, t:'passive', icon:'CMB', name:'Combo Charm',   desc:'PASSIVE: combo window +60% longer.', cost:2, fx:{comboWin:.6}},
+  {id:'g5', b:3, t:'stat',    icon:'CRT', name:'Lucky Edge',    desc:'+6% crit chance.', cost:1, fx:{crit:.06}},
+  {id:'g6', b:3, t:'active',  icon:'GLD', name:'GOLD RUSH',     desc:'ACTIVE SKILL (key T): 8 seconds of DOUBLE coins from every kill.', cost:2, fx:{active:'goldrush'}},
+  {id:'g7', b:3, t:'stat',    icon:'GLD', name:'Coin Charm II', desc:'+25% coins from every kill.', cost:1, fx:{coin:.25}},
+  {id:'g8', b:3, t:'passive', icon:'BANE',name:'Golden King',   desc:'PASSIVE: +20% damage to Slime Kings and +10% coins.', cost:2, fx:{kingBane:.2, coin:.1}},
 ];
 const nodePos = n => {
   const idx = NODES.filter(m=>m.b===n.b).indexOf(n);
   const a = BRANCHES[n.b].ang * Math.PI/180;
-  const dist = 10.5 + idx*6.7;                                 // % of board from centre
+  const dist = 8.6 + idx*5.2;                                  // % of board from centre (8 nodes per branch)
   const perp = (idx===0 ? 0 : (idx%2 ? 1 : -1) * (3 + idx*2.5)) * Math.PI/180;   // growing zig-zag keeps nodes apart
   const x = 50 + Math.cos(a+perp)*dist, y = 50 + Math.sin(a+perp)*dist;
   return { x, y, idx };
@@ -963,10 +1062,10 @@ const nodePos = n => {
 const unlocked = new Set();
 let S = null;
 function recalc(){
-  S = { dmg:0, reach:0, cd:0, crit:0, coin:0, xp:0, splash:0, kingBane:0, double:0, arcWide:0, spinCd:0, actives:new Set() };
+  S = { dmg:0, reach:0, cd:0, crit:0, coin:0, xp:0, splash:0, kingBane:0, double:0, arcWide:0, spinCd:0, bounty:0, comboWin:0, exec:0, actives:new Set() };
   for (const n of NODES) if (unlocked.has(n.id)){
     const f = n.fx;
-    for (const k of ['dmg','reach','cd','crit','coin','xp','kingBane','double','arcWide','spinCd']) if (f[k]) S[k]+=f[k];
+    for (const k of ['dmg','reach','cd','crit','coin','xp','kingBane','double','arcWide','spinCd','bounty','comboWin','exec']) if (f[k]) S[k]+=f[k];
     if (f.splash) S.splash = Math.max(S.splash, f.splash);
     if (f.active) S.actives.add(f.active);
   }
@@ -1086,6 +1185,24 @@ function tryKingBanner(){
   sfx.sting();
   clearTimeout(b._h); b._h = setTimeout(()=>b.classList.add('hidden'), 2600);
 }
+function showStreak(text){
+  const b = $('#streakBanner');
+  b.textContent = text;
+  b.classList.remove('hidden'); b.classList.remove('show'); void b.offsetWidth; b.classList.add('show');
+  clearTimeout(b._h); b._h = setTimeout(()=>b.classList.add('hidden'), 1600);
+}
+/* zone banner: fires when the PLAYER crosses into a different ring */
+function checkZone(){
+  if (!started) return;
+  const z = zoneOf(me.x, me.y);
+  if (myZone === -1){ myZone = z; return; }   // entering the world sets the zone silently
+  if (z === myZone) return;
+  myZone = z;
+  const zn = ZONES[z], b = $('#zoneBanner');
+  b.innerHTML = zn.name + '<small>' + zn.blurb + '</small>';
+  b.classList.remove('hidden');
+  clearTimeout(b._h); b._h = setTimeout(()=>b.classList.add('hidden'), 2200);
+}
 
 /* ---------- tutorial hints (one at a time, in sequence) ---------- */
 function updateHint(){
@@ -1181,6 +1298,7 @@ const ACTIVES = {
   wave:   { icon:'WAV', label:'WAVE',   key:'Q', cd:9000  },
   meteor: { icon:'MET', label:'METEOR', key:'E', cd:16000 },
   frenzy: { icon:'FRZ', label:'FRENZY', key:'R', cd:22000 },
+  goldrush:{ icon:'GLD', label:'RUSH',  key:'T', cd:30000 },
 };
 function buildActives(){
   const wrap = $('#actives'); wrap.innerHTML = '';
@@ -1200,6 +1318,7 @@ function castActive(id){
   if (id==='wave'){ waves.push({ x:me.x, y:me.y, ang:bladeAt(now).ang, t0:now, hit:new Set() }); beep(300,.18,'sawtooth',.06,900); }
   if (id==='meteor'){ meteors.push({ x:me.x, y:me.y, at:now+380 }); beep(160,.25,'square',.08,60); }
   if (id==='frenzy'){ me.frenzyUntil = now+5000; bubble('FRENZY!', me.x, me.y, 900); sfx.lvl(); }
+  if (id==='goldrush'){ me.goldRushUntil = now+8000; bubble('GOLD RUSH!', me.x, me.y, 900); sfx.lvl(); }
 }
 function tickActives(now, dt){
   // waves fly and cut
@@ -1243,6 +1362,8 @@ function tickActives(now, dt){
     b.querySelector('.cdov').style.height = left+'%';
     if (id==='frenzy' && now<me.frenzyUntil) b.style.background = '#ffd94d';
     else if (id==='frenzy') b.style.background = '#fff8e7';
+    if (id==='goldrush' && now<me.goldRushUntil) b.style.background = '#ffd94d';
+    else if (id==='goldrush') b.style.background = '#fff8e7';
   }
 }
 $('#shareBtn').onclick = async ()=>{
@@ -1279,7 +1400,7 @@ function drawVideoSlime(s,t,baseR){
 }
 
 /* ============================================================ drawing */
-const FLOWERS = Array.from({length:460},(_,i)=>({x:(Math.sin(i*127.1)*.5+.5)*WORLD, y:(Math.cos(i*311.7)*.5+.5)*WORLD, c:['#fff','#ffd1e8','#fff3a0'][i%3], s:2+(i%3)}));
+const FLOWERS = Array.from({length:1300},(_,i)=>({x:(Math.sin(i*127.1)*.5+.5)*WORLD, y:(Math.cos(i*311.7)*.5+.5)*WORLD, c:['#fff','#ffd1e8','#fff3a0'][i%3], s:2+(i%3)}));
 /* Deterministic world dressing (seeded RNG, same for every player): trees,
    rocks and ponds scattered over the world, kept off the spawn-centre clearing.
    Visual only — no collision. */
@@ -1294,9 +1415,9 @@ const DECOR = (()=>{
     }
     return { x:.2, y:.2 };
   };
-  for (let i=0;i<3;i++){ const p = place(.65); items.push({ t:'pond', x:p.x, y:p.y, r:.17 + rng()*.12 }); }
-  for (let i=0;i<26;i++){ const p = place(.45); items.push({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }); }
-  for (let i=0;i<14;i++){ const p = place(.45); items.push({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }); }
+  for (let i=0;i<7;i++){ const p = place(.6); items.push({ t:'pond', x:p.x, y:p.y, r:.17 + rng()*.12 }); }
+  for (let i=0;i<64;i++){ const p = place(.6); items.push({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }); }
+  for (let i=0;i<34;i++){ const p = place(.6); items.push({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }); }
   return items;
 })();
 function drawDecor(){
@@ -1338,6 +1459,11 @@ function drawField(t){
     if (f.x<cam.x-.1 || f.x>cam.x+vw+.1 || f.y<cam.y-.1 || f.y>cam.y+vh+.1) continue;
     ctx.fillStyle=f.c; ctx.beginPath(); ctx.arc(NX(f.x), NY(f.y), f.s, 0, 7); ctx.fill();
   }
+  // zone rings: the WILDS side darkens out past r=2.1, the MEADOW glows warm inside r=1.1
+  ctx.fillStyle='rgba(40,80,40,.10)';
+  ctx.beginPath(); ctx.arc(NX(WORLD/2), NY(WORLD/2), 2.1*u, 0, 7); ctx.fill();
+  ctx.fillStyle='rgba(255,255,220,.07)';
+  ctx.beginPath(); ctx.arc(NX(WORLD/2), NY(WORLD/2), 1.1*u, 0, 7); ctx.fill();
   // trees / rocks / ponds (under slimes)
   drawDecor();
   // world border fence
@@ -1346,9 +1472,16 @@ function drawField(t){
   ctx.strokeStyle='#a06a35'; ctx.lineWidth=5;
   ctx.strokeRect(NX(0), NY(0), WORLD*u, WORLD*u);
 }
+function drawEliteRing(x, y, baseR){
+  ctx.save();
+  ctx.strokeStyle = '#ffd94d'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(x, y, baseR*1.25, 0, 7); ctx.stroke();
+  ctx.restore();
+}
 function drawSlime(s,t){
   const x=NX(s.x), y=NY(s.y), baseR=s.r*SCALE();
   if (drawVideoSlime(s,t,baseR)){
+    if (s.elite) drawEliteRing(x, y - baseR*.4, baseR);   // gold ring marks elites (sprite sits bottom-anchored, so ring rides a bit high)
     if (s.hp < s.max){
       const bw=baseR*1.6, bh=Math.max(5,baseR*.14), bx=x-bw/2, by=y-baseR*1.02;
       ctx.fillStyle='rgba(40,30,20,.65)'; roundRect(bx-2,by-2,bw+4,bh+4,5); ctx.fill();
@@ -1401,6 +1534,7 @@ function drawSlime(s,t){
     ctx.beginPath(); ctx.moveTo(-cw/2,cy); ctx.lineTo(-cw/2,cy-ch*.5); ctx.lineTo(-cw/4,cy-ch*.15); ctx.lineTo(0,cy-ch); ctx.lineTo(cw/4,cy-ch*.15); ctx.lineTo(cw/2,cy-ch*.5); ctx.lineTo(cw/2,cy); ctx.closePath(); ctx.fill(); ctx.stroke();
   }
   ctx.restore();
+  if (s.elite) drawEliteRing(x, y, baseR);
   // hp bar
   if (s.hp < s.max){
     const bw=rX*1.7, bh=Math.max(5,baseR*.14), bx=x-bw/2, by=y-rY-baseR*.32;
@@ -1521,7 +1655,7 @@ function frame(now){
   for (const p of particles){ p.x+=p.vx*dt/60; p.y+=p.vy*dt/60; p.vy+=.0009*dt/16; p.life-=dt/480; ctx.globalAlpha=Math.max(0,p.life); ctx.fillStyle=p.color; ctx.beginPath(); ctx.arc(NX(p.x),NY(p.y),p.r,0,7); ctx.fill(); ctx.globalAlpha=1; }
   floats = floats.filter(f=>f.life>0);
   ctx.textAlign='center';
-  for (const f of floats){ f.y-=dt*.00003; f.life-=dt/(f.big?1750:950); ctx.globalAlpha=Math.max(0,f.life); ctx.font = f.big ? '900 26px "Baloo 2",sans-serif' : '900 17px "Baloo 2",sans-serif'; ctx.lineWidth = f.big?6:4; ctx.strokeStyle='rgba(60,40,10,.8)'; ctx.strokeText(f.text,NX(f.x),NY(f.y)); ctx.fillStyle=f.color; ctx.fillText(f.text,NX(f.x),NY(f.y)); ctx.globalAlpha=1; }
+  for (const f of floats){ f.y-=dt*.00003; f.life-=dt/(f.big?1750:950); ctx.globalAlpha=Math.max(0,f.life); ctx.font = '900 '+(f.size || (f.big?26:17))+'px "Baloo 2",sans-serif'; ctx.lineWidth = (f.big || f.size>=20) ? 6 : 4; ctx.strokeStyle='rgba(60,40,10,.8)'; ctx.strokeText(f.text,NX(f.x),NY(f.y)); ctx.fillStyle=f.color; ctx.fillText(f.text,NX(f.x),NY(f.y)); ctx.globalAlpha=1; }
 
   // other players' swords
   for (const [id,p] of peers){
@@ -1620,7 +1754,7 @@ function frame(now){
   }
 
   // scoreboard refresh (cheap, 2/s)
-  if (started && now-(frame._b||0)>500){ frame._b=now; refreshHUD(); refreshPeers(); }
+  if (started && now-(frame._b||0)>500){ frame._b=now; refreshHUD(); refreshPeers(); checkZone(); }
 }
 requestAnimationFrame(frame);
 // title-screen ambient slimes (solo sim before joining)
@@ -1645,7 +1779,7 @@ $('#playBtn').onclick = ()=>{
   if (!bounty) rollBounty();
   updateHint();
   try { joinWorld(WORLD_ID); }
-  catch(e){ toast('Multiplayer failed to start — playing solo. ('+e.message+')', 4000); isHost=true; hostId=me.id; if(slimes.size===0) for(let i=0;i<30;i++) spawnSlime(); }
+  catch(e){ toast('Multiplayer failed to start — playing solo. ('+e.message+')', 4000); isHost=true; hostId=me.id; if(slimes.size===0) for(let i=0;i<50;i++) spawnSlime(); }
   toast('Slash the slimes! One world — everyone with the link is in it.', 2600);
   beep(660,.1,'triangle',.1);
 };
