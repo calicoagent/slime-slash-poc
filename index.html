@@ -951,8 +951,20 @@ function gainWxp(i, n){
     addFloat(me.x, me.y - .14, WEAPONS[i].name.toUpperCase() + ' LV ' + w.lv + '!', WEAPONS[i].color, { big:true });
   }
   if (isGate(w.lv)) w.xp = Math.min(w.xp, xpNeed(w.lv));   // at a gate: bar full, NO overflow — it waits for the breakthrough
-  if (leveled){ sfx.pop(); saveGame(); }
-  buildRack();
+  if (leveled){ sfx.pop(); saveGame(); buildRack(); }
+  else updateRackXp(i);   // every kill / mined chunk lands here: patch ONE bar, don't rebuild 7 cards (+ imgs + a forced layout in syncRackUI) per kill
+}
+/* In-place weapon-XP bar update for one rack card. Falls back to a full
+   buildRack whenever the card's STRUCTURE would change (missing card, or
+   the gate 'ready' pulse toggling on/off). */
+function updateRackXp(i){
+  const card = $('#rack').children[i];
+  const bar = card && card.querySelector('.wxpbar');
+  if (!bar || !bar.firstElementChild){ buildRack(); return; }
+  const wp = wxpOf(i), need = wp.lv < WLV_MAX ? xpNeed(wp.lv) : 0;
+  const ready = isGate(wp.lv) && wp.xp >= need;
+  if (ready !== bar.classList.contains('ready')){ buildRack(); return; }
+  bar.firstElementChild.style.width = (wp.lv >= WLV_MAX ? 100 : clamp(wp.xp/need*100, 0, 100)) + '%';
 }
 
 /* ============================================================ weapon skills
@@ -2562,26 +2574,34 @@ addEventListener('keydown', e=>{
   if (lk==='c') useItem('shield');
 });
 /* ============================================================ HUD */
+/* WRITE-ON-CHANGE DOM setters. refreshHUD runs 2/s PLUS on every kill,
+   hit-taken, buy and gem (several times a frame in a splash fight), and
+   every textContent / style assignment dirties the node even when the
+   value is identical. These skip same-value writes. Use them ONLY on
+   nodes nothing else writes (the cache lives on the element). */
+function setText(el, v){ v = String(v); if (el._t !== v){ el._t = v; el.textContent = v; } }
+function setStyle(el, prop, v){ const k = '_s' + prop; if (el[k] !== v){ el[k] = v; el.style[prop] = v; } }
+const pct = (a, b) => clamp(a/b*100, 0, 100).toFixed(1) + '%';
 function refreshHUD(){
-  $('#coins').textContent = me.coins;
-  $('#lvl').textContent = me.level;
-  $('#kills').textContent = me.kills+' kills';
-  $('#xpFill').style.width = clamp(me.xp/(me.level*100)*100,0,100)+'%';
+  setText($('#coins'), me.coins);
+  setText($('#lvl'), me.level);
+  setText($('#kills'), me.kills+' kills');
+  setStyle($('#xpFill'), 'width', pct(me.xp, me.level*100));
   // player HP (local only)
-  $('#hpFill').style.width = clamp(me.hp/me.maxHp*100,0,100)+'%';
-  $('#hpText').textContent = Math.max(0, Math.ceil(me.hp)) + ' / ' + me.maxHp;   // overlaid ON the bar — numbers only, no 'HP' prefix
+  setStyle($('#hpFill'), 'width', pct(me.hp, me.maxHp));
+  setText($('#hpText'), Math.max(0, Math.ceil(me.hp)) + ' / ' + me.maxHp);   // overlaid ON the bar — numbers only, no 'HP' prefix
   // player MP (local only, mirrors the HP rows)
-  $('#mpFill').style.width = clamp(me.mp/me.maxMp*100,0,100)+'%';
-  $('#mpText').textContent = '' + Math.floor(me.mp);   // overlaid ON the bar — number only, no 'MP' prefix
+  setStyle($('#mpFill'), 'width', pct(me.mp, me.maxMp));
+  setText($('#mpText'), '' + Math.floor(me.mp));   // overlaid ON the bar — number only, no 'MP' prefix
   // SLIME EMPEROR boss bar — visible while a boss lives anywhere in the world
-  const bossS = [...slimes.values()].find(s=>s.kind==='boss');
-  if (bossS){ $('#bossBar').classList.remove('hidden'); $('#bossFill').style.width = clamp(bossS.hp/bossS.max*100,0,100)+'%'; $('#bossHp').textContent = Math.max(0, Math.ceil(bossS.hp)).toLocaleString('en-US'); }
+  const bossS = bossAt(performance.now());
+  if (bossS){ $('#bossBar').classList.remove('hidden'); setStyle($('#bossFill'), 'width', pct(bossS.hp, bossS.max)); setText($('#bossHp'), Math.max(0, Math.ceil(bossS.hp)).toLocaleString('en-US')); }
   else $('#bossBar').classList.add('hidden');
   document.body.classList.toggle('boss-on', !!bossS);   // mobile CSS shifts the left badge column clear of the lowered boss bar
   // item buttons: counts + greyed when empty
   for (const [id, sel] of [['potion','#itemPotion'],['bomb','#itemBomb'],['shield','#itemShield']]){
     const b = $(sel); if (!b) continue;
-    b.querySelector('.cnt').textContent = me.items[id];
+    setText(b.querySelector('.cnt'), me.items[id]);
     b.classList.toggle('empty', me.items[id]<=0);
   }
   // panic pulse: dying (HP < 35%) with a potion in hand -> POTION throbs
@@ -2595,12 +2615,12 @@ function refreshHUD(){
   const wsk = WSKILLS[me.weapon];
   const wsBtn = $('#wSkillBtn');
   if (wsk && unlocked.has(wsk.node)){
-    wsBtn.style.display = '';
-    $('#wsName').textContent = wsk.name;
-    $('#wsSub').textContent = 'V · ' + wsk.mp + ' MP';
+    setStyle(wsBtn, 'display', '');
+    setText($('#wsName'), wsk.name);
+    setText($('#wsSub'), 'V · ' + wsk.mp + ' MP');
     wsBtn.classList.toggle('off', me.mp < wsk.mp);
   } else {
-    wsBtn.style.display = 'none';
+    setStyle(wsBtn, 'display', 'none');
   }
   // scoreboard — my own row always shows LIVE me.kills/me.name (local kills are
   // credited in a path that does not write into scores, so the table lagged)
@@ -2609,7 +2629,9 @@ function refreshHUD(){
   const rows = sEntries
     .map(([id,s])=> id===me.id ? [id, { name:me.name, kills:me.kills }] : [id, s])
     .sort((a,b)=>b[1].kills-a[1].kills).slice(0,5);
-  $('#board').innerHTML = rows.length ? rows.map(([id,s])=>`<div class="row ${id===me.id?'me':''}"><span>${esc(s.name)}</span><b>${s.kills}</b></div>`).join('') : '<div class="row"><span>No kills yet</span></div>';
+  const boardHtml = rows.length ? rows.map(([id,s])=>`<div class="row ${id===me.id?'me':''}"><span>${esc(s.name)}</span><b>${s.kills}</b></div>`).join('') : '<div class="row"><span>No kills yet</span></div>';
+  const boardEl = $('#board');
+  if (boardEl._h !== boardHtml){ boardEl._h = boardHtml; boardEl.innerHTML = boardHtml; }   // innerHTML re-parses + rebuilds the subtree: only when the table actually changed
   // sphere points
   $('#spCount').textContent = me.sp;
   // RPG menu: refresh the visible tab's values IN PLACE (same nodes —
@@ -3414,16 +3436,16 @@ function tickActives(now, dt){
   }
   // weapon skill button cooldown sweep
   const wsOv = document.getElementById('wsCdov');
-  if (wsOv){ const sk = WSKILLS[me.weapon]; wsOv.style.height = (sk ? clamp((me.wSkillCdUntil-now)/wSkillCd(sk)*100, 0, 100) : 0) + '%'; }
+  // (per-frame overlays: setStyle skips same-value writes, so an idle
+  // button costs nothing instead of a style write every frame)
+  if (wsOv){ const sk = WSKILLS[me.weapon]; setStyle(wsOv, 'height', (sk ? clamp((me.wSkillCdUntil-now)/wSkillCd(sk)*100, 0, 100) : 0).toFixed(1) + '%'); }
   // cooldown overlays
   for (const [id, a] of Object.entries(ACTIVES)){
     const b = document.getElementById('abtn-'+id); if (!b) continue;
     const left = clamp((me.actCd[id]-now)/a.cd*100, 0, 100);
-    b.querySelector('.cdov').style.height = left+'%';
-    if (id==='frenzy' && now<me.frenzyUntil) b.style.background = '#ffd94d';
-    else if (id==='frenzy') b.style.background = '#fff8e7';
-    if (id==='goldrush' && now<me.goldRushUntil) b.style.background = '#ffd94d';
-    else if (id==='goldrush') b.style.background = '#fff8e7';
+    setStyle(b._ov || (b._ov = b.querySelector('.cdov')), 'height', left.toFixed(1)+'%');
+    if (id==='frenzy') setStyle(b, 'background', now<me.frenzyUntil ? '#ffd94d' : '#fff8e7');
+    if (id==='goldrush') setStyle(b, 'background', now<me.goldRushUntil ? '#ffd94d' : '#fff8e7');
   }
 }
 /* ============================================================ weapon skills (tap / SPACE / V)
@@ -4677,7 +4699,7 @@ let lastT=performance.now(), posSendAcc=0;
 /* The living Emperor, looked up once per frame timestamp (the bullet
    emitters below used to spread the whole slime map into an array per
    emitter per frame — during the boss fight, the heaviest moment). */
-let _bossT = -1, _bossS = null;
+var _bossT = -1, _bossS = null;   // var: refreshHUD (defined above) may call bossAt before this line runs
 function bossAt(now){
   if (now !== _bossT){ _bossT = now; _bossS = null; for (const s of slimes.values()) if (s.kind==='boss'){ _bossS = s; break; } }
   return _bossS;
