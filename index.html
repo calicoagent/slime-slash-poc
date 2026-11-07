@@ -1438,7 +1438,7 @@ function hostMine(nodeId, d, byId){
   if (now - last < 60) return;                    // host anti-spam (same map as hit claims)
   hitClaimsAt.set(key, now);
   n.left--; n.shakeT = now;
-  mineChips(n.x, n.y, 10);   // every lost chunk bursts stone chips (host's client)
+  mineChips(n.x, n.y, 12);   // every lost chunk bursts stone chips (host's client)
   const lv = clamp((d && d.lv|0) || 1, 1, 5);
   const chance = .55 + .06*(lv-1) + (d && d.gf ? .12 : 0) + (d && d.gr ? .40 : 0);
   const g = Math.random() < chance ? rollDrop(NODE_TYPES[n.t]) : null;
@@ -1495,7 +1495,7 @@ function applyWorld(p){
       if (old){
         if (left < old.left){   // a chunk was lost — every client sees the rock shake AND a burst of stone chips
           old.shakeT = performance.now();
-          mineChips(old.x, old.y, 10);
+          mineChips(old.x, old.y, 12);
           capParticles();
         }
         old.x = x; old.y = y; old.t = t; old.left = left;
@@ -1525,11 +1525,11 @@ function mineChips(x, y, n){
      view in ~15 frames (~0.25s), with only 5-10 pale-grey particles and
      no ring. Gone before a screenshot — or an eye — could catch them.
      Now: pop-scale velocities with the upward bias kept, sizes at the
-     visible end of the pop range (5-8px), and a per-particle gravity
+     visible end of the pop range (6-9px), and a per-particle gravity
      multiplier (grav 5) so they ARC AND FALL at the node instead of
-     rocketing off the top of the screen. Counts unchanged (10/chunk,
-     5/hit), life unchanged (~1.2s). */
-  for (let i=0;i<n;i++) particles.push({ x:x+rand(-.03,.03), y:y+rand(-.03,.03), vx:rand(-.10,.10), vy:rand(-.16,-.05), life:2.5, grav:5, color: i%2 ? '#e8ecec' : '#b9c0c2', r:rand(5,8) });
+     rocketing off the top of the screen. Counts 12/chunk, 5/hit;
+     life unchanged (~1.2s). */
+  for (let i=0;i<n;i++) particles.push({ x:x+rand(-.03,.03), y:y+rand(-.03,.03), vx:rand(-.10,.10), vy:rand(-.16,-.05), life:2.5, grav:5, color: i%2 ? '#e8ecec' : '#b9c0c2', r:rand(6,9) });
   capParticles();
 }
 function spawnHitFx(x,y,color,n=6){ for(let i=0;i<n;i++) particles.push({x,y,vx:rand(-.12,.12),vy:rand(-.16,.02),life:1,color,r:rand(2,5)}); capParticles(); }
@@ -3305,10 +3305,13 @@ function drawSlimeFace(s, t, g){
   // flinch clock: every hit site sets flinchUntil = now + 220 (doHit is
   // the central one; hostApplyHit and the applyWorld HP-drop mirror it),
   // so hit age = t - (flinchUntil - 220) — the same derivation the red
-  // tint in paintSlimeSprite uses. X X shows for the first 350ms.
+  // tint in paintSlimeSprite uses. X X shows for the first 600ms: still
+  // a blink of a reaction, but the render probe proved 350ms kept
+  // slipping between playtest screenshots — the strokes WERE painted,
+  // just never in a captured frame.
   if (s.hasXX === undefined) s.hasXX = hash01(s.seed * 3.71) < .25;
   const hurtAge = t - ((s.flinchUntil||0) - 220);
-  const hurtXX = s.hasXX && !!s.flinchUntil && hurtAge < 350;
+  const hurtXX = s.hasXX && !!s.flinchUntil && hurtAge < 600;
   const ey = F_EY * dh, ew = F_EW * dw, eh = F_EH * dh;
   const lw = Math.max(1.3, dw * .013);
   ctx.fillStyle = FACE_COL; ctx.strokeStyle = FACE_COL; ctx.lineWidth = lw; ctx.lineCap = 'round';
@@ -3892,6 +3895,23 @@ function drawKindMarks(s, x, y, baseR, t){
     ctx.fill();
   }
 }
+/* ELITE name tag: a small gold 'ELITE' plate — the same construction as
+   the Emperor's 'SLIME EMPEROR' label in drawSlime, shrunk. The aura
+   alone kept failing identification in playtest stills (subtle alphas,
+   tiny on small kinds); a word cannot be misread. topEdge = the screen y
+   the tag must float ABOVE (the HP bar's top, or the sprite's top). */
+function drawEliteTag(x, topEdge){
+  const label = 'ELITE', lh = 13;
+  ctx.save();
+  ctx.font = '7px "Press Start 2P", monospace';
+  const tw = ctx.measureText(label).width;
+  const lw = tw + 10, lx = x - lw/2, ly = topEdge - 3 - lh;
+  ctx.fillStyle = '#40121d'; ctx.fillRect(lx, ly, lw, lh);
+  ctx.strokeStyle = '#ffd94d'; ctx.lineWidth = 1.5; ctx.strokeRect(lx + .75, ly + .75, lw - 1.5, lh - 1.5);
+  ctx.fillStyle = '#ffd94d'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(label, x, ly + lh/2 + .5);
+  ctx.restore();
+}
 function drawSlime(s,t){
   /* VISUAL radius: the Emperor renders at 1.3x so he never reads as just
      another King (gauntlet F5: testers counted 3-5 'bosses' — all Kings,
@@ -3935,6 +3955,10 @@ function drawSlime(s,t){
       ctx.fillStyle='rgba(40,30,20,.65)'; roundRect(bx-2,by-2,bw+4,bh+4,5); ctx.fill();
       ctx.fillStyle='#e5484d'; roundRect(bx,by,bw,bh,3); ctx.fill();
       ctx.fillStyle='#57d93d'; roundRect(bx,by,bw*clamp(s.hp/s.max,0,1),bh,3); ctx.fill();
+    }
+    if (s.elite){
+      const topY = sg.gy - sg.liftW*UNIT() - sg.dh*sg.sqY;
+      drawEliteTag(x, s.hp < s.max ? topY - Math.max(5,baseR*.14) - 6 : topY);   // above the HP bar's bg box when damaged, else above the sprite
     }
     return;
   }
@@ -3995,6 +4019,7 @@ function drawSlime(s,t){
     ctx.fillStyle='#e5484d'; roundRect(bx,by,bw,bh,3); ctx.fill();
     ctx.fillStyle='#57d93d'; roundRect(bx,by,bw*clamp(s.hp/s.max,0,1),bh,3); ctx.fill();
   }
+  if (s.elite) drawEliteTag(x, s.hp < s.max ? y - rY - baseR*.32 - 2 : y - rY);
 }
 function shade(hex,amt){
   const n=parseInt(hex.slice(1),16);
@@ -4223,15 +4248,17 @@ function drawMetalArrow(now){
   const sx = NX(m.x), sy = NY(m.y), M = 34;
   const cx = clamp(sx, M, W - M), cy = clamp(sy, M, H - M);
   const a = Math.atan2(sy - H/2, sx - W/2);   // bearing from screen centre toward the metal
-  const pulse = 1 + .12 * Math.sin(now/180);
+  const pulse = 1 + .15 * Math.sin(now * Math.PI * 2 / 500);   // ~2Hz breathing, ±15%
   ctx.save(); ctx.translate(cx, cy); ctx.rotate(a);
   ctx.fillStyle = '#ffffff';
-  ctx.beginPath(); ctx.moveTo(16*pulse, 0); ctx.lineTo(6*pulse, -6); ctx.lineTo(6*pulse, 6); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(20*pulse, 0); ctx.lineTo(7*pulse, -7); ctx.lineTo(7*pulse, 7); ctx.closePath(); ctx.fill();
   ctx.restore();
   ctx.save(); ctx.translate(cx, cy);
-  const r = 9 * pulse;
+  const r = 13 * pulse;   // ~26px diamond — big enough to catch the eye at the screen edge
   ctx.fillStyle = '#dfe7ec'; ctx.strokeStyle = '#5f6f79'; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(0, -r); ctx.lineTo(r, 0); ctx.lineTo(0, r); ctx.lineTo(-r, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.font = '7px "Press Start 2P", monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillStyle = '#dfe7ec'; ctx.fillText('METAL', 0, r + 5);
   ctx.restore();
 }
 function frame(now){
