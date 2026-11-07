@@ -2,14 +2,18 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#79c25f">
 <title>Slime Slash! — Multiplayer POC</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html,body { width:100%; height:100%; overflow:hidden; background:#79c25f; font-family:"VT323",monospace; touch-action:none; user-select:none; -webkit-user-select:none; }
+  html,body { width:100%; height:100vh; height:100dvh; overflow:hidden; background:#79c25f; font-family:"VT323",monospace; touch-action:none; user-select:none; -webkit-user-select:none; }
   #game { position:fixed; inset:0; display:block; cursor:none; }
   .hidden { display:none !important; }
   img { image-rendering:pixelated; }
@@ -35,14 +39,14 @@
     box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 4px 4px 0 rgba(0,0,0,.30);
   }
   .badge svg { width:28px; height:28px; flex:none; }
-  #coinBadge { top:14px; left:14px; }
-  #gemBadge { top:64px; left:14px; font-size:19px; padding:4px 10px; gap:10px; }
+  #coinBadge { top:max(14px, env(safe-area-inset-top)); left:max(14px, env(safe-area-inset-left)); }
+  #gemBadge { top:64px; left:max(14px, env(safe-area-inset-left)); font-size:19px; padding:4px 10px; gap:10px; }
   #gemBadge .gemSlot { display:inline-flex; align-items:center; gap:4px; }
   #gemBadge .gemSlot i { width:10px; height:10px; transform:rotate(45deg); border:2px solid #3a2b23; display:inline-block; flex:none; }
-  #peerBadge { top:14px; right:14px; padding:6px 16px; font-size:22px; }
+  #peerBadge { top:max(14px, env(safe-area-inset-top)); right:max(14px, env(safe-area-inset-right)); padding:6px 16px; font-size:22px; }
   #peerBadge .dot { width:12px; height:12px; border-radius:0; background:#c33; border:2px solid #3a2b23; }
   #peerBadge.on .dot { background:#37c978; }
-  #lvlBadge { top:100px; left:14px; font-size:21px; padding:5px 14px 5px 10px; flex-direction:column; align-items:stretch; gap:3px; border-radius:0; }
+  #lvlBadge { top:100px; left:max(14px, env(safe-area-inset-left)); font-size:21px; padding:5px 14px 5px 10px; flex-direction:column; align-items:stretch; gap:3px; border-radius:0; }
   #kills { font-size:17px !important; }
   #xpTrack { width:130px; height:12px; background:#e4d3ac; border:2px solid #3a2b23; border-radius:0; overflow:hidden; }
   #xpFill { height:100%; width:0%; background-color:#ff9a2e; background-image:repeating-linear-gradient(90deg, rgba(0,0,0,0) 0 6px, rgba(0,0,0,.18) 6px 8px); transition:width .3s; }
@@ -52,7 +56,7 @@
   #mpText { font-size:17px; font-weight:700; color:#2255aa; line-height:1.1; }
   #mpTrack { width:130px; height:12px; background:#c9d8e8; border:2px solid #3a2b23; border-radius:0; overflow:hidden; }
   #mpFill { height:100%; width:100%; background-color:#2e7de1; background-image:repeating-linear-gradient(90deg, rgba(0,0,0,0) 0 6px, rgba(0,0,0,.18) 6px 8px); transition:width .25s; }
-  #boardBadge { top:74px; right:14px; font-size:19px; line-height:1.15; padding:8px 14px; border-radius:0; flex-direction:column; align-items:flex-start; gap:2px; max-width:210px; }
+  #boardBadge { top:74px; right:max(14px, env(safe-area-inset-right)); font-size:19px; line-height:1.15; padding:8px 14px; border-radius:0; flex-direction:column; align-items:flex-start; gap:2px; max-width:210px; }
   #boardBadge b { font-family:"Press Start 2P",monospace; font-size:9px; }
   #boardBadge .row { display:flex; gap:6px; white-space:nowrap; }
   #boardBadge .row.me { color:#d2691e; }
@@ -62,7 +66,7 @@
      above the rack's top edge and can never overlap cards, in either
      collapse state. JS keeps --dockH = the dock's live height so the
      minimap and side columns can clear it at any width. */
-  #rackDock { position:fixed; z-index:20; left:0; right:0; bottom:0; display:flex; flex-direction:column; align-items:center; padding-bottom:14px; pointer-events:none; }
+  #rackDock { position:fixed; z-index:20; left:0; right:0; bottom:0; display:flex; flex-direction:column; align-items:center; padding-bottom:max(14px, env(safe-area-inset-bottom)); pointer-events:none; }
   #rackBtns { align-self:flex-end; margin:0 14px 8px 0; display:flex; flex-direction:column; gap:8px; align-items:flex-end; pointer-events:none; }
   #rackBtns > * { pointer-events:auto; }
   #rackTabRow { display:flex; justify-content:center; margin-bottom:4px; pointer-events:none; }
@@ -140,7 +144,7 @@
 
   /* ---------- polish pass: bounty / combo / hint / king banner / pause ---------- */
   #bountyBadge {
-    position:fixed; z-index:20; top:238px; left:14px; max-width:232px;
+    position:fixed; z-index:20; top:238px; left:max(14px, env(safe-area-inset-left)); max-width:232px;
     background:#fff6df; border:3px solid #3a2b23; border-radius:0; padding:8px 14px;
     color:#3a2b23; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 4px 4px 0 rgba(0,0,0,.30);
   }
@@ -264,7 +268,7 @@
     background:radial-gradient(ellipse at center, rgba(229,57,53,0) 40%, rgba(229,57,53,.78) 100%);
   }
   #bossBar {
-    position:fixed; z-index:24; top:12px; left:50%; transform:translateX(-50%);
+    position:fixed; z-index:24; top:max(12px, env(safe-area-inset-top)); left:50%; transform:translateX(-50%);
     width:min(46vw,520px); background:#40121d; border:3px solid #ffd94d; border-radius:0;
     padding:6px 14px 9px; box-shadow:5px 5px 0 rgba(0,0,0,.35); text-align:center; pointer-events:none;
   }
@@ -285,7 +289,7 @@
     padding:11px 20px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
   }
   #interactPrompt:active { transform:translateX(-50%) translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
-  #items { position:fixed; left:14px; bottom:222px; z-index:21; display:flex; flex-direction:column; gap:10px; }
+  #items { position:fixed; left:max(14px, env(safe-area-inset-left)); bottom:222px; z-index:21; display:flex; flex-direction:column; gap:10px; }
   .ibtn {
     position:relative; width:48px; height:48px; border-radius:0; cursor:pointer;
     border:3px solid #3a2b23; background:#fff6df; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
@@ -363,7 +367,7 @@
   #nodeCard button:disabled { filter:grayscale(.6); opacity:.55; cursor:default; }
 
   #minimap {
-    position:fixed; left:14px; bottom:86px; z-index:19; width:124px; height:124px;
+    position:fixed; left:max(14px, env(safe-area-inset-left)); bottom:86px; z-index:19; width:124px; height:124px;
     border:3px solid #3a2b23; border-radius:0; background:#79c25f;
     box-shadow:4px 4px 0 rgba(0,0,0,.30);
   }
@@ -475,6 +479,50 @@
     #forge h3 { font-size:13px; margin-bottom:6px; }
     #sphereBoard { width:min(82vw, 46dvh); }
   }
+
+  /* ---------- mobile full-viewport modal sheets (<=640px) ----------
+     Every modal becomes a full-screen sheet: the card fills the viewport
+     and scrolls internally; a sticky header keeps title + CLOSE/RESUME
+     always reachable at the top. Desktop keeps the centred cards. */
+  .sheetHead { display:none; }
+  @media (max-width:640px) {
+    .panelWrap, #pauseMenu { height:100vh; height:100dvh; }
+    .panelWrap .pauseCard, #pauseMenu .pauseCard {
+      width:100% !important; max-width:100%; height:100%; max-height:none !important;
+      overflow-y:auto; -webkit-overflow-scrolling:touch;
+      padding:0 14px calc(env(safe-area-inset-bottom) + 16px);
+      border-left:none; border-right:none; border-top:none; border-bottom:none;
+      box-shadow:none; animation:none;
+    }
+    .panelWrap .pauseCard > h2, #pauseMenu .pauseCard > h2 { display:none; }
+    .sheetHead {
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      position:sticky; top:0; z-index:6;
+      background:#fff6df; border-bottom:3px solid #3a2b23;
+      margin:0 -14px 12px; padding:calc(env(safe-area-inset-top) + 10px) 14px 10px;
+    }
+    .sheetTitle { font-family:"Press Start 2P",monospace; font-size:12px; color:#3a2b23; line-height:1.5; }
+    .sheetHead .pbtn { padding:8px 10px; font-size:9px; flex:none; }
+    /* the sphere grid is a dock popup on desktop — a sheet on phones */
+    #forge {
+      top:0; left:0; right:auto; bottom:auto; transform:none;
+      width:100%; height:100vh; height:100dvh; max-height:none !important;
+      overflow-y:auto; -webkit-overflow-scrolling:touch;
+      padding:0 12px calc(env(safe-area-inset-bottom) + 16px);
+      border-left:none; border-right:none; border-top:none; border-bottom:none;
+      box-shadow:none; animation:none; z-index:44;
+    }
+    #forge > h3 { display:none; }
+    #forge .sheetHead { margin:0 -12px 10px; padding-left:12px; padding-right:12px; }
+    #sphereBoard { width:min(92vw, 424px); }
+    /* boss bar drops below the top badge row; the left badge column
+       shifts down while a boss is up (body.boss-on) so nothing overlaps */
+    #bossBar { top:calc(env(safe-area-inset-top) + 46px); width:min(76vw, 520px); }
+    #zoneBanner { top:calc(env(safe-area-inset-top) + 102px); }
+    body.boss-on #lvlBadge { top:104px; }
+    body.boss-on #gemBadge { top:212px; }
+    body.boss-on #bountyBadge { top:244px; }
+  }
 </style>
 </head>
 <body>
@@ -525,6 +573,7 @@
   <button id="pauseBtn" title="Pause">| |</button>
 
   <div id="forge" class="hidden px-panel">
+    <div class="sheetHead"><span class="sheetTitle">SPHERE GRID</span><button class="pbtn" id="forgeSheetClose">CLOSE</button></div>
     <h3>SPHERE GRID</h3>
     <div id="spBar">SPHERE POINTS <b id="spCount">0</b></div>
     <div id="sphereBoard"><svg id="sphereLines" viewBox="0 0 100 100" preserveAspectRatio="none"></svg><div id="sphereNodes"></div></div>
@@ -548,6 +597,7 @@
 <div id="hint" class="hidden"></div>
 <div id="pauseMenu" class="hidden">
   <div class="pauseCard px-panel">
+    <div class="sheetHead"><span class="sheetTitle">PAUSED</span><button class="pbtn main" id="pauseSheetResume">RESUME</button></div>
     <h2>PAUSED</h2>
     <button class="pbtn main" id="resumeBtn">RESUME</button>
     <button class="pbtn" id="soundBtn">SOUND: ON</button>
@@ -557,6 +607,7 @@
 </div>
 <div id="bankPanel" class="hidden panelWrap">
   <div class="pauseCard px-panel">
+    <div class="sheetHead"><span class="sheetTitle">THE SLIME BANK</span><button class="pbtn" id="bankSheetClose">CLOSE</button></div>
     <h2>THE SLIME BANK</h2>
     <div class="bankLine">Carried: <b id="bankCarried">0</b> coins</div>
     <div class="bankLine">Banked: <b id="bankBanked">0</b> coins</div>
@@ -571,6 +622,7 @@
 </div>
 <div id="shopPanel" class="hidden panelWrap">
   <div class="pauseCard px-panel" style="width:min(94vw,410px)">
+    <div class="sheetHead"><span class="sheetTitle">SLIME SHOP</span><button class="pbtn" id="shopSheetClose">CLOSE</button></div>
     <h2>SLIME SHOP</h2>
     <div class="bankLine">Carried: <b id="shopCoins">0</b> coins</div>
     <div id="shopRows"></div>
@@ -579,6 +631,7 @@
 </div>
 <div id="hospitalPanel" class="hidden panelWrap">
   <div class="pauseCard px-panel" style="width:min(94vw,410px)">
+    <div class="sheetHead"><span class="sheetTitle">HOSPITAL</span><button class="pbtn" id="hospSheetClose">CLOSE</button></div>
     <h2>HOSPITAL</h2>
     <div class="bankLine">HP: <b id="hospHp">100 / 100</b></div>
     <div class="bankLine">Carried: <b id="hospCoins">0</b> coins</div>
@@ -588,6 +641,7 @@
 </div>
 <div id="treePanel" class="hidden panelWrap">
   <div class="pauseCard px-panel" style="width:min(94vw,560px);max-height:88dvh;overflow-y:auto">
+    <div class="sheetHead"><span class="sheetTitle">WEAPON SKILLS</span><button class="pbtn" id="treeSheetClose">CLOSE</button></div>
     <h2>WEAPON SKILLS</h2>
     <div class="bankLine" style="text-align:center">Sphere Points: <b id="treeSp">0</b></div>
     <div id="treeRows"></div>
@@ -2026,6 +2080,7 @@ function refreshHUD(){
   const bossS = [...slimes.values()].find(s=>s.kind==='boss');
   if (bossS){ $('#bossBar').classList.remove('hidden'); $('#bossFill').style.width = clamp(bossS.hp/bossS.max*100,0,100)+'%'; }
   else $('#bossBar').classList.add('hidden');
+  document.body.classList.toggle('boss-on', !!bossS);   // mobile CSS shifts the left badge column clear of the lowered boss bar
   // item buttons: counts + greyed when empty
   for (const [id, sel] of [['potion','#itemPotion'],['bomb','#itemBomb'],['shield','#itemShield']]){
     const b = $(sel); if (!b) continue;
@@ -2687,6 +2742,13 @@ $('#treeBtn').onclick = ()=>toggleTree();
 $('#wSkillBtn').onclick = ()=>castWeaponSkill();
 $('#treeCloseBtn').onclick = ()=>toggleTree(false);
 $('#treePanel').addEventListener('click', e=>{ if (e.target.id==='treePanel') toggleTree(false); });
+/* mobile sheet sticky-header buttons (hidden on desktop via CSS) */
+$('#bankSheetClose').onclick = ()=>$('#bankPanel').classList.add('hidden');
+$('#shopSheetClose').onclick = ()=>$('#shopPanel').classList.add('hidden');
+$('#hospSheetClose').onclick = ()=>$('#hospitalPanel').classList.add('hidden');
+$('#treeSheetClose').onclick = ()=>toggleTree(false);
+$('#forgeSheetClose').onclick = ()=>toggleForge();
+$('#pauseSheetResume').onclick = ()=>togglePause(false);
 $('#bankPanel').addEventListener('click', e=>{ if (e.target.id==='bankPanel') e.target.classList.add('hidden'); });
 $('#shopPanel').addEventListener('click', e=>{ if (e.target.id==='shopPanel') e.target.classList.add('hidden'); });
 $('#itemPotion').onclick = ()=>useItem('potion');
