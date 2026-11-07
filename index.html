@@ -154,10 +154,27 @@
   .pbtn.main { background:#57d93d; color:#fff; text-shadow:0 2px 0 rgba(0,0,0,.2); }
   .pcontrols { color:#97754a; font-weight:700; font-size:12.5px; line-height:1.55; }
   @media (max-width:640px) {
-    #bountyBadge { top:128px; max-width:180px; padding:6px 10px; }
-    #bountyText { font-size:13px; }
-    #comboBadge { right:auto; left:14px; bottom:282px; font-size:18px; padding:6px 14px; }
-    #hint { bottom:104px; font-size:14px; max-width:94vw; white-space:normal; text-align:center; }
+    /* PHONE HUD: the play field comes first. Every HUD piece shrinks, hugs
+       the edges, and lets touches pass through — only real buttons eat taps. */
+    .badge { pointer-events:none; }
+    #coinBadge { top:max(8px, env(safe-area-inset-top)); left:8px; font-size:15px; padding:3px 10px 3px 5px; border-width:3px; box-shadow:0 3px 0 #5b3a1e; }
+    #coinBadge svg { width:19px; height:19px; }
+    #lvlBadge { top:50px; left:8px; font-size:12.5px; padding:4px 10px; border-width:3px; border-radius:16px; box-shadow:0 3px 0 #5b3a1e; }
+    #xpTrack { width:84px; height:9px; }
+    #peerBadge { top:max(8px, env(safe-area-inset-top)); right:8px; font-size:12.5px; padding:4px 10px; border-width:3px; box-shadow:0 3px 0 #5b3a1e; }
+    #bountyBadge { top:102px; left:8px; max-width:158px; padding:5px 9px; border-width:3px; border-radius:16px; box-shadow:0 3px 0 #5b3a1e; pointer-events:none; }
+    #bountyBadge b { font-size:9.5px; letter-spacing:1px; }
+    #bountyText { font-size:11.5px; line-height:1.2; }
+    #bountyProg { font-size:10px; margin-top:1px; }
+    #minimap { width:74px; height:74px; left:8px; bottom:76px; border-width:3px; border-radius:14px; pointer-events:none; }
+    #pauseBtn { left:auto; right:8px; top:94px; bottom:auto; width:36px; height:36px; font-size:11px; border-width:3px; box-shadow:0 3px 0 #5b3a1e; }
+    #rack { bottom:max(8px, env(safe-area-inset-bottom)); gap:5px; width:100vw; }
+    #forgeBtn { bottom:78px; right:8px; font-size:13px; padding:8px 12px; border-width:3px; border-radius:16px; box-shadow:0 4px 0 #5b3a1e; }
+    #actives { bottom:134px; right:8px; gap:8px; }
+    .abtn { width:48px; height:48px; font-size:10px; border-width:3px; }
+    #comboBadge { right:auto; left:8px; bottom:160px; font-size:15px; padding:5px 12px; border-width:3px; box-shadow:0 3px 0 #5b3a1e; }
+    #hint { bottom:160px; font-size:13px; max-width:72vw; white-space:normal; text-align:center; padding:6px 12px; }
+    #toast { top:auto; bottom:208px; font-size:14px; padding:7px 16px; border-width:3px; }
   }
 
   /* ---------- sphere grid ---------- */
@@ -250,13 +267,15 @@
   #playBtn:active { transform:translateY(6px); box-shadow:0 4px 0 #1e6410; }
   #howto { color:#fff; font-weight:700; font-size:15px; text-shadow:0 2px 0 rgba(0,0,0,.4); text-align:center; max-width:520px; line-height:1.5; }
   @media (max-width:640px) {
-    .wcard { width:58px; padding:8px 2px 6px; } .wcard svg { width:30px; height:30px; } .wcard .wn { font-size:9px; }
+    .wcard { width:min(56px,15vw); padding:6px 1px 5px; border-width:3px; border-radius:14px; }
+    .wcard svg { width:26px; height:26px; } .wcard .wn { font-size:8.5px; }
+    .wcard .key { display:none; } .wcard .wl { font-size:9px; padding:1px 6px; top:-8px; right:-5px; }
+    .wcard.sel { transform:translateY(-5px) scale(1.05); }
     #shareBtn { display:none; } #boardBadge { display:none; }
     #forge { right:50%; transform:translateX(50%); bottom:84px; width:94vw; padding:12px;
              max-height:calc(100dvh - 150px); overflow-y:auto; }
     #forge h3 { font-size:19px; margin-bottom:6px; }
     #sphereBoard { width:min(82vw, 46dvh); }
-    .badge { font-size:16px; }
   }
 </style>
 </head>
@@ -1540,20 +1559,37 @@ function frame(now){
       if (myTrail.length > 26) myTrail.splice(0, myTrail.length-26);
       myTrail = myTrail.filter(p => now - p.t < 380);
       if (myTrail.length > 1){
-        // screen-space points, each with age 1 (fresh) -> 0 (380ms old)
-        const pts = myTrail.map(p => ({ x:NX(p.x), y:NY(p.y), age: clamp(1-(now-p.t)/380, 0, 1) }));
-        // perpendicular offset per point: half-width tapers 15px (newest) -> 2px (oldest)
+        // SMOOTHED ribbon: Catmull-Rom resample the tip path into a dense
+        // centreline (~9px steps), taper the width on a smooth curve so the
+        // tail melts to a point instead of a flat cut, and draw the white
+        // core as ONE continuous curve — no segment steps anywhere.
+        const raw = myTrail.map(p => ({ x:NX(p.x), y:NY(p.y), age: clamp(1-(now-p.t)/380, 0, 1) }));
+        const pts = [];
+        const P = i => raw[clamp(i, 0, raw.length-1)];
+        for (let i=0; i<raw.length-1; i++){
+          const p0=P(i-1), p1=P(i), p2=P(i+1), p3=P(i+2);
+          const n = Math.max(1, Math.min(6, Math.round(Math.hypot(p2.x-p1.x, p2.y-p1.y)/9)));
+          for (let j=0; j<n; j++){
+            const t = j/n, t2 = t*t, t3 = t2*t;
+            pts.push({
+              x: .5*((2*p1.x) + (-p0.x+p2.x)*t + (2*p0.x-5*p1.x+4*p2.x-p3.x)*t2 + (-p0.x+3*p1.x-3*p2.x+p3.x)*t3),
+              y: .5*((2*p1.y) + (-p0.y+p2.y)*t + (2*p0.y-5*p1.y+4*p2.y-p3.y)*t2 + (-p0.y+3*p1.y-3*p2.y+p3.y)*t3),
+              age: p1.age + (p2.age-p1.age)*t
+            });
+          }
+        }
+        pts.push({ ...raw[raw.length-1] });
         const edge = pts.map((p,i)=>{
           const a = pts[Math.max(0,i-1)], b = pts[Math.min(pts.length-1,i+1)];
           let dx = b.x-a.x, dy = b.y-a.y; const L = Math.hypot(dx,dy)||1; dx/=L; dy/=L;
-          const hw = 2 + 13*p.age;
+          const hw = .8 + 14*Math.pow(p.age, 1.6);   // smooth melt: ~15px at the blade, <1px at the tail tip
           return { lx:p.x-dy*hw, ly:p.y+dx*hw, rx:p.x+dy*hw, ry:p.y-dx*hw };
         });
         ctx.save(); ctx.lineCap='round'; ctx.lineJoin='round';
-        // coloured ribbon body in the player's colour, alpha up to .7
+        // coloured ribbon body in the player's colour, alpha eased along age
         ctx.fillStyle = me.color;
         for (let i=1; i<pts.length; i++){
-          ctx.globalAlpha = .7 * pts[i].age;
+          ctx.globalAlpha = .72 * Math.pow(pts[i].age, 1.15);
           ctx.beginPath();
           ctx.moveTo(edge[i-1].lx, edge[i-1].ly);
           ctx.lineTo(edge[i].lx, edge[i].ly);
@@ -1561,12 +1597,14 @@ function frame(now){
           ctx.lineTo(edge[i-1].rx, edge[i-1].ry);
           ctx.closePath(); ctx.fill();
         }
-        // white core line down the centre of the path so the sweep pops on grass
-        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3;
-        for (let i=1; i<pts.length; i++){
-          ctx.globalAlpha = .8 * pts[i].age;
-          ctx.beginPath(); ctx.moveTo(pts[i-1].x, pts[i-1].y); ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke();
+        // white core: one smoothed path (quadratic through midpoints)
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3; ctx.globalAlpha = .85;
+        ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i=1; i<pts.length-1; i++){
+          const mx = (pts[i].x + pts[i+1].x)/2, my = (pts[i].y + pts[i+1].y)/2;
+          ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
         }
+        ctx.lineTo(pts[pts.length-1].x, pts[pts.length-1].y); ctx.stroke();
         ctx.restore(); ctx.globalAlpha = 1;
       }
     }
