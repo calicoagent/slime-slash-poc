@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 160"><defs>
+  <linearGradient id="steel" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fdfdff"/><stop offset="0.45" stop-color="#c3d2e0"/>
+    <stop offset="0.55" stop-color="#9fb4c8"/><stop offset="1" stop-color="#71879e"/>
+  </linearGradient>
+  <linearGradient id="steelD" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#e8f4ff"/><stop offset="0.5" stop-color="#8fb6d9"/>
+    <stop offset="1" stop-color="#4f7ba6"/>
+  </linearGradient>
+  <linearGradient id="bronze" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#ffe9b0"/><stop offset="0.5" stop-color="#e0a83f"/>
+    <stop offset="1" stop-color="#9a6414"/>
+  </linearGradient>
+  <linearGradient id="leather" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#c98d54"/><stop offset="1" stop-color="#7d4f26"/>
+  </linearGradient>
+  <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#d9a860"/><stop offset="1" stop-color="#96682e"/>
+  </linearGradient>
+</defs>
+  <path d="M128,92 Q300,92 452,38 Q472,32 468,48 Q464,66 440,78 Q300,128 128,122 Q116,107 128,92 Z" fill="url(#steel)" stroke="#3d2c17" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M136,104 Q300,104 448,54" fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round" opacity="0.55"/>
+  <ellipse cx="118" cy="104" rx="15" ry="34" fill="url(#bronze)" stroke="#3d2c17" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+  <rect x="34" y="88" width="72" height="34" rx="10" fill="#5b3a4a" stroke="#3d2c17" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M44,122 L62,88 M66,122 L84,88 M88,122 L102,92" stroke="#f8bbd0" stroke-width="6" stroke-linecap="round"/>
+  <rect x="18" y="90" width="18" height="30" rx="7" fill="url(#bronze)" stroke="#3d2c17" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+</svg>

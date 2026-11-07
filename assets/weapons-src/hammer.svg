@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 160"><defs>
+  <linearGradient id="steel" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fdfdff"/><stop offset="0.45" stop-color="#c3d2e0"/>
+    <stop offset="0.55" stop-color="#9fb4c8"/><stop offset="1" stop-color="#71879e"/>
+  </linearGradient>
+  <linearGradient id="steelD" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#e8f4ff"/><stop offset="0.5" stop-color="#8fb6d9"/>
+    <stop offset="1" stop-color="#4f7ba6"/>
+  </linearGradient>
+  <linearGradient id="bronze" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#ffe9b0"/><stop offset="0.5" stop-color="#e0a83f"/>
+    <stop offset="1" stop-color="#9a6414"/>
+  </linearGradient>
+  <linearGradient id="leather" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#c98d54"/><stop offset="1" stop-color="#7d4f26"/>
+  </linearGradient>
+  <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#d9a860"/><stop offset="1" stop-color="#96682e"/>
+  </linearGradient>
+</defs>
+  <rect x="42" y="68" width="300" height="24" rx="11" fill="url(#wood)" stroke="#3d2c17" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+  <rect x="330" y="12" width="132" height="136" rx="16" fill="url(#steel)" stroke="#3d2c17" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M462,56 L508,80 L462,104 Z" fill="url(#steel)" stroke="#3d2c17" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+  <rect x="348" y="30" width="96" height="100" rx="10" fill="none" stroke="#71879e" stroke-width="4" opacity="0.55"/>
+  <circle cx="362" cy="44" r="5" fill="#71879e"/><circle cx="430" cy="44" r="5" fill="#71879e"/>
+  <circle cx="362" cy="116" r="5" fill="#71879e"/><circle cx="430" cy="116" r="5" fill="#71879e"/>
+  <path d="M352,32 L440,32" stroke="#ffffff" stroke-width="9" stroke-linecap="round" opacity="0.6"/>
+  <path d="M377,13 L397,0 L417,13 Z" fill="url(#steel)" stroke="#3d2c17" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+  <rect x="322" y="60" width="26" height="40" rx="8" fill="url(#bronze)" stroke="#3d2c17" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+  <circle cx="30" cy="80" r="15" fill="url(#bronze)" stroke="#3d2c17" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+</svg>

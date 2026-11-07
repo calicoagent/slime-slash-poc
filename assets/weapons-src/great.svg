@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 160"><defs>
+  <linearGradient id="steel" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fdfdff"/><stop offset="0.45" stop-color="#c3d2e0"/>
+    <stop offset="0.55" stop-color="#9fb4c8"/><stop offset="1" stop-color="#71879e"/>
+  </linearGradient>
+  <linearGradient id="steelD" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#e8f4ff"/><stop offset="0.5" stop-color="#8fb6d9"/>
+    <stop offset="1" stop-color="#4f7ba6"/>
+  </linearGradient>
+  <linearGradient id="bronze" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#ffe9b0"/><stop offset="0.5" stop-color="#e0a83f"/>
+    <stop offset="1" stop-color="#9a6414"/>
+  </linearGradient>
+  <linearGradient id="leather" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#c98d54"/><stop offset="1" stop-color="#7d4f26"/>
+  </linearGradient>
+  <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#d9a860"/><stop offset="1" stop-color="#96682e"/>
+  </linearGradient>
+</defs>
+  <path d="M132,26 L420,38 L488,80 L420,122 L132,134 Q116,80 132,26 Z" fill="url(#steelD)" stroke="#3d2c17" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M150,60 L430,62 M150,100 L430,98" stroke="#4f7ba6" stroke-width="5" stroke-linecap="round" opacity="0.65"/>
+  <path d="M140,40 L400,48" stroke="#ffffff" stroke-width="9" stroke-linecap="round" opacity="0.55"/>
+  <rect x="100" y="14" width="32" height="132" rx="13" fill="url(#bronze)" stroke="#3d2c17" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+  <rect x="48" y="52" width="54" height="56" rx="10" fill="url(#leather)" stroke="#3d2c17" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+  <circle cx="32" cy="80" r="20" fill="url(#bronze)" stroke="#3d2c17" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+  <circle cx="32" cy="80" r="8.5" fill="#ff6b5e" stroke="#3d2c17" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 160"><defs>
+  <linearGradient id="steel" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fdfdff"/><stop offset="0.45" stop-color="#c3d2e0"/>
+    <stop offset="0.55" stop-color="#9fb4c8"/><stop offset="1" stop-color="#71879e"/>
+  </linearGradient>
+  <linearGradient id="steelD" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#e8f4ff"/><stop offset="0.5" stop-color="#8fb6d9"/>
+    <stop offset="1" stop-color="#4f7ba6"/>
+  </linearGradient>
+  <linearGradient id="bronze" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#ffe9b0"/><stop offset="0.5" stop-color="#e0a83f"/>
+    <stop offset="1" stop-color="#9a6414"/>
+  </linearGradient>
+  <linearGradient id="leather" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#c98d54"/><stop offset="1" stop-color="#7d4f26"/>
+  </linearGradient>
+  <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#d9a860"/><stop offset="1" stop-color="#96682e"/>
+  </linearGradient>
+</defs>
+  <rect x="26" y="71" width="330" height="18" rx="9" fill="url(#wood)" stroke="#3d2c17" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M374,68 C410,44 452,40 484,56 C498,63 506,71 510,80 C506,89 498,97 484,104 C452,120 410,116 374,92 C370,84 370,76 374,68 Z" fill="url(#steelD)" stroke="#3d2c17" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M386,80 C430,73 470,75 500,80" stroke="#4f7ba6" stroke-width="4" opacity="0.7" fill="none"/>
+  <path d="M392,66 Q440,48 492,64" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.6"/>
+  <rect x="352" y="58" width="30" height="44" rx="9" fill="url(#bronze)" stroke="#3d2c17" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+  <rect x="312" y="64" width="46" height="32" rx="8" fill="#3f7a4d" stroke="#3d2c17" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+  <circle cx="24" cy="80" r="11" fill="url(#bronze)" stroke="#3d2c17" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+</svg>

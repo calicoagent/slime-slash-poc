@@ -344,6 +344,8 @@
     text-transform:none;
   }
   .sign input.code { text-transform:uppercase; letter-spacing:4px; }
+  #titleReset { display:block; margin:10px auto 0; background:none; border:none; color:#a33; font-weight:900; font-size:12px; letter-spacing:1px; cursor:pointer; opacity:.75; text-decoration:underline; }
+  #titleReset.hidden { display:none; }
   #playBtn {
     font-family:inherit; font-size:34px; font-weight:900; color:#fff; cursor:pointer;
     background:linear-gradient(180deg,#57d93d,#35b01e); border:5px solid #1e6410; border-radius:999px;
@@ -431,7 +433,7 @@
     <h2>PAUSED</h2>
     <button class="pbtn main" id="resumeBtn">RESUME</button>
     <button class="pbtn" id="soundBtn">SOUND: ON</button>
-    <button class="pbtn" id="restartBtn">RESTART RUN</button>
+    <button class="pbtn" id="restartBtn">RESET SAVE</button>
     <div class="pcontrols">Drag to slash · Click / Tap or SPACE = Spin Slash · Keys 1-6 = weapons · F = Sphere Grid · Q / E / R / T = skills · Z / X / C = items · B = bank / shop · Esc = pause</div>
   </div>
 </div>
@@ -463,6 +465,7 @@
     <div><label>YOUR NAME</label><input id="nameIn" maxlength="12" autocomplete="off"></div>
   </div>
   <button id="playBtn">PLAY</button>
+  <button id="titleReset" class="hidden">RESET SAVE</button>
   <div id="howto">Move mouse / drag finger to swing your sword through slimes.<br>Tap or click for a SPIN SLASH. Level up to earn Sphere Points — spend them on the SPHERE GRID for stats, passives and active skills.<br>There is only ONE world — send the link to friends and they drop straight into it with you. No rooms, no codes, no sign-up.</div>
 </div>
 
@@ -511,12 +514,12 @@ Object.defineProperty(sfx, 'muted', { get:()=>muted, set:v=>{ muted = !!v; } });
 // STAB weapons (knives, polearms) thrust in a line — balanced by CRIT:
 // much higher crit chance and crit damage. Base crit: 5% x1.75.
 const WEAPONS = [
-  { id:'dagger', name:'Dagger',     dmg:6,  reach:.085, cd:110, unlock:1, color:'#cfd8dc', motion:'stab',  crit:.25, critDmg:2.2, desc:'STAB · crit monster, fast thrusts' },
-  { id:'sword',  name:'Sword',      dmg:11, reach:.125, cd:170, unlock:1, color:'#ffe082', motion:'swing', crit:.05, critDmg:1.75, desc:'SWING · balanced arcs' },
-  { id:'katana', name:'Katana',     dmg:16, reach:.165, cd:150, unlock:2, color:'#f8bbd0', motion:'swing', crit:.08, critDmg:1.75, desc:'SWING · long swift arcs' },
-  { id:'spear',  name:'Spear',      dmg:19, reach:.215, cd:210, unlock:2, color:'#a5d6a7', motion:'stab',  crit:.20, critDmg:2.2, desc:'STAB · longest reach, big crits' },
-  { id:'great',  name:'Greatsword', dmg:30, reach:.205, cd:300, unlock:3, color:'#b0bec5', motion:'swing', crit:.05, critDmg:1.75, splash:.05, desc:'SWING · AoE chops with splash' },
-  { id:'hammer', name:'Warhammer', dmg:42, reach:.150, cd:380, unlock:4, color:'#ffcc80', motion:'swing', crit:.05, critDmg:1.75, splash:.07, desc:'SWING · splash smash' },
+  { id:'dagger', price:0, name:'Dagger',     dmg:6,  reach:.085, cd:110, unlock:1, color:'#cfd8dc', motion:'stab',  crit:.25, critDmg:2.2, desc:'STAB · crit monster, fast thrusts' },
+  { id:'sword', price:150,  name:'Sword',      dmg:11, reach:.125, cd:170, unlock:1, color:'#ffe082', motion:'swing', crit:.05, critDmg:1.75, desc:'SWING · balanced arcs' },
+  { id:'katana', price:400, name:'Katana',     dmg:16, reach:.165, cd:150, unlock:2, color:'#f8bbd0', motion:'swing', crit:.08, critDmg:1.75, desc:'SWING · long swift arcs' },
+  { id:'spear', price:450,  name:'Spear',      dmg:19, reach:.215, cd:210, unlock:2, color:'#a5d6a7', motion:'stab',  crit:.20, critDmg:2.2, desc:'STAB · longest reach, big crits' },
+  { id:'great', price:900,  name:'Greatsword', dmg:30, reach:.205, cd:300, unlock:3, color:'#b0bec5', motion:'swing', crit:.05, critDmg:1.75, splash:.05, desc:'SWING · AoE chops with splash' },
+  { id:'hammer', price:1400, name:'Warhammer', dmg:42, reach:.150, cd:380, unlock:4, color:'#ffcc80', motion:'swing', crit:.05, critDmg:1.75, splash:.07, desc:'SWING · splash smash' },
 ];
 const WEAPON_IMGS = {};
 for (const w of WEAPONS){ const im=new Image(); im.src='assets/weapons/'+w.id+'.png'; WEAPON_IMGS[w.id]=im; }
@@ -557,7 +560,7 @@ const me = {
   sp:0, actCd:{ wave:0, meteor:0, frenzy:0, goldrush:0 }, frenzyUntil:0, goldRushUntil:0,
   // survival + economy (HP is LOCAL only — never networked)
   hp:100, maxHp:100, invulnUntil:0, lastDmgAt:0, shieldUntil:0,
-  banked:0, items:{ potion:0, bomb:0, shield:0 }, purse:false,
+  banked:0, items:{ potion:0, bomb:0, shield:0 }, purse:false, owned:new Set([0]),
   stabT0:0, stabAng:0,
   ptrSpeedPx:0,   // latest pointer speed (px/s, max of recent events, decayed per frame) — an idle blade must not cut
   lastHitAt:new Map(), spinUntil:0, spinCdUntil:0, trail:[],
@@ -1050,6 +1053,29 @@ function buildShopRows(){
     row.appendChild(btn);
     wrap.appendChild(row);
   }
+  buildWeaponRows(wrap);
+}
+function buyWeapon(i){
+  const w = WEAPONS[i]; if (!w || me.owned.has(i) || me.coins < w.price) return;
+  me.coins -= w.price; me.owned.add(i);
+  sfx.buy(); buildShopRows(); buildRack(); refreshHUD(); saveGame();
+  toast(w.name.toUpperCase()+' IS YOURS! Press '+(i+1)+' to wield it');
+}
+function buildWeaponRows(wrap){
+  const head = document.createElement('div');
+  head.innerHTML = '<b style="color:#5b3a1e;font-size:15px">WEAPONS</b> <span style="color:#97754a;font-size:12px;font-weight:700">yours forever once bought</span>';
+  head.style.margin = '10px 0 4px'; wrap.appendChild(head);
+  WEAPONS.forEach((w,i)=>{
+    if (i===0) return;   // the starter dagger is never sold
+    const row = document.createElement('div'); row.className = 'shopRow';
+    const owned = me.owned.has(i);
+    row.innerHTML = `<img src="assets/weapons/${w.id}.png" alt="" style="width:64px;height:20px;object-fit:contain;flex:none"><div class="info"><b>${w.name} — ${w.price}c</b><span>${w.dmg} dmg · ${w.desc}</span></div><div class="own">${owned?'OWNED':''}</div>`;
+    const btn = document.createElement('button');
+    btn.textContent = owned ? 'OWNED' : 'BUY';
+    btn.disabled = owned || me.coins < w.price;
+    btn.onclick = ()=>buyWeapon(i);
+    row.appendChild(btn); wrap.appendChild(row);
+  });
 }
 function buyItem(id){
   const it = SHOP_ITEMS.find(i=>i.id===id); if (!it) return;
@@ -1304,18 +1330,18 @@ function refreshPeers(){
 function buildRack(){
   const rack=$('#rack'); rack.innerHTML='';
   WEAPONS.forEach((w,i)=>{
-    const locked = me.level < w.unlock;
+    const locked = !me.owned.has(i);
     const d=document.createElement('div');
     d.className='wcard'+(me.weapon===i?' sel':'')+(locked?' locked':'');
-    d.innerHTML = weaponSVG(w,locked)+`<div class="wn">${w.name}</div>`+(locked?`<div class="wl">LV ${w.unlock}</div>`:`<div class="key">${i+1}</div>`);
-    d.title = w.name+' — '+w.dmg+' dmg, '+w.desc+(locked?(' (unlocks LV '+w.unlock+')'):'');
+    d.innerHTML = weaponSVG(w,locked)+`<div class="wn">${w.name}</div>`+(locked?`<div class="wl">${w.price}c</div>`:`<div class="key">${i+1}</div>`);
+    d.title = w.name+' — '+w.dmg+' dmg, '+w.desc+(locked?(' (buy at the SHOP: '+w.price+'c)'):'');
     d.onclick=()=>equip(i);
     rack.appendChild(d);
   });
 }
 function equip(i){
   const w=WEAPONS[i];
-  if (me.level < w.unlock){ toast(w.name+' unlocks at LEVEL '+w.unlock); return; }
+  if (!me.owned.has(i)){ toast('Buy the '+w.name+' at the SHOP — '+w.price+'c'); return; }
   me.weapon=i; me.lastHitAt.clear(); buildRack(); beep(600,.06,'triangle',.08);
   bubble(w.name.toUpperCase()+'!', me.x, me.y, 900);
 }
@@ -1552,7 +1578,7 @@ function setMuted(v){
   $('#soundBtn').textContent = 'SOUND: '+(muted ? 'OFF' : 'ON');
 }
 function resetRun(){
-  me.level=1; me.xp=0; me.coins=0; me.kills=0; me.sp=0; me.weapon=1;
+  me.level=1; me.xp=0; me.coins=0; me.kills=0; me.sp=0; me.weapon=0; me.owned=new Set([0]);
   me.hp=me.maxHp; me.banked=0; me.items={ potion:0, bomb:0, shield:0 }; me.purse=false; me.shieldUntil=0;
   $('#bankPanel').classList.add('hidden'); $('#shopPanel').classList.add('hidden');
   unlocked.clear(); recalc();
@@ -1573,7 +1599,7 @@ function saveGame(){
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       level:me.level, xp:me.xp, coins:me.coins, kills:me.kills, sp:me.sp,
       unlocked:[...unlocked], weapon:me.weapon, name:me.name, muted, hintsSeen,
-      banked:me.banked, items:me.items, purse:me.purse,
+      banked:me.banked, items:me.items, purse:me.purse, owned:[...me.owned],
       bounty: bounty ? { type:bounty.type, key:bounty.key, label:bounty.label, need:bounty.need, have:bounty.have, reward:bounty.reward } : null
     }));
   }catch(e){}
@@ -1587,11 +1613,14 @@ function loadGame(){
   me.kills = Math.max(0, d.kills|0); me.sp = Math.max(0, d.sp|0);
   if (Array.isArray(d.unlocked)) for (const id of d.unlocked) if (NODES.some(n=>n.id===id)) unlocked.add(id);
   recalc();
-  let wi = d.weapon|0;
-  if (!WEAPONS[wi] || me.level < WEAPONS[wi].unlock){
-    wi = 0;
-    for (let i=WEAPONS.length-1; i>=0; i--) if (me.level >= WEAPONS[i].unlock){ wi = i; break; }
+  if (Array.isArray(d.owned)) me.owned = new Set(d.owned.filter(i=>WEAPONS[i|0]).map(i=>i|0));
+  else { // legacy save (pre-shop): keep every weapon your level had unlocked
+    me.owned = new Set([0]);
+    WEAPONS.forEach((w,i)=>{ if (me.level >= w.unlock) me.owned.add(i); });
   }
+  if (!me.owned.size) me.owned.add(0);
+  let wi = d.weapon|0;
+  if (!WEAPONS[wi] || !me.owned.has(wi)) wi = Math.max(...me.owned);
   me.weapon = wi;
   // economy persists; HP deliberately does NOT — you always load in at full health
   me.banked = Math.max(0, d.banked|0);
@@ -1706,7 +1735,12 @@ $('#shareBtn').onclick = async ()=>{
 $('#pauseBtn').onclick = ()=>togglePause();
 $('#resumeBtn').onclick = ()=>togglePause(false);
 $('#soundBtn').onclick = ()=>{ setMuted(!muted); saveGame(); };
-$('#restartBtn').onclick = ()=>resetRun();
+let resetArmed = false;
+$('#restartBtn').onclick = ()=>{
+  const b = $('#restartBtn');
+  if (!resetArmed){ resetArmed = true; b.textContent = 'TAP AGAIN TO ERASE EVERYTHING'; return; }
+  resetArmed = false; b.textContent = 'RESET SAVE'; resetRun();
+};
 $('#interactPrompt').onclick = ()=>{ if (nearBuilding==='bank') openBank(); else if (nearBuilding==='shop') openShop(); };
 $('#depBtn').onclick = ()=>{ me.banked += me.coins; me.coins = 0; sfx.buy(); updateBankPanel(); refreshHUD(); };
 $('#wdBtn').onclick = ()=>{ me.coins += me.banked; me.banked = 0; sfx.coin(); updateBankPanel(); refreshHUD(); };
@@ -2262,6 +2296,14 @@ setInterval(()=>{ if(!started){ // ambient wander on title
 const WORLD_ID = 'slime-world-1';
 $('#nameIn').value = 'Knight-' + Math.floor(rand(10,99));
 loadGame();
+try{ if (localStorage.getItem(SAVE_KEY)) $('#titleReset').classList.remove('hidden'); }catch(e){}
+let titleResetArmed = false;
+$('#titleReset').onclick = ()=>{
+  const b = $('#titleReset');
+  if (!titleResetArmed){ titleResetArmed = true; b.textContent = 'TAP AGAIN — ERASE EVERYTHING?'; return; }
+  try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
+  location.reload();
+};
 $('#playBtn').onclick = ()=>{
   me.name = cleanName($('#nameIn').value);
   scores[me.id]={name:me.name,kills:0};
