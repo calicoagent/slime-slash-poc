@@ -600,7 +600,8 @@ const CONTACT_DMG = { baby:4, dart:4, mid:6, gold:2, splitter:7, big:9, tank:13,
 const BANK_POS = { x: WORLD/2 - .42, y: WORLD/2 - .34 };
 const SHOP_POS = { x: WORLD/2 + .42, y: WORLD/2 - .34 };
 let bullets = [];               // boss bullet-hell orbs (client-local sim, never networked)
-let spiralEmitters = [];        // active spiral bullet emitters (client-local)
+let spiralEmitters = [];
+let pendingVolleys = [];   // boss 'spread': timed 5-way volleys (client-local)        // active spiral bullet emitters (client-local)
 let bossSpawnAt = Infinity;     // host: next SLIME EMPEROR spawn time
 let bossFireAt = 0;             // host: next bullet-pattern volley
 let bossPatternIdx = 0;         // host: pattern rotation ring -> fan -> spiral
@@ -696,7 +697,7 @@ function hostTick(now,dt){
     if (now>s.turnAt){ s.dir=rand(0,Math.PI*2); s.turnAt=now+rand(800,2600); }
     const k = SLIME_KINDS.find(k=>k.kind===s.kind);
     let sp = k.speed*dt*60/1000;
-    if (s.kind==='dart') s.dir += Math.sin(now/90 + s.seed*9)*.055;   // zigzag
+    if (s.kind==='dart') s.dir += Math.sin(now/90 + s.seed*9)*.095;   // zigzag — punchy, reads as a darter
     if (s.kind==='gold'){
       // gold slimes FLEE the nearest player — catch one if you can
       let bx=me.x, by=me.y, bd=dist2(s.x,s.y,me.x,me.y);
@@ -717,6 +718,21 @@ function hostTick(now,dt){
       }
       s.dir = Math.atan2(by-s.y, bx-s.x);
       sp *= 1.6;
+    }
+    if (s.kind==='boss'){
+      // the Emperor KITES like a bullet-hell boss: holds a firing band
+      // (~.62-.85u from the nearest player) — backs off when crowded,
+      // closes only to firing range, strafes while in the band.
+      let bx=me.x, by=me.y, bd=dist2(s.x,s.y,me.x,me.y);
+      for (const p of peers.values()){
+        const px=(p.tx!==undefined?p.tx:p.x), py=(p.ty!==undefined?p.ty:p.y);
+        const d=dist2(s.x,s.y,px,py);
+        if (d<bd){ bd=d; bx=px; by=py; }
+      }
+      const d = Math.sqrt(bd), away = Math.atan2(s.y-by, s.x-bx);
+      if (d < .62){ s.dir = away; sp *= 2.1; }
+      else if (d > .85){ s.dir = away + Math.PI; sp *= 1.8; }
+      else { s.dir = away + Math.PI/2 * (s.seed > .5 ? 1 : -1); sp *= .8; }
     }
     s.x += Math.cos(s.dir)*sp; s.y += Math.sin(s.dir)*sp*.7;
     if (s.x<s.r+ .01){s.x=s.r+.01; s.dir=Math.PI-s.dir;} if (s.x>WORLD-s.r-.01){s.x=WORLD-s.r-.01; s.dir=Math.PI-s.dir;}
@@ -741,20 +757,20 @@ function hostTick(now,dt){
     }
   }
   if (boss && sendBoss){
-    if (!bossFireAt) bossFireAt = now + 1600;
+    if (!bossFireAt) bossFireAt = now + 1200;
     if (now >= bossFireAt){
-      bossFireAt = now + 2400;
-      const p = ['ring','fan','spiral'][bossPatternIdx++ % 3];
+      bossFireAt = now + 1500;
+      const p = ['ring','fan','spiral','spread'][bossPatternIdx++ % 4];
       let payload;
-      if (p==='ring') payload = { p:'ring', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now, n:26, spd:.34 };
-      else if (p==='fan'){
+      if (p==='ring') payload = { p:'ring', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now, n:34, spd:.32 };
+      else if (p==='fan' || p==='spread'){
         let bx=me.x, by=me.y, bd=dist2(boss.x,boss.y,me.x,me.y);
         for (const pp of peers.values()){
           const px=(pp.tx!==undefined?pp.tx:pp.x), py=(pp.ty!==undefined?pp.ty:pp.y);
           const d=dist2(boss.x,boss.y,px,py);
           if (d<bd){ bd=d; bx=px; by=py; }
         }
-        payload = { p:'fan', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now, aim:+Math.atan2(by-boss.y, bx-boss.x).toFixed(3) };
+        payload = { p, x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now, aim:+Math.atan2(by-boss.y, bx-boss.x).toFixed(3) };
       }
       else payload = { p:'spiral', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now };
       sendBoss(payload);
@@ -819,9 +835,11 @@ function bossEvent(d){
     for (let i=0;i<n;i++){ const a = (i/n)*Math.PI*2; spawnBullet(d.x, d.y, Math.cos(a)*spd, Math.sin(a)*spd, now); }
   } else if (d.p==='fan'){
     const aim = +d.aim || 0;
-    for (let i=0;i<7;i++){ const a = aim + (i-3)*(0.9/6); spawnBullet(d.x, d.y, Math.cos(a)*.4, Math.sin(a)*.4, now); }
+    for (let i=0;i<9;i++){ const a = aim + (i-4)*(1.0/8); spawnBullet(d.x, d.y, Math.cos(a)*.4, Math.sin(a)*.4, now); }
   } else if (d.p==='spiral'){
-    spiralEmitters.push({ until: now+1800, nextAt: now, ang: rand(0, Math.PI*2) });
+    spiralEmitters.push({ until: now+2400, nextAt: now, ang: rand(0, Math.PI*2) });
+  } else if (d.p==='spread'){
+    pendingVolleys.push({ aim: +d.aim || 0, left: 3, nextAt: now });
   }
 }
 
@@ -953,7 +971,7 @@ function onKillFx(f){
     if (f.kind==='boss'){ me.sp += 2; bubble('EMPEROR SLAYER! +2 SP', me.x, me.y); setTimeout(()=>toast('EMPEROR BONUS: +2 Sphere Points!'), 600); }
     // combo chain: kills within the window of each other keep it alive (Combo Charm stretches it)
     combo = (now < comboUntil) ? combo+1 : 1;
-    comboUntil = now + 2500 * (1 + S.comboWin);
+    comboUntil = now + 3000 * (1 + S.comboWin);
     updateComboBadge(true);
     if ([5,10,15,20,25,30,50].includes(combo)){ addFloat(f.x, f.y-.06, 'COMBO x'+combo, '#ff8a2e', {big:true}); sfx.combo(); }
     if (STREAKS[combo]) showStreak(STREAKS[combo]);
@@ -1925,6 +1943,20 @@ function drawEliteRing(x, y, baseR){
   ctx.beginPath(); ctx.arc(x, y, baseR*1.25, 0, 7); ctx.stroke();
   ctx.restore();
 }
+function drawKindMarks(s, x, y, baseR, t){
+  if (s.kind==='tank'){
+    ctx.strokeStyle = 'rgba(88,99,114,.92)'; ctx.lineWidth = Math.max(2.5, baseR*.09);
+    ctx.beginPath(); ctx.arc(x, y, baseR*1.04, 0, 7); ctx.stroke();
+  }
+  if (s.kind==='gold'){
+    const p = 1 + Math.sin(t/140)*.25, r = baseR*.30*p, sx = x, sy = y - baseR*1.3;
+    ctx.fillStyle = '#fff3a0';
+    ctx.beginPath();
+    ctx.moveTo(sx, sy-r); ctx.quadraticCurveTo(sx, sy, sx+r, sy); ctx.quadraticCurveTo(sx, sy, sx, sy+r);
+    ctx.quadraticCurveTo(sx, sy, sx-r, sy); ctx.quadraticCurveTo(sx, sy, sx, sy-r);
+    ctx.fill();
+  }
+}
 function drawSlime(s,t){
   const x=NX(s.x), y=NY(s.y), baseR=s.r*SCALE();
   if (s.kind==='boss'){
@@ -1935,6 +1967,7 @@ function drawSlime(s,t){
   }
   if (drawVideoSlime(s,t,baseR)){
     if (s.elite) drawEliteRing(x, y - baseR*.4, baseR);   // gold ring marks elites (sprite sits bottom-anchored, so ring rides a bit high)
+    drawKindMarks(s, x, y - baseR*.4, baseR, t);
     if (s.hp < s.max){
       const bw=baseR*1.6, bh=Math.max(5,baseR*.14), bx=x-bw/2, by=y-baseR*1.02;
       ctx.fillStyle='rgba(40,30,20,.65)'; roundRect(bx-2,by-2,bw+4,bh+4,5); ctx.fill();
@@ -1988,6 +2021,7 @@ function drawSlime(s,t){
   }
   ctx.restore();
   if (s.elite) drawEliteRing(x, y, baseR);
+  drawKindMarks(s, x, y, baseR, t);
   // hp bar
   if (s.hp < s.max){
     const bw=rX*1.7, bh=Math.max(5,baseR*.14), bx=x-bw/2, by=y-rY-baseR*.32;
@@ -2110,13 +2144,21 @@ function frame(now){
       if (em.nextAt < now-450) em.nextAt = now;   // never burst-spawn a backlog after a stall
       const bossS = [...slimes.values()].find(s=>s.kind==='boss');
       while (em.nextAt <= now){
-        em.nextAt += 90;
+        em.nextAt += 80;
         if (bossS){
           spawnBullet(bossS.x, bossS.y, Math.cos(em.ang)*.3, Math.sin(em.ang)*.3, now);
           spawnBullet(bossS.x, bossS.y, Math.cos(em.ang+Math.PI)*.3, Math.sin(em.ang+Math.PI)*.3, now);
           em.ang += .42;
         }
       }
+    }
+    for (let i=pendingVolleys.length-1;i>=0;i--){
+      const v = pendingVolleys[i];
+      if (now < v.nextAt) continue;
+      v.nextAt = now + 170; v.left--;
+      const bossS = [...slimes.values()].find(s=>s.kind==='boss');
+      if (bossS) for (let k=0;k<5;k++){ const a = v.aim + (k-2)*.18; spawnBullet(bossS.x, bossS.y, Math.cos(a)*.42, Math.sin(a)*.42, now); }
+      if (v.left<=0) pendingVolleys.splice(i,1);
     }
     if (me.hp < me.maxHp && now - me.lastDmgAt > 6000) me.hp = Math.min(me.maxHp, me.hp + 1.6*dt/1000);
   }
