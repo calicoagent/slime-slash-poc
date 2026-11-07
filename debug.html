@@ -7,8 +7,12 @@ const logEl = document.getElementById('log');
 const lines = [];
 function log(s){ lines.push(new Date().toISOString().slice(11,19)+' '+s); logEl.textContent = lines.join('\n'); document.title = lines[lines.length-1]; }
 try {
-  const nostr = await import('https://cdn.jsdelivr.net/npm/@trystero-p2p/nostr@0.26.0/+esm');
-  log('nostr 0.26 module loaded, selfId=' + nostr.selfId);
+  const STRAT = new URLSearchParams(location.search).get('s') || 'nostr';
+  const MODURL = STRAT === 'torrent'
+    ? 'https://cdn.jsdelivr.net/npm/@trystero-p2p/torrent@0.26.0/+esm'
+    : 'https://cdn.jsdelivr.net/npm/@trystero-p2p/nostr@0.26.0/+esm';
+  const nostr = await import(MODURL);
+  log(STRAT + ' 0.26 module loaded, selfId=' + nostr.selfId);
   const RELAYS = undefined; // use 0.26 defaults first
   const RTC = { iceServers: [
     { urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' },
@@ -20,13 +24,13 @@ try {
   const room = nostr.joinRoom({ appId:'slime-slash-poc-v1', rtcConfig: RTC }, 'slime-world-1');
   const peers = new Set();
   // 0.26 API: onPeerJoin / onPeerLeave are assignable properties, not methods
-  room.onPeerJoin = id => { peers.add(id); log('NOSTR PEER JOIN ' + id + ' total=' + peers.size); };
-  room.onPeerLeave = id => { peers.delete(id); log('NOSTR PEER LEAVE ' + id + ' total=' + peers.size); };
+  room.onPeerJoin = id => { peers.add(id); log('PEER JOIN ' + id + ' total=' + peers.size); };
+  room.onPeerLeave = id => { peers.delete(id); log('PEER LEAVE ' + id + ' total=' + peers.size); };
   let sendPing = null;
   try {
     const act = room.makeAction('ping');
     if (Array.isArray(act)) { const [s, o] = act; sendPing = s; o((d, id) => log('NOSTR PING from ' + id + ': ' + d)); }
-    else if (act && typeof act === 'object') { sendPing = act.send ? act.send.bind(act) : (typeof act === 'function' ? act : null); act.onReceive = (d, id) => log('NOSTR PING from ' + id + ': ' + JSON.stringify(d)); }
+    else if (act && typeof act === 'object') { sendPing = act.send ? act.send.bind(act) : (typeof act === 'function' ? act : null); act.onReceive = (d, id) => log('PING from ' + id + ': ' + JSON.stringify(d)); }
     else if (typeof act === 'function') { sendPing = act; }
     log('makeAction shape: ' + (Array.isArray(act) ? 'tuple' : typeof act) + ' keys=' + (act && typeof act === 'object' ? Object.keys(act).join(',') : ''));
   } catch(e) { log('makeAction err: ' + e.message); }
@@ -36,8 +40,8 @@ try {
     try { if (sendPing) { const r = sendPing('hello ' + n); if (r && r.catch) r.catch(e=>log('ping send err ' + e.message)); } } catch(e) { log('ping send err ' + e.message); }
     let socks = 'n/a';
     try {
-      const s = nostr.getRelaySockets();
-      socks = Object.entries(s).map(([u, ws]) => u.replace('wss://','') + '=' + ws.readyState).join(' ');
+      const s = nostr.getRelaySockets ? nostr.getRelaySockets() : (nostr.getTrackers ? nostr.getTrackers() : null);
+      socks = s ? (Array.isArray(s) ? s.join(' ') : Object.entries(s).map(([u, ws]) => u.replace('wss://','') + '=' + (ws.readyState !== undefined ? ws.readyState : '?')).join(' ')) : 'no socket api';
     } catch(e) { socks = 'err ' + e.message; }
     let pcInfo = 'none';
     try {
