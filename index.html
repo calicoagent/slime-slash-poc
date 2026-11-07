@@ -4471,7 +4471,20 @@ function drawEntities(t){
   }
   // slime anchor = ground contact (y + r*.8) -- NOT the hop-lifted sprite,
   // so a jumping slime never changes depth order mid-hop
-  for (const s of slimes.values()) ents.push({ baseY:s.y + s.r*.8, kind:'slime', s });
+  /* VIEW CULL: the world holds ~80-120 slimes but a phone view is ~1.8x1u
+     of a 6x6u world. Every slime used to be fully drawn (shadow, sprite,
+     ~15 face path ops, aura, marks) and face-fade-tested against every
+     occluder EACH FRAME, on screen or not. Only slimes whose generous
+     visual box (r*4 + .3u: covers hop lift, HP bar, ELITE tag, elite
+     motes and the Emperor's 1.3x aura + name plate) touches the view are
+     drawn now. Off-screen draws were invisible, so nothing on screen changes. */
+  const vis = [];
+  for (const s of slimes.values()){
+    const m = s.r*4 + .3;
+    if (s.x < cam.x-m || s.x > cam.x+vw+m || s.y < cam.y-m || s.y > cam.y+vh+m) continue;
+    vis.push(s);
+    ents.push({ baseY:s.y + s.r*.8, kind:'slime', s });
+  }
   // ore nodes join the same depth order at their base (y + .07)
   for (const n of nodes.values()){
     if (n.x<cam.x-.55 || n.x>cam.x+vw+.55 || n.y<cam.y-.55 || n.y>cam.y+vh+.55) continue;   // view-culled like decor
@@ -4491,7 +4504,7 @@ function drawEntities(t){
      over its own 38% ghost body. Any slime the ghost pass will touch
      now gets its face pre-faded to the same .38 in the normal pass, so
      face and body always read at one strength. */
-  for (const s of slimes.values()){
+  for (const s of vis){
     const baseR = s.r * SCALE() * (s.kind==='boss' ? 1.3 : 1);
     const g = slimeSpriteGeom(s, t, baseR);
     s._faceFade = (g && ghostHits(s, occluders, g).length) ? .38 : 1;
@@ -4505,7 +4518,7 @@ function drawEntities(t){
     else if (e.kind === 'orb') drawOrb(e.b, t);
     else drawSlime(e.s, t);
   }
-  drawGhosts(t, occluders);
+  drawGhosts(t, occluders, vis);   // ghosts only for slimes that passed the view cull
 }
 /* One boss orb: outer halo / hot body / white core, fading out over its
    last 800ms (no pop-out). Drawn only from the y-sorted entity pass. */
@@ -4540,9 +4553,9 @@ function ghostHits(s, occluders, g){
 /* Ghost pass: for each slime BEHIND an occluder (ground anchor above the
    occluder's base), redraw only its sprite at 38% alpha, clipped to the
    intersection of the two boxes. No HP bar / marks -- just the body. */
-function drawGhosts(t, occluders){
+function drawGhosts(t, occluders, list){
   const u = UNIT(), vw = W/u, vh = H/u;
-  for (const s of slimes.values()){
+  for (const s of (list || slimes.values())){
     const baseR = s.r * SCALE() * (s.kind==='boss' ? 1.3 : 1);   // match drawSlime's visual radius (Emperor 1.3x)
     const g = slimeSpriteGeom(s, t, baseR);
     if (!g) continue;                            // vector-fallback slimes have no sprite to ghost
@@ -4634,6 +4647,14 @@ function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,whirling,ext=0){
 
 /* ============================================================ main loop */
 let lastT=performance.now(), posSendAcc=0;
+/* The living Emperor, looked up once per frame timestamp (the bullet
+   emitters below used to spread the whole slime map into an array per
+   emitter per frame — during the boss fight, the heaviest moment). */
+let _bossT = -1, _bossS = null;
+function bossAt(now){
+  if (now !== _bossT){ _bossT = now; _bossS = null; for (const s of slimes.values()) if (s.kind==='boss'){ _bossS = s; break; } }
+  return _bossS;
+}
 /* Screen-edge arrow for the GUARANTEED metal: while it lives and is
    off-screen, a silver diamond + chevron pins to the viewport edge
    pointing at it. The v4 metal fled on a fixed bearing outside the
@@ -4703,7 +4724,7 @@ function frame(now){
       const em = spiralEmitters[i];
       if (now >= em.until){ spiralEmitters.splice(i,1); continue; }
       if (em.nextAt < now-450) em.nextAt = now;   // never burst-spawn a backlog after a stall
-      const bossS = [...slimes.values()].find(s=>s.kind==='boss');
+      const bossS = bossAt(now);   // memoised per frame: was a 120-slime array spread per emitter per frame
       while (em.nextAt <= now){
         em.nextAt += 90;
         if (bossS){
@@ -4718,7 +4739,7 @@ function frame(now){
       const v = pendingVolleys[i];
       if (now < v.nextAt) continue;
       v.nextAt = now + 170; v.left--;
-      const bossS = [...slimes.values()].find(s=>s.kind==='boss');
+      const bossS = bossAt(now);   // memoised per frame: was a 120-slime array spread per emitter per frame
       if (bossS) for (let k=0;k<4;k++){ const a = v.aim + (k-1.5)*.18; spawnBullet(bossS.x, bossS.y, Math.cos(a)*.42*(v.sm||1), Math.sin(a)*.42*(v.sm||1), now); }
       if (v.left<=0) pendingVolleys.splice(i,1);
     }
@@ -4726,7 +4747,7 @@ function frame(now){
       const bst = pendingBursts[i];
       if (now < bst.nextAt) continue;
       bst.nextAt = now + 160; bst.left--;
-      const bossS = [...slimes.values()].find(s=>s.kind==='boss');
+      const bossS = bossAt(now);   // memoised per frame: was a 120-slime array spread per emitter per frame
       if (bossS){
         // AIMED BURST: target re-picked at VOLLEY time from this client's
         // replicated player positions, so the shot tracks a moving player
@@ -4807,8 +4828,8 @@ function frame(now){
   // version cost ~1,300 path calls a frame; this costs 420 rects.
   for (const p of particles){ p.x+=p.vx*dt/60; p.y+=p.vy*dt/60; p.vy+=.0009*dt/16*(p.grav||1); p.life-=dt/480; ctx.globalAlpha=Math.max(0,p.life); ctx.fillStyle=p.color; const ps = p.r*1.6; ctx.fillRect(NX(p.x)-ps/2, NY(p.y)-ps/2, ps, ps); ctx.globalAlpha=1; }
   floats = floats.filter(f=>f.life>0);
-  ctx.textAlign='center';
-  for (const f of floats){ f.y-=dt*.00003; f.life-=dt/(f.big?1750:950); ctx.globalAlpha=Math.max(0,f.life); ctx.font = '900 '+(f.size || (f.big?26:17))+'px "Baloo 2",sans-serif'; ctx.lineWidth = (f.big || f.size>=20) ? 6 : 4; ctx.strokeStyle='rgba(60,40,10,.8)'; ctx.strokeText(f.text,NX(f.x),NY(f.y)); ctx.fillStyle=f.color; ctx.fillText(f.text,NX(f.x),NY(f.y)); ctx.globalAlpha=1; }
+  ctx.textAlign='center'; let lastFloatFont = '';   // ctx.font is PARSED on every assignment (costly on Safari) — set it only when the size changes
+  for (const f of floats){ f.y-=dt*.00003; f.life-=dt/(f.big?1750:950); ctx.globalAlpha=Math.max(0,f.life); const fnt = '900 '+(f.size || (f.big?26:17))+'px "Baloo 2",sans-serif'; if (fnt !== lastFloatFont){ lastFloatFont = fnt; ctx.font = fnt; } ctx.lineWidth = (f.big || f.size>=20) ? 6 : 4; ctx.strokeStyle='rgba(60,40,10,.8)'; ctx.strokeText(f.text,NX(f.x),NY(f.y)); ctx.fillStyle=f.color; ctx.fillText(f.text,NX(f.x),NY(f.y)); ctx.globalAlpha=1; }
   drawDmgFloats(now);   // ISW glyph damage numbers, on their own timeline
   drawMetalArrow(now);   // edge locator for the guaranteed metal, while it lives off-screen
 
