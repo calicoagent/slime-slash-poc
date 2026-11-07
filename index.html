@@ -559,48 +559,24 @@ $('#shareBtn').onclick = async ()=>{
   if (navigator.share){ try{ await navigator.share({title:'Slime Slash!', url}); }catch(e){} }
 };
 
-/* ============================================================ video slimes (generated, chroma-keyed live) */
-const SLIME_VIDS = {};
-function makeVid(src, key, screen){
-  const v=document.createElement('video');
-  v.src=src; v.muted=true; v.loop=true; v.autoplay=true; v.playsInline=true; v.preload='auto';
-  v.play().catch(()=>{});
-  const c=document.createElement('canvas'); c.width=c.height=256;
-  SLIME_VIDS[key]={ v, c, x:c.getContext('2d',{willReadFrequently:true}), screen, ready:false };
+/* ============================================================ SVG slimes (hand-drawn vector sprites) */
+const SLIME_IMGS = {};
+for (const n of ['pink','green','blue','yellow','purple','mint','orange','king']){
+  const im=new Image(); im.src='assets/svg/slime-'+n+'.svg'; SLIME_IMGS[n]=im;
 }
-makeVid('assets/slime-pink.mp4','pink','green');
-makeVid('assets/slime-green.mp4','green','magenta');
-makeVid('assets/slime-king.mp4','king','green');
-function keyFrame(vd){
-  const {v,c,x,screen}=vd;
-  if (v.readyState<2 || v.videoWidth===0) return;
-  x.drawImage(v,0,0,256,256);
-  let img; try{ img=x.getImageData(0,0,256,256); }catch(e){ return; }
-  const d=img.data;
-  for (let i=0;i<d.length;i+=4){
-    const r=d[i],g=d[i+1],b=d[i+2];
-    const m = screen==='green' ? g-Math.max(r,b) : Math.min(r,b)-g;
-    if (m>26) d[i+3]=0;
-    else if (m>6) { d[i+3]=Math.round(d[i+3]*(26-m)/20); if(screen==='green'&&g>Math.max(r,b)) d[i+1]=Math.max(r,b); }
-  }
-  x.putImageData(img,0,0);
-  vd.ready=true;
-}
-const COLOR2VID = {
-  '#7ee787':['green',0], '#8affd1':['green',-15], '#ffe066':['green',-55], '#6fd3ff':['green',85],
-  '#ffb3d9':['pink',0], '#ffab7a':['pink',35], '#c39bff':['pink',-80],
+const COLOR2IMG = {
+  '#7ee787':'green', '#8affd1':'mint', '#ffe066':'yellow', '#6fd3ff':'blue',
+  '#ffb3d9':'pink', '#ffab7a':'orange', '#c39bff':'purple',
 };
 function drawVideoSlime(s,t,baseR){
-  const pick = s.kind==='king' ? ['king',0] : (COLOR2VID[s.color]||['pink',0]);
-  const vd = SLIME_VIDS[pick[0]];
-  if (!vd || !vd.ready) return false;
-  const wob = Math.sin(t/280 + s.seed*7)*0.06;
+  const img = s.kind==='king' ? SLIME_IMGS.king : SLIME_IMGS[COLOR2IMG[s.color]||'pink'];
+  if (!img || !img.complete || !img.naturalWidth) return false;
+  const wob = Math.sin(t/280 + s.seed*7)*0.055;
   const sq = 1 + wob - s.squish*.30;
-  const occ = pick[0]==='king' ? .88 : .62;              // how much of the frame the slime fills
-  const dw = baseR*2*(2-sq)*.95/occ, dh = dw*sq;
-  ctx.save(); ctx.translate(NX(s.x), NY(s.y));
-  try{ ctx.filter = `hue-rotate(${pick[1]}deg)` + (s.flash>0 ? ' brightness(1.7)' : ''); }catch(e){}
-  ctx.drawImage(vd.c, -dw/2, -dh/2 + baseR*.08, dw, dh);
+  const dw = baseR*2*(2-sq)*1.04, dh = dw*0.88*sq;
+  ctx.save(); ctx.translate(NX(s.x), NY(s.y) + baseR*.92);
+  try{ ctx.filter = s.flash>0 ? 'brightness(1.9)' : 'none'; }catch(e){}
+  ctx.drawImage(img, -dw/2, -dh, dw, dh);
   ctx.restore();
   return true;
 }
@@ -737,7 +713,6 @@ function frame(now){
   if (started) localHitCheck(now);
 
   drawField(now);
-  for (const k in SLIME_VIDS) keyFrame(SLIME_VIDS[k]);
   // slimes sorted by y for fake depth
   [...slimes.values()].sort((a,b)=>a.y-b.y).forEach(s=>drawSlime(s,now));
 

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 176">
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d2fbe9"/>
+      <stop offset="0.55" stop-color="#8df0bf"/>
+      <stop offset="1" stop-color="#43cf92"/>
+    </linearGradient>
+  </defs>
+  <!-- floating bubbles -->
+  <circle cx="152" cy="18" r="7" fill="#d2fbe9" fill-opacity="0.85" stroke="#27a06b" stroke-width="2"/>
+  <circle cx="168" cy="8" r="4" fill="#d2fbe9" fill-opacity="0.85" stroke="#27a06b" stroke-width="1.6"/>
+  <!-- body: flat-bottomed jelly dome with a subtle top bump -->
+  <path d="M16,152 C11,104 32,52 76,33 C87,28 93,21 100,21 C107,21 113,28 124,33 C168,52 189,104 184,152 C184,161 176,166 100,166 C24,166 16,161 16,152 Z"
+        fill="url(#body)" stroke="#27a06b" stroke-width="3.5" stroke-linejoin="round"/>
+  <!-- soft base shade -->
+  <path d="M24,140 C50,156 150,156 176,140 C174,152 170,158 100,158 C30,158 26,152 24,140 Z" fill="#43cf92" opacity="0.45"/>
+  <!-- glossy highlight -->
+  <ellipse cx="66" cy="62" rx="25" ry="13" fill="#ffffff" opacity="0.55" transform="rotate(-24 66 62)"/>
+  <circle cx="52" cy="86" r="5" fill="#ffffff" opacity="0.4"/>
+  <!-- face: small low oval eyes + tiny smile -->
+  <ellipse cx="79" cy="106" rx="5.5" ry="8.5" fill="#2b2130"/>
+  <ellipse cx="121" cy="106" rx="5.5" ry="8.5" fill="#2b2130"/>
+  <circle cx="77.2" cy="102.5" r="1.9" fill="#ffffff"/>
+  <circle cx="119.2" cy="102.5" r="1.9" fill="#ffffff"/>
+  <path d="M91,124 Q100,132 109,124" fill="none" stroke="#8a3057" stroke-width="3.2" stroke-linecap="round"/>
+  
+</svg>
