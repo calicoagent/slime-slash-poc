@@ -431,7 +431,13 @@ function startBroadcastLoop(){
   worldTimer = setInterval(()=>{ if (isHost) broadcastWorld(); }, 220);
 }
 function joinWorld(roomCode){
-  room = joinRoom({ appId:'slime-slash-poc-v1' }, roomCode);
+  // Explicit big relays: Trystero's built-in default list is small/obscure relays,
+  // several dead — with appId-seeded selection that silently killed peer discovery.
+  room = joinRoom({ appId:'slime-slash-poc-v1', relayUrls:[
+    'wss://relay.damus.io','wss://nos.lol','wss://relay.primal.net','wss://purplepag.es',
+    'wss://relay.nostr.band','wss://nostr.wine','wss://relay.snort.social','wss://offchain.pub',
+    'wss://relay.current.fyi','wss://nostr.mom'
+  ] }, roomCode);
   room.onPeerJoin(id=>{ peers.set(id,{x:.5,y:.5,tx:.5,ty:.5,angle:0,name:'Knight',color:`hsl(${hashHue(id)} 80% 60%)`,weapon:1,trail:[],lastSeen:performance.now()}); electHost(); if(isHost) setTimeout(broadcastWorld,300); refreshPeers(); });
   room.onPeerLeave(id=>{ peers.delete(id); delete scores[id]; electHost(); refreshPeers(); });
 
@@ -450,7 +456,9 @@ function joinWorld(roomCode){
   const [sendK, onK] = room.makeAction('kill'); sendKillFx = sendK;
   onK(f=>{ if (f && typeof f.x==='number') onKillFx(f); });
 
+  joinedAt = performance.now();
   electHost(); startBroadcastLoop();
+  setTimeout(refreshPeers, 15500);
 }
 setInterval(()=>{ // sword state @ ~20Hz
   if (started && sendPos) sendPos({ x:+me.x.toFixed(3), y:+me.y.toFixed(3), a:+me.angle.toFixed(2), w:me.weapon, n:me.name, c:me.color, s: performance.now()<me.spinUntil });
@@ -503,9 +511,10 @@ function refreshHUD(){
   $('#upgReach').textContent = cr+' coins'; $('#upgReach').disabled = me.coins<cr || me.upg.reach>=8;
   $('#upgHaste').textContent = ch+' coins'; $('#upgHaste').disabled = me.coins<ch || me.upg.haste>=8;
 }
+let joinedAt = 0;
 function refreshPeers(){
   const n = peers.size;
-  $('#peers').textContent = n===0 ? 'Solo — invite friends!' : (n+1)+' players in world';
+  $('#peers').textContent = n===0 ? (joinedAt && performance.now()-joinedAt<15000 ? 'Connecting to world…' : 'Solo — invite friends!') : (n+1)+' players in world';
   $('#peerBadge').classList.toggle('on', n>0);
   refreshHUD();
 }
