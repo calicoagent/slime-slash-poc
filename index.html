@@ -17,7 +17,7 @@
   #game { position:fixed; inset:0; display:block; cursor:none; }
   .hidden { display:none !important; }
   img { image-rendering:pixelated; }
-  #minimap, .trow img, .wcard img { image-rendering:pixelated; }
+  #minimap, .wcard img { image-rendering:pixelated; }
 
   /* ---------- pixel-art design system ---------- */
   .px-panel {
@@ -97,7 +97,7 @@
   @keyframes wxpPulse { from { filter:brightness(.8); } to { filter:brightness(1.4); } }
 
   /* the dock stack is ONE chunky MENU button now (RPG menu, Handler's
-     ruling) — SPHERE / SKILLS / GEMS live as tabs inside the menu */
+     ruling) — SPHERE / GEMS live as tabs inside the menu */
   #menuBtn {
     cursor:pointer;
     background:#ffd94d; border:3px solid #3a2b23; border-radius:0; color:#3a2b23;
@@ -317,13 +317,14 @@
     display:flex; align-items:center; justify-content:center;
   }
 
-  /* ---------- RPG MENU (tabbed): INVENTORY / SPHERE / SKILLS / GEMS / MORE ----------
+  /* ---------- RPG MENU (tabbed): INVENTORY / SPHERE / GEMS / MORE ----------
      One sheet (a plain .panelWrap, so the <=640px full-viewport sheet
-     rules cover it like every other panel). The Sphere Grid, skill tree
-     and soul-gem manager MOVED IN as tab sections — their ids (#forge,
-     #treePanel, #gemPanel) survive on the section divs, and a section is
-     unhidden ONLY while the menu is open on its tab, so every legacy
-     'panel open?' check keeps telling the truth. */
+     rules cover it like every other panel). The Sphere Grid and soul-gem
+     manager MOVED IN as tab sections — their ids (#forge, #gemPanel)
+     survive on the section divs, and a section is unhidden ONLY while
+     the menu is open on its tab, so every legacy 'panel open?' check
+     keeps telling the truth. (Weapon skills live ON the Sphere Grid —
+     there is no separate SKILLS tab anymore.) */
   #menuTabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
   .mtab {
     flex:1 1 auto; font-family:"Press Start 2P",monospace; font-size:9px; cursor:pointer; line-height:1.4;
@@ -373,16 +374,21 @@
   #forge { width:min(94vw,472px); }
   #spBar { text-align:center; color:#3a2b23; font-size:22px; margin-bottom:8px; }
   #spBar b { font-family:"Press Start 2P",monospace; background:#3a2b23; color:#ffd94d; border-radius:0; padding:3px 10px; margin-left:6px; font-size:10px; }
+  /* the board is a SCROLLABLE viewport over a fixed 840px inner board in a
+     200x200-unit virtual space: the classic branch disc (r=50 units) sits at
+     the centre exactly as it always did, and the weapon paths radiate in the
+     ring outside it. Drag/scroll to explore; it auto-centres on open. */
   #sphereBoard {
     position:relative; width:min(86vw,424px); aspect-ratio:1; margin:0 auto;
-    background:#1b2450;
-    border:4px solid #0d1030; border-radius:50%;
+    border:4px solid #0d1030; border-radius:0;
     box-shadow:6px 6px 0 rgba(0,0,0,.30);
-    overflow:hidden;
+    overflow:auto; background:#10142e;
+    scrollbar-width:thin; scrollbar-color:#ffd94d #10142e;
   }
+  #sphereInner { position:relative; width:840px; height:840px; }
   #sphereLines { position:absolute; inset:0; width:100%; height:100%; }
   .snode {
-    position:absolute; width:8.6%; aspect-ratio:1; margin:-4.3% 0 0 -4.3%; border-radius:0;
+    position:absolute; width:4.3%; aspect-ratio:1; margin:-2.15% 0 0 -2.15%; border-radius:0;
     border:3px solid rgba(255,255,255,.35); background:#39406e; color:#cfd8ff;
     font-family:"Press Start 2P",monospace; font-size:clamp(6px,2vw,8px); cursor:pointer; z-index:2;
     display:flex; align-items:center; justify-content:center;
@@ -449,35 +455,6 @@
   #wSkillBtn .cdov { position:absolute; left:0; right:0; bottom:0; background:rgba(30,30,60,.45); pointer-events:none; }
   #wSkillBtn.off { filter:grayscale(.85); opacity:.6; }
   #wSkillBtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
-  .trow {
-    display:flex; align-items:center; gap:10px; background:#fff; border:3px solid #3a2b23;
-    border-radius:0; padding:8px 10px; margin-bottom:8px; text-align:left;
-  }
-  .trow.notowned { filter:grayscale(.7); opacity:.75; }
-  .trow img { width:84px; height:40px; object-fit:contain; flex:none; }
-  .tmain { flex:1; min-width:0; }
-  .tname { color:#3a2b23; font-size:20px; line-height:1.1; }
-  .tname .tnot { display:block; font-family:"VT323",monospace; font-size:15px; color:#c0392b; }
-  .tchips { display:flex; align-items:center; gap:5px; margin-top:5px; flex-wrap:wrap; }
-  .tchip {
-    font-family:"Press Start 2P",monospace; font-size:8px; cursor:pointer; line-height:1.4;
-    background:#e8e2d2; color:#3a2b23; border:3px solid #b8a888; border-radius:0; padding:6px 7px;
-  }
-  .tchip.owned { color:#fff; border-color:#3a2b23; text-shadow:1px 1px 0 rgba(0,0,0,.3); }
-  .tchip.avail { border-color:#ffb52e; animation:nodePulse 1.2s ease-in-out infinite; }
-  .tchip.sel { outline:3px solid #3a2b23; }
-  .tlink { flex:0 0 8px; height:3px; background:#b8a888; border-radius:0; }
-  .tcard { margin-top:2px; background:#fff; border:3px solid #3a2b23; border-radius:0; padding:10px 12px; text-align:left; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4); }
-  .tcard b { color:#3a2b23; font-size:21px; display:block; line-height:1.1; }
-  .tcard .ntype { font-family:"Press Start 2P",monospace; font-size:8px; }
-  .tcard p { color:#7a5c33; font-size:18px; margin:3px 0 8px; line-height:1.3; }
-  .tcard button {
-    font-family:"Press Start 2P",monospace; font-size:10px; cursor:pointer; width:100%;
-    background:#ffd94d; border:3px solid #3a2b23; border-radius:0; padding:9px; color:#3a2b23; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35);
-  }
-  .tcard button:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
-  .tcard button:disabled { filter:grayscale(.6); opacity:.55; cursor:default; }
-
   /* ---------- title screen ---------- */
   #title {
     position:fixed; inset:0; z-index:50; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px;
@@ -643,7 +620,7 @@
       width:108px; box-sizing:border-box; font-size:9px; letter-spacing:0; padding:5px 4px;
       min-height:44px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     }
-    /* weapon-skill hint box ('SKILL LOCKED — V · SKILLS tree (K)') */
+    /* weapon-skill hint box ('SKILL LOCKED — V · SPHERE (K)') */
     #wSkillBtn { width:auto; max-width:34vw; padding:5px 7px; font-size:9px; }
     #wSkillBtn .k { font-size:9px; }
     /* peer badge ('Connecting to world...' / '2 players') + pause:
@@ -692,7 +669,7 @@
   </div>
   <button id="interactPrompt" class="hidden px-btn">OPEN BANK</button>
   <div id="bossBar" class="hidden"><b>SLIME EMPEROR</b><div id="bossTrack"><div id="bossFill"></div><span id="bossHp"></span></div></div>
-  <div id="actives"><button id="wSkillBtn"><span id="wsName">SKILL LOCKED</span><span class="k" id="wsSub">V · SKILLS tree (K)</span><div class="cdov" id="wsCdov" style="height:0%"></div></button></div>
+  <div id="actives"><button id="wSkillBtn"><span id="wsName">SKILL LOCKED</span><span class="k" id="wsSub">V · SPHERE (K)</span><div class="cdov" id="wsCdov" style="height:0%"></div></button></div>
   <button id="shareBtn" class="px-btn">INVITE LINK</button>
   <div id="comboBadge" class="hidden">x3 COMBO</div>
   <button id="pauseBtn" title="Pause">| |</button>
@@ -709,7 +686,7 @@
     <button class="pbtn main" id="resumeBtn">RESUME</button>
     <button class="pbtn" id="soundBtn">SOUND: ON</button>
     <button class="pbtn" id="restartBtn">RESET SAVE</button>
-    <div class="pcontrols">Drag to slash · Click / Tap or SPACE = Spin Slash · Keys 1-7 = weapons · F = Sphere Grid · K = weapon skill tree · V = weapon skill · Q / E / R / T = skills · Z / X / C = items · B = bank / shop / inn · Esc = pause</div>
+    <div class="pcontrols">Drag to slash · Click / Tap or SPACE = Spin Slash · Keys 1-7 = weapons · F / K = Sphere Grid · V = weapon skill · Q / E / R / T = skills · Z / X / C = items · B = bank / shop / inn · Esc = pause</div>
   </div>
 </div>
 <div id="bankPanel" class="hidden panelWrap">
@@ -755,7 +732,6 @@
     <div id="menuTabs">
       <button class="mtab" data-tab="inventory">INVENTORY</button>
       <button class="mtab" data-tab="sphere">SPHERE</button>
-      <button class="mtab" data-tab="skills">SKILLS</button>
       <button class="mtab" data-tab="gems">GEMS</button>
       <button class="mtab" data-tab="more">MORE</button>
     </div>
@@ -767,24 +743,14 @@
     </div>
     <div id="forge" class="menuTab hidden">
       <div id="spBar">SPHERE POINTS <b id="spCount">0</b></div>
-      <div id="sphereBoard"><svg id="sphereLines" viewBox="0 0 100 100" preserveAspectRatio="none"></svg><div id="sphereNodes"></div></div>
+      <div id="sphereBoard"><div id="sphereInner"><svg id="sphereLines" viewBox="0 0 200 200" preserveAspectRatio="none"></svg><div id="sphereNodes"></div></div></div>
       <div id="nodeCard" class="hidden">
         <span class="ntype" id="ncType"></span>
         <b id="ncName"></b>
         <p id="ncDesc"></p>
         <button id="ncBtn"></button>
       </div>
-      <div style="text-align:center;color:#97754a;font-weight:700;font-size:12px;margin-top:8px;">Earn Sphere Points from level-ups and bounties — or buy them at the Bank (300c). Follow a glowing path!</div>
-    </div>
-    <div id="treePanel" class="menuTab hidden">
-      <div class="bankLine" style="text-align:center">Sphere Points: <b id="treeSp">0</b></div>
-      <div id="treeRows"></div>
-      <div id="treeDetail" class="hidden tcard">
-        <span class="ntype" id="tdType"></span>
-        <b id="tdName"></b>
-        <p id="tdDesc"></p>
-        <button id="tdBtn"></button>
-      </div>
+      <div style="text-align:center;color:#97754a;font-weight:700;font-size:12px;margin-top:8px;">Sphere Points: level-ups, bounties, Kings +1, Emperors +3 — or the Bank (price rises per purchase). Every weapon has a path on this grid — and the paths CROSS. Drag to explore!</div>
     </div>
     <div id="gemPanel" class="menuTab hidden">
       <div class="bankLine">Soul gems in bag: <b id="gemBagCount"></b></div>
@@ -807,7 +773,7 @@
       <div class="menuHead">SYSTEM</div>
       <button class="pbtn" id="menuSoundBtn">SOUND: ON</button>
       <div class="menuHead">HOW TO PLAY</div>
-      <div class="pcontrols">Move mouse / drag finger to swing your sword through slimes. Tap or click for a SPIN SLASH. Sphere Points come from level-ups, bounties, and the Bank exchange (300c) — spend them in this menu: SPHERE GRID for stats, passives and active skills, SKILLS for weapon trees, GEMS for soul-gem sockets.<br>Keys 1-7 = weapons · M = menu · F / K / G = Sphere / Skills / Gems tabs · V = weapon skill · Q / E / R / T = skills · Z / X / C = items · B = bank / shop / inn (in town) · Esc = close / pause<br>There is only ONE world — send the link to friends and they drop straight into it with you.</div>
+      <div class="pcontrols">Move mouse / drag finger to swing your sword through slimes. Tap or click for a SPIN SLASH. Sphere Points come from level-ups, bounties, Kings (+1), Emperors (+3) and the Bank exchange (price rises with every purchase) — spend them on the SPHERE GRID: stats, passives, active skills AND every weapon's skill path (the paths CROSS at X nodes), GEMS for soul-gem sockets.<br>Keys 1-7 = weapons · M = menu · F / K = Sphere tab · G = Gems tab · V = weapon skill · Q / E / R / T = skills · Z / X / C = items · B = bank / shop / inn (in town) · Esc = close / pause<br>There is only ONE world — send the link to friends and they drop straight into it with you.</div>
       <button class="pbtn" id="menuResetBtn">RESET SAVE</button>
     </div>
     <button class="pbtn" id="menuCloseBtn">CLOSE</button>
@@ -824,7 +790,7 @@
   <button id="playBtn" class="px-btn">PLAY</button>
   <button id="howtoBtn" class="px-btn">HOW TO PLAY <span id="howtoChev">▼</span></button>
   <button id="titleReset" class="hidden">RESET SAVE</button>
-  <div id="howto" class="hidden">Move mouse / drag finger to swing your sword through slimes.<br>Tap or click for a SPIN SLASH. Sphere Points come from level-ups, bounties, and the Bank exchange (300c) — spend them on the SPHERE GRID for stats, passives and active skills.<br>There is only ONE world — send the link to friends and they drop straight into it with you. No rooms, no codes, no sign-up.<br>B — BANK / SHOP / INN (in town)</div>
+  <div id="howto" class="hidden">Move mouse / drag finger to swing your sword through slimes.<br>Tap or click for a SPIN SLASH. Sphere Points come from level-ups, bounties, Kings (+1), Emperors (+3) and the Bank exchange (price rises per purchase) — spend them on the SPHERE GRID for stats, passives, active skills and every weapon's skill path.<br>There is only ONE world — send the link to friends and they drop straight into it with you. No rooms, no codes, no sign-up.<br>B — BANK / SHOP / INN (in town)</div>
 </div>
 
 <script type="module">
@@ -973,48 +939,13 @@ function gainWxp(i, n){
   buildRack();
 }
 
-/* ============================================================ weapon skill trees
-   Every weapon has its own 3-node path (spent with the SAME Sphere Points and
-   stored in the SAME `unlocked` set as the Sphere Grid). Nodes 1-2 are stats
-   that apply ONLY while that weapon is equipped; node 3 is its V-key active. */
-const WTREES = {
-  dagger: [
-    { id:'w01', name:'Keen Edge',      desc:'Crit damage +30% with the Dagger.', cost:1, kind:'stat' },
-    { id:'w02', name:'Rapid Hands',    desc:'Attack cooldown -10% with the Dagger.', cost:1, kind:'stat' },
-    { id:'w03', name:'Shadow Stab',    desc:'ACTIVE SKILL (key V, 25 MP): dash forward, cutting everything in your path for 3x damage.', cost:2, kind:'active' },
-  ],
-  sword: [
-    { id:'w11', name:'Heavy Blade',    desc:'+3 damage with the Sword.', cost:1, kind:'stat' },
-    { id:'w12', name:'Sweeping Arc',   desc:'Splash radius +0.04 with the Sword.', cost:1, kind:'stat' },
-    { id:'w13', name:'Whirlwind',      desc:'ACTIVE SKILL (key V, 30 MP): spin and hit everything around you for 1.6x damage.', cost:2, kind:'active' },
-  ],
-  katana: [
-    { id:'w21', name:'Long Blade',     desc:'Reach +12% with the Katana.', cost:1, kind:'stat' },
-    { id:'w22', name:'Keen Eye',       desc:'Crit chance +10% with the Katana.', cost:1, kind:'stat' },
-    { id:'w23', name:'Iaido Wave',     desc:'ACTIVE SKILL (key V, 30 MP): a fast, long crescent wave for 2.2x damage.', cost:2, kind:'active' },
-  ],
-  spear: [
-    { id:'w31', name:'Piercing Point', desc:'Crit damage +30% with the Spear.', cost:1, kind:'stat' },
-    { id:'w32', name:'Long Haft',      desc:'Reach +10% with the Spear.', cost:1, kind:'stat' },
-    { id:'w33', name:'Throw Spear',    desc:'ACTIVE SKILL (key V, 35 MP): hurl your spear — it pierces every slime in a line for 2.5x damage.', cost:2, kind:'active' },
-  ],
-  great: [
-    { id:'w41', name:'Wider Cleave',   desc:'Splash radius +0.04 with the Greatsword.', cost:1, kind:'stat' },
-    { id:'w42', name:'Heavy Blade',    desc:'+6 damage with the Greatsword.', cost:1, kind:'stat' },
-    { id:'w43', name:'Earthshaker',    desc:'ACTIVE SKILL (key V, 40 MP): slam the ground — 2.2x damage to everything near you.', cost:2, kind:'active' },
-  ],
-  hammer: [
-    { id:'w51', name:'Heavy Head',     desc:'+8 damage with the Warhammer.', cost:1, kind:'stat' },
-    { id:'w52', name:'Shockwave',      desc:'Splash radius +0.03 with the Warhammer.', cost:1, kind:'stat' },
-    { id:'w53', name:'Thunder Smash',  desc:'ACTIVE SKILL (key V, 40 MP): 3x damage to everything at your sword tip, in a burst of lightning.', cost:2, kind:'active' },
-  ],
-  pick: [
-    { id:'w61', name:'Strong Arms',    desc:'+3 damage with the Pickaxe.', cost:1, kind:'stat' },
-    { id:'w62', name:'Gem Sense',      desc:'PASSIVE: +12% chance to pop a gem out of ore rocks.', cost:1, kind:'stat' },
-    { id:'w63', name:'GEM RUSH',       desc:'ACTIVE SKILL (key V, 25 MP): 8 seconds of +40% gem chance — ore crystals sparkle.', cost:2, kind:'active' },
-  ],
-};
-const WTREE_IDS = new Set(Object.values(WTREES).flat().map(n=>n.id));
+/* ============================================================ weapon skills
+   Every weapon's V-key active is granted by node 3 of its path ON THE
+   SPHERE GRID — the per-weapon paths (and their CROSS nodes) are node
+   definitions in the one NODES table in the Sphere section below (Handler:
+   'Each skill is gated inside the sphere. Sphere path per weapon and they
+   crosses.'). Node ids w<weaponIdx><tier> are unchanged from the old
+   separate skill trees, so old saves keep every unlock. */
 const WSKILLS = [   // per weapon index: the V-key active granted by tree node 3
   { name:'SHADOW STAB',   mp:25, cd:8000,  node:'w03' },
   { name:'WHIRLWIND',     mp:30, cd:10000, node:'w13' },
@@ -1818,6 +1749,7 @@ function myDamage(){
   if (wHas(5,'w51')) base += 8;   // Warhammer tree: Heavy Head
   if (wHas(6,'w61')) base += 3;   // Pickaxe tree: Strong Arms
   base *= 1 + .15 * (Math.min(wxpOf(me.weapon).lv, 10) - 1) + .08 * Math.max(0, wxpOf(me.weapon).lv - 10);   // weapon-level damage taper: +15%/lv through Lv10, +8%/lv after (Lv10 x2.35, Lv20 x3.15, Lv50 x5.55)
+  if (wHas(me.weapon, 'w'+me.weapon+'4')) base *= 1.2;   // Sphere MASTERY node (path tier 4): +20% damage with this weapon only
   return (combo>=15 && performance.now()<comboUntil) ? base*1.15 : base;   // ON FIRE combo bonus
 }
 function myReach(){
@@ -2062,7 +1994,7 @@ function bossOrbDmg(){ const b = [...slimes.values()].find(s=>s.kind==='boss'); 
 function damagePlayer(amount, now){
   if (!started || paused) return;
   /* TOWN SAFE ZONE — sanctuaries: no damage while a building panel, the
-     Sphere Grid or the skill tree is open, and NO damage anywhere inside
+     Sphere Grid is open, and NO damage anywhere inside
      TOWN_R of the town centre (contact AND boss bullets funnel through
      here, so orb fire over town is harmless too). Enemies can't be in
      town at all, but the check stands on its own regardless. */
@@ -2506,7 +2438,7 @@ addEventListener('keydown', e=>{
   if (lk==='t') castActive('goldrush');
   if (lk==='b'){ if (nearBuilding==='bank') openBank(); else if (nearBuilding==='shop') openShop(); else if (nearBuilding==='hospital') openHospital(); }
   if (lk==='v') castWeaponSkill();
-  if (lk==='k') toggleTree();
+  if (lk==='k') toggleForge();   // K opens the SPHERE tab — weapon skills live on the grid now
   if (lk==='m') toggleMenu();
   if (lk==='z') useItem('potion');
   if (lk==='x') useItem('bomb');
@@ -2549,13 +2481,12 @@ function refreshHUD(){
   if (!$('#bankPanel').classList.contains('hidden')) updateBankPanel();
   if (!$('#shopPanel').classList.contains('hidden')) updateShopPanel();   // in-place: same nodes, fresh values/disabled states
   if (!$('#hospitalPanel').classList.contains('hidden')) updateHospitalRows();
-  if (!$('#treePanel').classList.contains('hidden')) $('#treeSp').textContent = me.sp;
-  // weapon skill button: the label follows the equipped weapon's tree active
+  // weapon skill button: the label follows the equipped weapon's Sphere-path active
   const wsk = WSKILLS[me.weapon];
   if (wsk){
     const has = unlocked.has(wsk.node);
     $('#wsName').textContent = has ? wsk.name : 'SKILL LOCKED';
-    $('#wsSub').textContent = has ? ('V · ' + wsk.mp + ' MP') : 'V · SKILLS tree (K)';
+    $('#wsSub').textContent = has ? ('V · ' + wsk.mp + ' MP') : 'V · SPHERE (K)';
     $('#wSkillBtn').classList.toggle('off', !has || me.mp < wsk.mp);
   }
   // scoreboard — my own row always shows LIVE me.kills/me.name (local kills are
@@ -2653,13 +2584,14 @@ function equip(i){
 /* ============================================================ RPG MENU
    ONE tabbed sheet holds everything that used to clutter the HUD and
    three separate panels: INVENTORY (items + mined gems), SPHERE (the
-   Sphere Grid), SKILLS (weapon trees), GEMS (soul-gem sockets), MORE
-   (bounty, progress, sound, how-to, reset). A section keeps its legacy
-   id (#forge / #treePanel / #gemPanel) and is unhidden ONLY while the
-   menu is open on its tab; closeMenu hides ALL sections, so the legacy
-   'is X open?' checks scattered through damage/hints/pause stay true. */
+   Sphere Grid — branches, weapon paths and crosses), GEMS (soul-gem
+   sockets), MORE (bounty, progress, sound, how-to, reset). A section
+   keeps its legacy id (#forge / #gemPanel) and is unhidden ONLY while
+   the menu is open on its tab; closeMenu hides ALL sections, so the
+   legacy 'is X open?' checks scattered through damage/hints/pause
+   stay true. */
 let menuTab = 'inventory';
-const MENU_SECTIONS = { inventory:'#menuTab-inventory', sphere:'#forge', skills:'#treePanel', gems:'#gemPanel', more:'#menuTab-more' };
+const MENU_SECTIONS = { inventory:'#menuTab-inventory', sphere:'#forge', gems:'#gemPanel', more:'#menuTab-more' };
 function openMenu(tab){
   $('#menuPanel').classList.remove('hidden');
   showMenuTab(tab || menuTab);
@@ -2669,7 +2601,6 @@ function showMenuTab(tab){
   for (const [k, sel] of Object.entries(MENU_SECTIONS)) $(sel).classList.toggle('hidden', k !== tab);
   document.querySelectorAll('#menuTabs .mtab').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   if (tab === 'sphere'){ buildSphere(); hintsSeen.sphere = true; }
-  if (tab === 'skills') buildTree();
   if (tab === 'gems') buildGemPanel();
   if (tab === 'inventory') buildMenuInventory();
   if (tab === 'more') buildMenuMore();
@@ -2678,6 +2609,7 @@ function showMenuTab(tab){
 function closeMenu(){
   $('#menuPanel').classList.add('hidden');
   for (const sel of Object.values(MENU_SECTIONS)) $(sel).classList.add('hidden');
+  sphereCentered = false;   // the Sphere board re-centres on its next open
   menuResetArmed = false;
   const rb = $('#menuResetBtn'); if (rb) rb.textContent = 'RESET SAVE';
   updateHint();
@@ -2900,20 +2832,77 @@ const NODES = [
   {id:'g7', b:3, t:'stat',    icon:'GLD', name:'Coin Charm II', desc:'+25% coins from every kill.', cost:1, fx:{coin:.25}},
   {id:'g8', b:3, t:'passive', icon:'BANE',name:'Golden King',   desc:'PASSIVE: +20% damage to Slime Kings and +10% coins.', cost:2, fx:{kingBane:.2, coin:.1}},
 ];
+/* ============================================================ WEAPON PATHS on the Sphere Grid
+   (Handler: 'Each skill is gated inside the sphere. Sphere path per weapon
+   and they crosses.') Every weapon gets a 5-node chain in the ring OUTSIDE
+   the branch disc: [stat I, stat II, CROSS, SKILL, MASTERY]. The board is
+   a 200x200-unit virtual space (see nodePos): branch nodes keep their
+   EXACT old geometry at the centre; each weapon ray runs through a free
+   sector between two branch fans, paired weapons on adjacent rays so
+   their chains literally cross at the shared CROSS node.
+   MIGRATION: tiers 1-3 ARE the old skill-tree nodes — same ids (w<idx>1..3),
+   same names/descs/costs, same effects — so an old save loses NOTHING:
+   owned is owned, and the new chain prerequisites only gate BUYING (a
+   grandfathered w<idx>3 owner can still buy the cross node afterwards —
+   its prereq is tier 2 — and then MASTERY normally). Tier 1-2 stats stay
+   equipped-only via wHas() in combat, exactly as the trees applied them;
+   the SKILL tier is read through WSKILLS; MASTERY is +20% damage with
+   that weapon (myDamage). CROSS nodes carry real global fx, aggregated
+   by recalc() like any branch node. */
+const WPATH_ANG  = [-52, 38, -38, 52, -142, -128, 140];   // ray angle per weapon idx: pairs (0,2) dagger/katana, (1,3) sword/spear, (4,5) great/hammer; pickaxe (6) hugs the Fortune fan
+const WPATH_TINT = ['#cfd8dc', '#90caf9', '#ce93d8', '#a5d6a7', '#ffab91', '#ffe082', '#bcaaa4'];
+const WPATH_SHORT = ['DAGGER', 'SWORD', 'KATANA', 'SPEAR', 'GREAT', 'HAMMER', 'PICK'];
+const WPATH_TIERS = [
+  [ ['Keen Edge','CRT','Crit damage +30% with the Dagger.'], ['Rapid Hands','SPD','Attack cooldown -10% with the Dagger.'], ['Shadow Stab','SKL','ACTIVE SKILL (key V, 25 MP): dash forward, cutting everything in your path for 3x damage.'] ],
+  [ ['Heavy Blade','ATK','+3 damage with the Sword.'], ['Sweeping Arc','SPL','Splash radius +0.04 with the Sword.'], ['Whirlwind','SKL','ACTIVE SKILL (key V, 30 MP): spin and hit everything around you for 1.6x damage.'] ],
+  [ ['Long Blade','RCH','Reach +12% with the Katana.'], ['Keen Eye','CRT','Crit chance +10% with the Katana.'], ['Iaido Wave','SKL','ACTIVE SKILL (key V, 30 MP): a fast, long crescent wave for 2.2x damage.'] ],
+  [ ['Piercing Point','CRT','Crit damage +30% with the Spear.'], ['Long Haft','RCH','Reach +10% with the Spear.'], ['Throw Spear','SKL','ACTIVE SKILL (key V, 35 MP): hurl your spear — it pierces every slime in a line for 2.5x damage.'] ],
+  [ ['Wider Cleave','SPL','Splash radius +0.04 with the Greatsword.'], ['Heavy Blade','ATK','+6 damage with the Greatsword.'], ['Earthshaker','SKL','ACTIVE SKILL (key V, 40 MP): slam the ground — 2.2x damage to everything near you.'] ],
+  [ ['Heavy Head','ATK','+8 damage with the Warhammer.'], ['Shockwave','SPL','Splash radius +0.03 with the Warhammer.'], ['Thunder Smash','SKL','ACTIVE SKILL (key V, 40 MP): 3x damage to everything at your sword tip, in a burst of lightning.'] ],
+  [ ['Strong Arms','ATK','+3 damage with the Pickaxe.'], ['Gem Sense','GEM','PASSIVE: +12% chance to pop a gem out of ore rocks.'], ['GEM RUSH','SKL','ACTIVE SKILL (key V, 25 MP): 8 seconds of +40% gem chance — ore crystals sparkle.'] ],
+];
+const CROSS_DEFS = [
+  { id:'xDK', a:0, b:2,  ang:-45,  name:'Dagger × Katana',        desc:'CROSS: +5% crit chance with every weapon. One node, shared by the Dagger and Katana paths.', fx:{crit:.05} },
+  { id:'xSS', a:1, b:3,  ang:45,   name:'Sword × Spear',          desc:'CROSS: +8% reach with every weapon. One node, shared by the Sword and Spear paths.', fx:{reach:.08} },
+  { id:'xGW', a:4, b:5,  ang:-135, name:'Greatsword × Warhammer', desc:'CROSS: +3 damage with every weapon. One node, shared by the Greatsword and Warhammer paths.', fx:{dmg:3} },
+  { id:'xPF', a:6, b:-1, ang:131,  name:'Pickaxe × Fortune',      desc:'CROSS: +10% coins from every kill. Joins the Pickaxe path to the Fortune branch.', fx:{coin:.10} },
+];
+const wpos = (angDeg, r) => { const a = angDeg * Math.PI/180; return { x: 100 + Math.cos(a)*r, y: 100 + Math.sin(a)*r }; };
+for (let wi = 0; wi < 7; wi++){
+  const A = WPATH_ANG[wi], T = WPATH_TIERS[wi], cross = CROSS_DEFS.find(c => c.a===wi || c.b===wi);
+  NODES.push(
+    { id:'w'+wi+'1', w:wi, t:'stat',    icon:T[0][1], name:T[0][0], desc:T[0][2], cost:1, root:true, tint:WPATH_TINT[wi], label:WPATH_SHORT[wi]+' I',       pos:wpos(A,57), links:[] },
+    { id:'w'+wi+'2', w:wi, t:'stat',    icon:T[1][1], name:T[1][0], desc:T[1][2], cost:1, pre:'w'+wi+'1', tint:WPATH_TINT[wi], label:WPATH_SHORT[wi]+' II', pos:wpos(A,67), links:['w'+wi+'1'] },
+    { id:'w'+wi+'3', w:wi, t:'active',  icon:'SKL',   name:T[2][0], desc:T[2][2], cost:2, pre:cross.id, tint:WPATH_TINT[wi], label:WPATH_SHORT[wi]+' SKILL', pos:wpos(A,87), links:[cross.id] },
+    { id:'w'+wi+'4', w:wi, t:'passive', icon:'MST',   name:WEAPONS[wi].name+' Mastery', desc:'MASTERY: +20% damage with the '+WEAPONS[wi].name+'.', cost:2, pre:'w'+wi+'3', tint:WPATH_TINT[wi], label:WPATH_SHORT[wi]+' MASTERY', pos:wpos(A,97), links:['w'+wi+'3'] },
+  );
+}
+for (const c of CROSS_DEFS){
+  const links = ['w'+c.a+'2', 'w'+c.a+'3'];
+  if (c.b >= 0) links.push('w'+c.b+'2', 'w'+c.b+'3'); else links.push('g3');   // xPF's second parent is the Fortune branch: it links to g3 (Bounty Hunter), its prereq on that side
+  NODES.push({ id:c.id, x:true, t:'passive', icon:'X', name:c.name, desc:c.desc, cost:1, fx:c.fx,
+    preAny: c.b >= 0 ? ['w'+c.a+'2', 'w'+c.b+'2'] : ['w62', 'g3'],
+    cols:[WPATH_TINT[c.a], c.b >= 0 ? WPATH_TINT[c.b] : '#ffb52e'], label:'X-CROSS', pos:wpos(c.ang, 77), links });
+}
+/* Board geometry: a 200x200-unit virtual space. Branch nodes keep their
+   EXACT old layout — computed in the old 0-100 space, then offset +50/+50
+   so the branch disc (radius 50 units) sits centred at (100,100), exactly
+   as it always looked. Weapon/cross nodes carry explicit pos in units. */
 const nodePos = n => {
+  if (n.pos) return { x:n.pos.x, y:n.pos.y, idx:0 };
   const idx = NODES.filter(m=>m.b===n.b).indexOf(n);
   const a = BRANCHES[n.b].ang * Math.PI/180;
   const dist = 8.6 + Math.min(idx, 7)*5.2;                     // % of board from centre; the capstone (idx 8) stays at the tip radius (idx 7 = 45.0) — idx*5.2 would put it at 50.2, off the board
   const perp = (idx===0 ? 0 : idx===8 ? 32 : (idx%2 ? 1 : -1) * (3 + idx*2.5)) * Math.PI/180;   // growing zig-zag keeps nodes apart; the capstone fans +32° beside the branch tip (same side as idx 7's +20.5°; chord ~9.0% > node width 8.6%, outer edge 49.3% < 50% board)
   const x = 50 + Math.cos(a+perp)*dist, y = 50 + Math.sin(a+perp)*dist;
-  return { x, y, idx };
+  return { x:x+50, y:y+50, idx };
 };
 const unlocked = new Set();
 let S = null;
 function recalc(){
   S = { dmg:0, reach:0, cd:0, crit:0, coin:0, xp:0, splash:0, kingBane:0, double:0, arcWide:0, spinCd:0, bounty:0, comboWin:0, exec:0, maxHp:0, regen:0, socket:0, actives:new Set() };
   for (const n of NODES) if (unlocked.has(n.id)){
-    const f = n.fx;
+    const f = n.fx || {};   // weapon-path tiers 1-4 carry no global fx (equipped-only effects live in wHas checks); CROSS nodes do
     for (const k of ['dmg','reach','cd','crit','coin','xp','kingBane','double','arcWide','spinCd','bounty','comboWin','exec','maxHp','regen','socket']) if (f[k]) S[k]+=f[k];
     if (f.splash) S.splash = Math.max(S.splash, f.splash);
     if (f.active) S.actives.add(f.active);
@@ -2946,50 +2935,89 @@ function recalc(){
 recalc();
 const nodeAvail = n => {
   if (unlocked.has(n.id)) return false;
+  if (n.w !== undefined && !me.owned.has(n.w)) return false;   // weapon path nodes: own the weapon first (the old skill-tree rule)
+  if (n.preAny) return n.preAny.some(id => unlocked.has(id));   // CROSS: tier II of EITHER side (or the Fortune node for xPF)
+  if (n.pre) return unlocked.has(n.pre);
+  if (n.root) return true;
   const { idx } = nodePos(n);
   return idx===0 || unlocked.has(NODES.filter(m=>m.b===n.b)[idx-1].id);
 };
 let selNode = null;
+let sphereCentered = false;   // the scrollable board auto-centres on the branch disc once per menu open (reset in closeMenu)
 function buildSphere(){
   const lines = $('#sphereLines'), wrap = $('#sphereNodes');
-  let lh = '<circle cx="50" cy="50" r="2.6" fill="#ffd94d"/>';
+  let lh = '<circle cx="100" cy="100" r="50" fill="#1b2450"/><circle cx="100" cy="100" r="2.6" fill="#ffd94d"/>';
   for (const br of BRANCHES){
-    let prev = {x:50, y:50};
+    let prev = {x:100, y:100};
     for (const n of NODES.filter(m=>m.b===BRANCHES.indexOf(br))){
       const p = nodePos(n);
       lh += `<line x1="${prev.x}" y1="${prev.y}" x2="${p.x}" y2="${p.y}" stroke="${unlocked.has(n.id)?'#ffd94d':'rgba(255,255,255,.28)'}" stroke-width="${unlocked.has(n.id)?1.6:.9}"/>`;
       prev = p;
     }
   }
+  /* weapon-path + cross links: every node lists its predecessors in
+     `links`; each unordered pair is drawn once (gold when the DOWNSTREAM
+     node — the one whose list names the pair — is owned, matching the
+     branch convention). A cross node therefore renders up to 4 links:
+     two predecessors (either side's tier II / the Fortune node) and two
+     successors (either side's SKILL node). */
+  const drawnLinks = new Set();
+  for (const n of NODES){
+    if (!n.links) continue;
+    const p = nodePos(n);
+    for (const tid of n.links){
+      const key = [n.id, tid].sort().join('|');
+      if (drawnLinks.has(key)) continue;
+      drawnLinks.add(key);
+      const t = NODES.find(m=>m.id===tid); if (!t) continue;
+      const q = nodePos(t), gold = unlocked.has(n.id);
+      lh += `<line x1="${p.x}" y1="${p.y}" x2="${q.x}" y2="${q.y}" stroke="${gold?'#ffd94d':'rgba(255,255,255,.28)'}" stroke-width="${gold?1.6:.9}"/>`;
+    }
+  }
   lines.innerHTML = lh;
   wrap.innerHTML = '<div class="snode center" style="left:50%;top:50%">START</div>';
   for (const n of NODES){
-    const p = nodePos(n), br = BRANCHES[n.b];
+    const p = nodePos(n);
+    const owned = unlocked.has(n.id), avail = nodeAvail(n);
     const d = document.createElement('button');
-    d.className = 'snode' + (unlocked.has(n.id)?' owned':'') + (nodeAvail(n)?' avail':'') + (selNode===n.id?' sel':'');
-    d.style.left = p.x+'%'; d.style.top = p.y+'%';
-    if (unlocked.has(n.id)) d.style.background = br.color;
-    else if (nodeAvail(n)) d.style.background = '#5563a8';
-    d.innerHTML = n.icon;
+    d.className = 'snode' + (owned?' owned':'') + (avail?' avail':'') + (selNode===n.id?' sel':'');
+    d.style.left = (p.x/2)+'%'; d.style.top = (p.y/2)+'%';   // board units -> % of the 200-unit inner board
+    if (n.x){   // CROSS node: dual-tone ring (two border colours per parent), split-gradient face when owned
+      d.style.borderTopColor = n.cols[0]; d.style.borderRightColor = n.cols[0];
+      d.style.borderBottomColor = n.cols[1]; d.style.borderLeftColor = n.cols[1];
+      if (owned){ d.style.background = `linear-gradient(135deg, ${n.cols[0]} 0 50%, ${n.cols[1]} 50% 100%)`; d.style.color = '#3a2b23'; }
+      else if (avail) d.style.background = '#5563a8';
+    } else if (n.tint){   // weapon path node: ringed in its weapon's accent
+      d.style.borderColor = n.tint;
+      if (owned){ d.style.background = n.tint; d.style.color = '#3a2b23'; }
+      else if (avail) d.style.background = '#5563a8';
+    } else {
+      if (owned) d.style.background = BRANCHES[n.b].color;
+      else if (avail) d.style.background = '#5563a8';
+    }
+    d.innerHTML = n.icon + (n.label ? `<small>${n.label}</small>` : '');
     d.title = n.name;
     d.onclick = ()=>{ selNode = n.id; buildSphere(); };
     wrap.appendChild(d);
   }
   renderNodeCard();
   $('#spCount').textContent = me.sp;
+  if (!sphereCentered){ const b = $('#sphereBoard'); if (b && b.clientWidth){ b.scrollLeft = (b.scrollWidth - b.clientWidth)/2; b.scrollTop = (b.scrollHeight - b.clientHeight)/2; sphereCentered = true; } }
 }
 function renderNodeCard(){
   const card = $('#nodeCard');
   const n = NODES.find(m=>m.id===selNode);
   if (!n){ card.classList.add('hidden'); return; }
   card.classList.remove('hidden');
-  $('#ncType').textContent = (n.t==='stat'?'STAT':n.t==='passive'?'PASSIVE':'ACTIVE SKILL') + ' · ' + BRANCHES[n.b].name;
-  $('#ncType').style.color = BRANCHES[n.b].color;
+  if (n.x){ $('#ncType').textContent = 'CROSS NODE'; $('#ncType').style.color = '#b8860b'; }
+  else if (n.w !== undefined){ $('#ncType').textContent = (n.t==='stat'?'STAT':n.t==='passive'?'PASSIVE':'ACTIVE SKILL') + ' · ' + WEAPONS[n.w].name.toUpperCase() + ' PATH'; $('#ncType').style.color = '#8e6bc8'; }
+  else { $('#ncType').textContent = (n.t==='stat'?'STAT':n.t==='passive'?'PASSIVE':'ACTIVE SKILL') + ' · ' + BRANCHES[n.b].name; $('#ncType').style.color = BRANCHES[n.b].color; }
   $('#ncName').textContent = n.name;
   $('#ncDesc').textContent = n.desc;
   const btn = $('#ncBtn');
   if (unlocked.has(n.id)){ btn.textContent = 'UNLOCKED'; btn.disabled = true; }
-  else if (!nodeAvail(n)){ btn.textContent = 'REACH THIS NODE FIRST'; btn.disabled = true; }
+  else if (n.w !== undefined && !me.owned.has(n.w)){ btn.textContent = 'BUY THE ' + WEAPONS[n.w].name.toUpperCase() + ' AT THE SHOP FIRST'; btn.disabled = true; }
+  else if (!nodeAvail(n)){ btn.textContent = n.preAny ? 'NEEDS TIER II ON EITHER SIDE FIRST' : 'REACH THIS NODE FIRST'; btn.disabled = true; }
   else if (me.sp < n.cost){ btn.textContent = 'NEED '+n.cost+' SP — YOU HAVE '+me.sp; btn.disabled = true; }
   else { btn.textContent = 'UNLOCK — '+n.cost+' SP'; btn.disabled = false; }
   btn.onclick = ()=>{
@@ -3086,7 +3114,7 @@ function resetRun(){
   me.gems=freshGems(); me.wxp={}; me.gemRushUntil=0; me.gemBag=[]; me.sockets={};
   me.hp=me.maxHp; me.mp=me.maxMp; me.wSkillCdUntil=0; me.banked=0; me.items={ potion:0, bomb:0, shield:0 }; me.purse=false; me.shieldUntil=0; me.spawnAt=null;
   $('#bankPanel').classList.add('hidden'); $('#shopPanel').classList.add('hidden'); $('#hospitalPanel').classList.add('hidden'); closeMenu();
-  unlocked.clear(); recalc();   // one shared set: Sphere nodes AND weapon-tree nodes both reset
+  unlocked.clear(); recalc();   // one shared set: branch, weapon-path and cross nodes all reset
   combo=0; comboUntil=0; updateComboBadge(false);
   if (scores[me.id]) scores[me.id].kills = 0;
   hintsSeen = { slash:false, spin:false, sphere:false };
@@ -3119,7 +3147,7 @@ function loadGame(){
   me.xp = Math.max(0, d.xp|0); me.coins = Math.max(0, d.coins|0);
   me.kills = Math.max(0, d.kills|0); me.sp = Math.max(0, d.sp|0);
   me.spBuys = Math.max(0, d.spBuys|0);   // lifetime Bank SP purchases (escalating price); old saves default to 0
-  if (Array.isArray(d.unlocked)) for (const id of d.unlocked) if (NODES.some(n=>n.id===id) || WTREE_IDS.has(id)) unlocked.add(id);
+  if (Array.isArray(d.unlocked)) for (const id of d.unlocked) if (NODES.some(n=>n.id===id)) unlocked.add(id);   // one table now: branch + weapon-path + cross ids all live in NODES, so old tree unlocks (w<idx>1..3) validate identically
   // SOUL GEMS restore BEFORE recalc, so socketed vitality counts toward
   // the derived maxHp. Validated: known stat, rarity 0-4, string id;
   // socket lists keep only ids that reference a real bag gem. Old saves
@@ -3269,13 +3297,13 @@ function tickActives(now, dt){
   }
 }
 /* ============================================================ weapon skills (V)
-   One active per weapon, granted by node 3 of its skill tree, paid in MP.
+   One active per weapon, granted by the SKILL node of its Sphere path, paid in MP.
    All effects are LOCAL claims through doHit — the host still validates. */
 function castWeaponSkill(){
   if (!started || paused) return;
   const now = performance.now();
   const sk = WSKILLS[me.weapon]; if (!sk) return;
-  if (!unlocked.has(sk.node)){ notify('Unlock ' + sk.name + ' in the SKILLS tree (key K)'); return; }
+  if (!unlocked.has(sk.node)){ notify('Unlock ' + sk.name + ' on the SPHERE grid (key K)'); return; }
   if (now < me.wSkillCdUntil) return;
   if (me.mp < sk.mp){ notify('Not enough MP!'); return; }
   me.mp -= sk.mp; me.wSkillCdUntil = now + sk.cd;
@@ -3326,73 +3354,6 @@ function castWeaponSkill(){
   refreshHUD();
 }
 
-/* ============================================================ weapon skill tree panel */
-let selTreeNode = null;
-function treeNodeState(wi, ni){
-  const nodes = WTREES[WEAPONS[wi].id];
-  if (unlocked.has(nodes[ni].id)) return 'owned';
-  if (!me.owned.has(wi)) return 'locked';
-  if (ni>0 && !unlocked.has(nodes[ni-1].id)) return 'locked';
-  return 'avail';
-}
-function toggleTree(force){
-  if (force === true) openMenu('skills');
-  else if (force === false) closeMenu();
-  else toggleMenu('skills');
-}
-function buildTree(){
-  $('#treeSp').textContent = me.sp;
-  const wrap = $('#treeRows'); wrap.innerHTML = '';
-  WEAPONS.forEach((w, wi)=>{
-    const ownedW = me.owned.has(wi);
-    const row = document.createElement('div');
-    row.className = 'trow' + (ownedW ? '' : ' notowned');
-    const img = document.createElement('img');
-    img.src = 'assets/weapons/' + w.id + '.png'; img.alt = w.name;
-    row.appendChild(img);
-    const main = document.createElement('div'); main.className = 'tmain';
-    main.innerHTML = `<div class="tname">${w.name}${ownedW ? '' : '<span class="tnot">NOT OWNED — buy at the SHOP</span>'}</div>`;
-    const chips = document.createElement('div'); chips.className = 'tchips';
-    WTREES[w.id].forEach((n, ni)=>{
-      if (ni>0){ const lnk = document.createElement('div'); lnk.className = 'tlink'; chips.appendChild(lnk); }
-      const st = treeNodeState(wi, ni);
-      const c = document.createElement('button');
-      c.className = 'tchip' + (st==='owned' ? ' owned' : st==='avail' ? ' avail' : '') + (selTreeNode===n.id ? ' sel' : '');
-      if (st==='owned') c.style.background = w.color;
-      c.textContent = n.name;
-      c.onclick = ()=>{ selTreeNode = n.id; buildTree(); };
-      chips.appendChild(c);
-    });
-    main.appendChild(chips);
-    row.appendChild(main);
-    wrap.appendChild(row);
-  });
-  renderTreeDetail();
-}
-function renderTreeDetail(){
-  const card = $('#treeDetail');
-  let node = null, fwi = -1, fni = -1;
-  WEAPONS.forEach((w, wi)=>WTREES[w.id].forEach((n, ni)=>{ if (n.id===selTreeNode){ node = n; fwi = wi; fni = ni; } }));
-  if (!node){ card.classList.add('hidden'); return; }
-  card.classList.remove('hidden');
-  const w = WEAPONS[fwi];
-  $('#tdType').textContent = (node.kind==='active' ? 'ACTIVE SKILL' : 'STAT') + ' · ' + w.name.toUpperCase() + ' TREE';
-  $('#tdType').style.color = '#8e6bc8';
-  $('#tdName').textContent = node.name;
-  $('#tdDesc').textContent = node.desc;
-  const btn = $('#tdBtn'), st = treeNodeState(fwi, fni);
-  if (st==='owned'){ btn.textContent = 'UNLOCKED'; btn.disabled = true; }
-  else if (!me.owned.has(fwi)){ btn.textContent = 'BUY THE ' + w.name.toUpperCase() + ' AT THE SHOP FIRST'; btn.disabled = true; }
-  else if (st==='locked'){ btn.textContent = 'UNLOCK THE PREVIOUS NODE FIRST'; btn.disabled = true; }
-  else if (me.sp < node.cost){ btn.textContent = 'NEED ' + node.cost + ' SP — YOU HAVE ' + me.sp; btn.disabled = true; }
-  else { btn.textContent = 'UNLOCK — ' + node.cost + ' SP'; btn.disabled = false; }
-  btn.onclick = ()=>{
-    if (me.sp < node.cost || treeNodeState(fwi, fni)!=='avail') return;
-    me.sp -= node.cost; unlocked.add(node.id); sfx.buy();
-    bubble(node.name.toUpperCase() + '!', me.x, me.y, 1000);
-    buildTree(); buildSphere(); refreshHUD(); saveGame();
-  };
-}
 $('#shareBtn').onclick = async ()=>{
   const url = location.href;
   try{ await navigator.clipboard.writeText(url); notify('Invite link copied! Send it to your friends.', { type:'success' }); }
@@ -3421,7 +3382,7 @@ $('#hospCloseBtn').onclick = ()=>$('#hospitalPanel').classList.add('hidden');
 $('#hospitalPanel').addEventListener('click', e=>{ if (e.target.id==='hospitalPanel') e.target.classList.add('hidden'); });
 $('#wSkillBtn').onclick = ()=>{
   const sk = WSKILLS[me.weapon];
-  if (sk && !unlocked.has(sk.node)) openMenu('skills');   // 'SKILL LOCKED' tap routes into the tree, per the menu amendment
+  if (sk && !unlocked.has(sk.node)) openMenu('sphere');   // 'SKILL LOCKED' tap routes to the weapon's path on the Sphere Grid
   else castWeaponSkill();
 };
 /* mobile sheet sticky-header buttons (hidden on desktop via CSS) */
