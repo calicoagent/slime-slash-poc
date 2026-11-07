@@ -1930,9 +1930,15 @@ function hostApplyHit(slimeId, dmg, byId){
   s.hp -= dmg; s.squish=1; s.flash=1; s.flinchUntil = performance.now()+220;
   // splash (warhammer)
   const w = byId===me.id ? myWeapon() : WEAPONS.find(w=>w.id===(peers.get(byId)?.weaponId)) || WEAPONS[1];
-  if (w.splash){ for (const o of slimes.values()) if (o!==s && dist2(o.x,o.y,s.x,s.y) < w.splash*w.splash){ if (o.kind==='boss' && now < (o.guardUntil||0)) continue; o.hp -= o.kind==='metal' ? 1 : Math.ceil(dmg*.5); } }
+  const splashDead = [];
+  if (w.splash){ for (const o of slimes.values()) if (o!==s && dist2(o.x,o.y,s.x,s.y) < w.splash*w.splash){ if (o.kind==='boss' && now < (o.guardUntil||0)) continue; o.hp -= o.kind==='metal' ? 1 : Math.ceil(dmg*.5); if (o.hp <= 0) splashDead.push(o); } }
   if (s.hp<=0) hostKill(s, byId);
   else queueWorld();
+  /* splash can KILL: a neighbour taken to <=0 HP by the splash used to stay
+     in the world as a 0-HP zombie (shown, hittable, contact-damaging)
+     until some later hit happened to land on it. It dies now, credited to
+     the hitter, through the same hostKill path as a direct kill. */
+  for (const o of splashDead) if (slimes.get(o.id) === o) hostKill(o, byId);
 }
 function hostKill(s, byId){
   slimes.delete(s.id);
@@ -2010,20 +2016,25 @@ function onKillFx(f){
 }
 function gainXp(n){
   me.xp += Math.round(n * (1 + S.xp));
-  const need = me.level*100;
-  if (me.xp >= need){
+  /* LOOP, not if: one grant can span several levels — a scaled Emperor
+     pays 1200 x 1.5 x bScale XP (~15.8k at Lv38 vs 3.8k per level), and
+     the old single `if` levelled ONCE and parked the rest of the bar until
+     later kills drained it one level at a time. Every level still pays
+     its own SP (+1, +2 on every 3rd) and its +10 max HP top-up. */
+  let leveled = false;
+  while (me.xp >= me.level*100){
     const maxBefore = me.maxHp;
-    me.xp -= need; me.level++; me.sp++; sfx.lvl();
+    me.xp -= me.level*100; me.level++; me.sp++; leveled = true;
     recalc();   // re-derive maxHp at the new level
     me.hp += me.maxHp - maxBefore;   // top up by the capacity gained (+10/level) — never a free full heal
     let spMsg = '+1 Sphere Point';
     if (me.level % 3 === 0){ me.sp++; spMsg = '+2 Sphere Points (every-3rd-level bonus!)'; }
     notify('LEVEL ' + me.level + '! ' + spMsg + ' — press F', { type:'success' });
-    bubble('LEVEL UP!', me.x, me.y);
-    const w = WEAPONS.find(w=>w.unlock===me.level);
-    if (w) setTimeout(() => notify('UNLOCKED: ' + w.name.toUpperCase() + ' — check the rack!', { type:'success' }), 900);
-    buildRack();
+    // (the old 'UNLOCKED: <weapon> — check the rack!' toast at Lv 2/3/4 is
+    // gone: weapons are CRAFTED at the Forge now, level unlocks nothing,
+    // and the toast sent new players to a rack card that was still locked)
   }
+  if (leveled){ sfx.lvl(); bubble('LEVEL UP!', me.x, me.y); buildRack(); saveGame(); }   // a level-up is an event: persist it now, not on the 2.5s HUD throttle
   refreshHUD();
 }
 
