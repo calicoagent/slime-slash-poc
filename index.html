@@ -95,6 +95,71 @@
   }
   #bubble:after { content:""; position:absolute; left:50%; bottom:-10px; transform:translateX(-50%); border:6px solid transparent; border-top:8px solid #5b3a1e; border-bottom:0; }
 
+  /* ---------- polish pass: bounty / combo / hint / king banner / pause ---------- */
+  #bountyBadge {
+    position:fixed; z-index:20; top:142px; left:14px; max-width:232px;
+    background:#fff8e7; border:4px solid #5b3a1e; border-radius:22px; padding:8px 14px;
+    color:#5b3a1e; box-shadow:0 5px 0 #5b3a1e;
+  }
+  #bountyBadge b { font-size:13px; letter-spacing:1.5px; color:#b8860b; display:block; }
+  #bountyText { font-weight:800; font-size:15px; line-height:1.25; }
+  #bountyProg { font-weight:700; font-size:12.5px; color:#97754a; margin-top:2px; }
+  #comboBadge {
+    position:fixed; z-index:22; bottom:108px; right:calc(50% + 118px);
+    background:#ff8a2e; color:#fff; border:4px solid #5b3a1e; border-radius:999px;
+    padding:8px 20px; font-weight:900; font-size:22px; white-space:nowrap;
+    box-shadow:0 5px 0 #5b3a1e; text-shadow:0 2px 0 rgba(0,0,0,.25);
+  }
+  #comboBadge.fire { background:#e5484d; }
+  #comboBadge.pop2 { animation:comboPop .22s cubic-bezier(.2,2.2,.4,1); }
+  @keyframes comboPop { 40% { transform:scale(1.28) rotate(-2deg); } }
+  #hint {
+    position:fixed; z-index:23; bottom:118px; left:50%; transform:translateX(-50%);
+    background:#fff; color:#5b3a1e; border:3px solid #5b3a1e; border-bottom-width:7px; border-radius:14px;
+    padding:8px 18px; font-weight:900; font-size:17px; white-space:nowrap; pointer-events:none;
+    box-shadow:0 6px 14px rgba(0,0,0,.25); animation:hintBob 1s ease-in-out infinite;
+  }
+  @keyframes hintBob { 0%,100% { transform:translateX(-50%) translateY(0); } 50% { transform:translateX(-50%) translateY(-5px); } }
+  #kingBanner {
+    position:fixed; z-index:35; top:15%; left:50%; transform:translateX(-50%);
+    font-size:min(8vw,44px); font-weight:900; color:#ffd94d; letter-spacing:1px; text-align:center;
+    -webkit-text-stroke:2px #8a5a12; text-shadow:0 4px 0 #8a5a12, 0 10px 24px rgba(0,0,0,.4);
+    pointer-events:none; white-space:nowrap;
+  }
+  #kingBanner.show { animation:kingIn 2.5s ease forwards; }
+  @keyframes kingIn { 0% { opacity:0; transform:translateX(-50%) scale(.6); } 12% { opacity:1; transform:translateX(-50%) scale(1.08); } 20% { transform:translateX(-50%) scale(1); } 80% { opacity:1; } 100% { opacity:0; transform:translateX(-50%) scale(1); } }
+  #pauseBtn {
+    position:fixed; z-index:21; left:14px; bottom:224px; width:46px; height:46px; border-radius:50%;
+    background:#fff8e7; border:3.5px solid #5b3a1e; color:#5b3a1e; cursor:pointer;
+    font-family:inherit; font-weight:900; font-size:14px; box-shadow:0 4px 0 #5b3a1e;
+  }
+  #pauseBtn:active { transform:translateY(3px); box-shadow:0 1px 0 #5b3a1e; }
+  #pauseMenu {
+    position:fixed; inset:0; z-index:45; background:rgba(20,40,15,.55);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .pauseCard {
+    background:#fff8e7; border:5px solid #5b3a1e; border-radius:26px; padding:26px 30px;
+    box-shadow:0 10px 0 rgba(91,58,30,.8), 0 24px 40px rgba(0,0,0,.4);
+    display:flex; flex-direction:column; gap:12px; width:min(92vw,340px); text-align:center;
+    animation:pop .18s cubic-bezier(.2,2.2,.4,1);
+  }
+  .pauseCard h2 { color:#5b3a1e; font-size:32px; letter-spacing:2px; }
+  .pbtn {
+    font-family:inherit; font-weight:900; font-size:19px; cursor:pointer;
+    background:#ffd94d; border:4px solid #5b3a1e; border-radius:16px; padding:11px; color:#5b3a1e;
+    box-shadow:0 4px 0 #5b3a1e;
+  }
+  .pbtn:active { transform:translateY(3px); box-shadow:0 1px 0 #5b3a1e; }
+  .pbtn.main { background:#57d93d; color:#fff; text-shadow:0 2px 0 rgba(0,0,0,.2); }
+  .pcontrols { color:#97754a; font-weight:700; font-size:12.5px; line-height:1.55; }
+  @media (max-width:640px) {
+    #bountyBadge { top:128px; max-width:180px; padding:6px 10px; }
+    #bountyText { font-size:13px; }
+    #comboBadge { right:auto; left:14px; bottom:282px; font-size:18px; padding:6px 14px; }
+    #hint { bottom:104px; font-size:14px; max-width:94vw; white-space:normal; text-align:center; }
+  }
+
   /* ---------- sphere grid ---------- */
   #forge { width:min(94vw,472px); }
   #spBar { text-align:center; font-weight:900; color:#5b3a1e; font-size:16px; margin-bottom:8px; }
@@ -210,12 +275,19 @@
   </div>
   <div class="badge" id="peerBadge"><span class="dot"></span><span id="peers">Solo</span></div>
   <div class="badge" id="boardBadge"><b>TOP SLAYERS</b><div id="board"></div></div>
+  <div id="bountyBadge">
+    <b>BOUNTY</b>
+    <div id="bountyText">Finding a bounty...</div>
+    <div id="bountyProg"></div>
+  </div>
 
   <div id="rack"></div>
   <canvas id="minimap" width="124" height="124"></canvas>
   <div id="actives"></div>
   <button id="shareBtn">INVITE LINK</button>
   <button id="forgeBtn">SPHERE</button>
+  <div id="comboBadge" class="hidden">x3 COMBO</div>
+  <button id="pauseBtn" title="Pause">| |</button>
 
   <div id="forge" class="hidden">
     <h3>SPHERE GRID</h3>
@@ -233,6 +305,17 @@
 
 <div id="toast" class="hidden"></div>
 <div id="bubble" class="hidden"></div>
+<div id="kingBanner" class="hidden">THE SLIME KING HAS APPEARED!</div>
+<div id="hint" class="hidden"></div>
+<div id="pauseMenu" class="hidden">
+  <div class="pauseCard">
+    <h2>PAUSED</h2>
+    <button class="pbtn main" id="resumeBtn">RESUME</button>
+    <button class="pbtn" id="soundBtn">SOUND: ON</button>
+    <button class="pbtn" id="restartBtn">RESTART RUN</button>
+    <div class="pcontrols">Drag to slash · Click / Tap or SPACE = Spin Slash · Keys 1-6 = weapons · F = Sphere Grid · Q / E / R = skills · Esc = pause</div>
+  </div>
+</div>
 
 <!-- TITLE -->
 <div id="title">
@@ -261,6 +344,7 @@ const esc = s => s.replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"'
 let AC=null, muted=false;
 function beep(freq,dur,type='sine',gain=.12,slide=0){
   try{
+    if(muted) return;
     if(!AC) AC=new (window.AudioContext||window.webkitAudioContext)();
     if(AC.state==='suspended') AC.resume();
     const o=AC.createOscillator(), g=AC.createGain(), t=AC.currentTime;
@@ -277,7 +361,10 @@ const sfx = {
   lvl:  ()=>{ [523,659,784,1046].forEach((f,i)=>setTimeout(()=>beep(f,.14,'triangle',.1),i*80)); },
   buy:  ()=>{ beep(700,.08,'triangle',.1); setTimeout(()=>beep(980,.12,'triangle',.1),70); },
   spin: ()=>beep(300,.16,'sawtooth',.045,700),
+  sting: ()=>{ beep(196,.32,'sawtooth',.09,-30); setTimeout(()=>beep(392,.3,'triangle',.1,140),60); setTimeout(()=>beep(587,.38,'triangle',.09,80),130); },
+  combo: ()=>beep(880,.09,'square',.07,320),
 };
+Object.defineProperty(sfx, 'muted', { get:()=>muted, set:v=>{ muted = !!v; } });
 
 /* ============================================================ weapons */
 // Combat identities: SWING weapons sweep arcs and hit crowds (AoE).
@@ -364,6 +451,15 @@ let started=false, room=null, sendPos=null, sendHit=null, sendWorld=null, sendKi
 let isHost=false, hostId=null, lastWorldAt=0, scores = {}; // id -> {name,kills}
 const hitClaimsAt = new Map(); // host-side rate limiting
 
+/* ---- polish pass state ---- */
+let combo=0, comboUntil=0;                 // kill-chain combo (2.5s window)
+let bounty=null;                           // current bounty objective (session scope)
+let paused=false;
+let myTrail=[];                            // slash trail points {x,y,t} in world coords
+let hintsSeen = { slash:false, spin:false, sphere:false };
+const seenKings = new Set();               // king ids already announced by the banner
+const SAVE_KEY = 'slimeslash-save-v1';
+
 /* ============================================================ slimes */
 const SLIME_KINDS = [
   { kind:'baby',  hp:12,  r:.020, coins:4,  xp:8,  speed:.014, weight:45 },
@@ -423,16 +519,20 @@ function applyWorld(p){
 }
 
 /* ============================================================ fx */
-function spawnHitFx(x,y,color,n=6){ for(let i=0;i<n;i++) particles.push({x,y,vx:rand(-.12,.12),vy:rand(-.16,.02),life:1,color,r:rand(2,5)}); }
-function spawnPopFx(x,y,color){ for(let i=0;i<22;i++){ const a=rand(0,Math.PI*2),v=rand(.04,.22); particles.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-.05,life:1,color,r:rand(2,7)});} popRings.push({x,y,r:.01,life:1,color}); }
-function addFloat(x,y,text,color){ floats.push({x,y,text,color,life:1}); }
+function capParticles(){ if (particles.length>420) particles.splice(0, particles.length-420); }
+function spawnHitFx(x,y,color,n=6){ for(let i=0;i<n;i++) particles.push({x,y,vx:rand(-.12,.12),vy:rand(-.16,.02),life:1,color,r:rand(2,5)}); capParticles(); }
+function spawnPopFx(x,y,color){ for(let i=0;i<22;i++){ const a=rand(0,Math.PI*2),v=rand(.04,.22); particles.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-.05,life:1,color,r:rand(2,7)});} capParticles(); popRings.push({x,y,r:.01,life:1,color}); }
+function addFloat(x,y,text,color){ floats.push({x,y,text,color,life:1}); if (floats.length>48) floats.splice(0, floats.length-48); }
 function toast(msg,ms=2200){ const t=$('#toast'); t.textContent=msg; t.classList.remove('hidden'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.add('hidden'),ms); }
 let bubbleTimer=null;
 function bubble(text,x,y,ms=1600){ const b=$('#bubble'); b.textContent=text; b.style.left=NX(x)+'px'; b.style.top=NY(y)+'px'; b.classList.remove('hidden'); clearTimeout(bubbleTimer); bubbleTimer=setTimeout(()=>b.classList.add('hidden'),ms); }
 
 /* ============================================================ combat */
 function myWeapon(){ return WEAPONS[me.weapon]; }
-function myDamage(){ return myWeapon().dmg + S.dmg + (me.level-1); }
+function myDamage(){
+  const base = myWeapon().dmg + S.dmg + (me.level-1);
+  return (combo>=15 && performance.now()<comboUntil) ? base*1.15 : base;   // ON FIRE combo bonus
+}
 function myReach(){ return myWeapon().reach * (1 + S.reach); }
 function myCd(){ return Math.max(50, myWeapon().cd * (1 + S.cd)) * (performance.now()<me.frenzyUntil ? .55 : 1); }
 
@@ -519,11 +619,30 @@ function onKillFx(f){
   spawnPopFx(f.x,f.y,f.c); sfx.pop();
   if (f.kind==='king') toast('THE SLIME KING HAS FALLEN!');
   if (f.by===me.id){
+    const now = performance.now();
     const cg = Math.round(f.coins * (1 + S.coin));
     me.coins += cg; me.kills++;
     gainXp(f.xp); sfx.coin();
     addFloat(f.x, f.y-.04, '+'+cg+' coins', '#ffd94d');
     if (f.kind==='king'){ me.sp++; bubble('KING SLAYER! +1 SP', me.x, me.y); setTimeout(()=>toast('KING BONUS: +1 Sphere Point!'), 600); }
+    // combo chain: kills within 2.5s of each other keep it alive
+    combo = (now < comboUntil) ? combo+1 : 1;
+    comboUntil = now + 2500;
+    updateComboBadge(true);
+    if (combo===5 || combo===10 || combo===15 || combo===25){ addFloat(me.x, me.y-.07, 'COMBO x'+combo, '#ff8a2e'); sfx.combo(); }
+    if (combo===15) toast('ON FIRE! +15% damage while the combo lives!');
+    // bounty progress (my kills only, matched by colour or kind)
+    if (bounty && ((bounty.type==='color' && f.c===bounty.key) || (bounty.type==='kind' && f.kind===bounty.key))){
+      bounty.have++;
+      if (bounty.have >= bounty.need){
+        me.coins += bounty.reward; me.sp += 1;
+        toast('BOUNTY COMPLETE! +'+bounty.reward+' coins +1 SP');
+        sfx.buy();
+        rollBounty();
+      }
+      updateBountyUI();
+    }
+    if (!hintsSeen.slash){ hintsSeen.slash = true; updateHint(); }
     refreshHUD();
   }
 }
@@ -604,8 +723,15 @@ setInterval(()=>{ // sword state @ ~20Hz
 /* ============================================================ input */
 let pointerDown=false;
 let lastClient=null, lastMoveT=0;
+// Touch lift: on touch devices the sword would sit hidden under the player's
+// finger, so the effective sword position is lifted ~48px up-screen. The
+// offset is applied ONCE here at input time — hit detection, drawing and
+// spin all read me.x/me.y, so they stay consistent. Flick direction/speed
+// below keep using RAW client deltas, which a constant offset never changes.
+const TOUCH_LIFT = 48;
+const ptrY = e => e.clientY - (e.pointerType==='touch' ? TOUCH_LIFT : 0);
 addEventListener('pointermove', e=>{
-  const x=clamp(cam.x + e.clientX/UNIT(), .02, WORLD-.02), y=clamp(cam.y + e.clientY/UNIT(), .02, WORLD-.02);
+  const x=clamp(cam.x + e.clientX/UNIT(), .02, WORLD-.02), y=clamp(cam.y + ptrY(e)/UNIT(), .02, WORLD-.02);
   const now=performance.now();
   // Direction & speed from RAW CLIENT deltas: immune to camera drift, and
   // speed (px/s) is independent of the pointer's event rate / polling Hz.
@@ -633,11 +759,18 @@ addEventListener('pointermove', e=>{
 addEventListener('pointerdown', e=>{
   if (!started) return;
   if (e.target.closest('#hud') && !e.target.closest('#game')) { /* UI taps handled by buttons */ }
-  if (e.target===cv) trySpin();
+  if (e.target===cv){
+    // snap the sword to the (touch-lifted) tap point so the spin centres there
+    me.px=me.x; me.py=me.y;
+    me.x=clamp(cam.x + e.clientX/UNIT(), .02, WORLD-.02);
+    me.y=clamp(cam.y + ptrY(e)/UNIT(), .02, WORLD-.02);
+    trySpin();
+  }
 });
 addEventListener('touchmove', e=>{ e.preventDefault(); }, {passive:false});
 addEventListener('keydown', e=>{
   if (!started) return;
+  if (e.key==='Escape' || e.key==='p' || e.key==='P'){ togglePause(); return; }
   const n = parseInt(e.key);
   if (n>=1 && n<=WEAPONS.length) equip(n-1);
   if (e.key===' ') { e.preventDefault(); trySpin(); }
@@ -652,6 +785,7 @@ function trySpin(){
   if (now < me.spinCdUntil) return;
   me.spinUntil = now+260; me.spinCdUntil = now + 900*(1 + S.spinCd);
   sfx.spin();
+  if (!hintsSeen.spin){ hintsSeen.spin = true; updateHint(); }
 }
 
 /* ============================================================ HUD */
@@ -667,6 +801,11 @@ function refreshHUD(){
   $('#spCount').textContent = me.sp;
   $('#forgeBtn').textContent = me.sp>0 ? 'SPHERE ('+me.sp+')' : 'SPHERE';
   if (selNode && !$('#forge').classList.contains('hidden')) renderNodeCard();
+  // polish systems tick (refreshHUD runs ~2/s while playing)
+  if (combo>0 && performance.now()>comboUntil){ combo=0; updateComboBadge(false); }
+  scanKings();
+  updateHint();
+  saveGame();
 }
 let joinedAt = 0;
 function refreshPeers(){
@@ -693,7 +832,11 @@ function equip(i){
   me.weapon=i; me.lastHitAt.clear(); buildRack(); beep(600,.06,'triangle',.08);
   bubble(w.name.toUpperCase()+'!', me.x, me.y, 900);
 }
-function toggleForge(){ $('#forge').classList.toggle('hidden'); buildSphere(); refreshHUD(); }
+function toggleForge(){
+  $('#forge').classList.toggle('hidden');
+  if (!$('#forge').classList.contains('hidden')) hintsSeen.sphere = true;
+  buildSphere(); refreshHUD(); updateHint();
+}
 $('#forgeBtn').onclick = toggleForge;
 
 /* ============================================================ SPHERE GRID (FFX-style)
@@ -801,6 +944,121 @@ function renderNodeCard(){
   $('#spCount').textContent = me.sp;
 }
 
+/* ============================================================ polish systems
+   Combo, bounty objectives, King banner, tutorial hints, pause, saving. */
+
+/* ---------- combo ---------- */
+function updateComboBadge(pop){
+  const el = $('#comboBadge');
+  if (!started || combo<3){ el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  const fire = combo>=15 && performance.now()<comboUntil;
+  el.classList.toggle('fire', fire);
+  el.textContent = 'x'+combo+(fire ? ' ON FIRE' : ' COMBO');
+  if (pop){ el.classList.remove('pop2'); void el.offsetWidth; el.classList.add('pop2'); }
+}
+
+/* ---------- bounty ---------- */
+function rollBounty(){
+  if (Math.random() < .62){
+    const entries = Object.entries(COLOR2IMG);
+    const [hex, name] = entries[Math.floor(Math.random()*entries.length)];
+    const need = 6 + Math.floor(Math.random()*7);                    // 6-12
+    bounty = { type:'color', key:hex, label:name.toUpperCase(), need, have:0, reward:need*5 };
+  } else {
+    const kinds = [ ['baby','BABY',8,12], ['mid','MID',8,12], ['big','BIG',6,6], ['king','KING',3,3] ];
+    const k = kinds[Math.floor(Math.random()*kinds.length)];
+    const need = k[2] + Math.floor(Math.random()*(k[3]-k[2]+1));
+    bounty = { type:'kind', key:k[0], label:k[1], need, have:0, reward:need*5 + 10 };
+  }
+  updateBountyUI();
+}
+function updateBountyUI(){
+  if (!bounty) return;
+  $('#bountyText').textContent = 'Slay '+bounty.need+' '+bounty.label+' slimes';
+  $('#bountyProg').textContent = bounty.have+'/'+bounty.need+' · Reward '+bounty.reward+'c + 1 SP';
+}
+
+/* ---------- king banner ---------- */
+function scanKings(){
+  if (!started) return;
+  for (const s of slimes.values())
+    if (s.kind==='king' && !seenKings.has(s.id)){ seenKings.add(s.id); showKingBanner(); }
+  for (const id of [...seenKings]) if (!slimes.has(id)) seenKings.delete(id);
+}
+function showKingBanner(){
+  const b = $('#kingBanner');
+  b.classList.remove('hidden'); b.classList.remove('show'); void b.offsetWidth; b.classList.add('show');
+  sfx.sting();
+  clearTimeout(b._h); b._h = setTimeout(()=>b.classList.add('hidden'), 2600);
+}
+
+/* ---------- tutorial hints (one at a time, in sequence) ---------- */
+function updateHint(){
+  const h = $('#hint');
+  if (!started || paused || !$('#forge').classList.contains('hidden')){ h.classList.add('hidden'); return; }
+  let txt = '';
+  if (!hintsSeen.slash) txt = 'DRAG TO SLASH!';
+  else if (!hintsSeen.spin) txt = 'CLICK / TAP — SPIN SLASH';
+  else if (!hintsSeen.sphere && (me.level>=2 || me.sp>0)) txt = 'F — OPEN THE SPHERE GRID';
+  if (!txt){ h.classList.add('hidden'); return; }
+  h.textContent = txt; h.classList.remove('hidden');
+}
+
+/* ---------- pause ---------- */
+function togglePause(force){
+  if (!started) return;
+  paused = (force!==undefined) ? !!force : !paused;
+  $('#pauseMenu').classList.toggle('hidden', !paused);
+  updateHint();
+}
+function setMuted(v){
+  muted = !!v; sfx.muted = muted;
+  $('#soundBtn').textContent = 'SOUND: '+(muted ? 'OFF' : 'ON');
+}
+function resetRun(){
+  me.level=1; me.xp=0; me.coins=0; me.kills=0; me.sp=0; me.weapon=1;
+  unlocked.clear(); recalc();
+  combo=0; comboUntil=0; updateComboBadge(false);
+  if (scores[me.id]) scores[me.id].kills = 0;
+  hintsSeen = { slash:false, spin:false, sphere:false };
+  try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
+  rollBounty();
+  buildRack(); buildActives(); buildSphere(); refreshHUD(); updateHint();
+  togglePause(false);
+  toast('Fresh run — good luck, slayer!');
+}
+
+/* ---------- persistence ---------- */
+function saveGame(){
+  if (!started) return;
+  try{
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      level:me.level, xp:me.xp, coins:me.coins, kills:me.kills, sp:me.sp,
+      unlocked:[...unlocked], weapon:me.weapon, name:me.name, muted, hintsSeen
+    }));
+  }catch(e){}
+}
+function loadGame(){
+  let d = null;
+  try{ d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); }catch(e){}
+  if (!d) return;
+  me.level = Math.max(1, d.level|0 || 1);
+  me.xp = Math.max(0, d.xp|0); me.coins = Math.max(0, d.coins|0);
+  me.kills = Math.max(0, d.kills|0); me.sp = Math.max(0, d.sp|0);
+  if (Array.isArray(d.unlocked)) for (const id of d.unlocked) if (NODES.some(n=>n.id===id)) unlocked.add(id);
+  recalc();
+  let wi = d.weapon|0;
+  if (!WEAPONS[wi] || me.level < WEAPONS[wi].unlock){
+    wi = 0;
+    for (let i=WEAPONS.length-1; i>=0; i--) if (me.level >= WEAPONS[i].unlock){ wi = i; break; }
+  }
+  me.weapon = wi;
+  if (d.name){ me.name = cleanName(d.name); $('#nameIn').value = me.name; }
+  if (d.hintsSeen) hintsSeen = { slash:!!d.hintsSeen.slash, spin:!!d.hintsSeen.spin, sphere:!!d.hintsSeen.sphere };
+  setMuted(!!d.muted);
+}
+
 /* ============================================================ minimap */
 function drawMinimap(){
   const c = $('#minimap'); if (!c || !started) return;
@@ -893,6 +1151,10 @@ $('#shareBtn').onclick = async ()=>{
   catch(e){ toast('Copy this page address and send it to friends!'); }
   if (navigator.share){ try{ await navigator.share({title:'Slime Slash!', url}); }catch(e){} }
 };
+$('#pauseBtn').onclick = ()=>togglePause();
+$('#resumeBtn').onclick = ()=>togglePause(false);
+$('#soundBtn').onclick = ()=>{ setMuted(!muted); saveGame(); };
+$('#restartBtn').onclick = ()=>resetRun();
 
 /* ============================================================ SVG slimes (hand-drawn vector sprites) */
 const SLIME_IMGS = {};
@@ -1077,7 +1339,7 @@ function frame(now){
   requestAnimationFrame(frame);
   if (now - lastFrameAt < 15.9) return;              // hard cap: 60 FPS
   lastFrameAt = now;
-  const dt=Math.min(50, now-lastT); lastT=now;
+  const dt = paused ? 0 : Math.min(50, now-lastT); lastT=now;   // pause freezes local dt only; world/netcode keep running
   ctx.setTransform(DPR,0,0,DPR,0,0);
 
   // remote slime interpolation
@@ -1085,7 +1347,7 @@ function frame(now){
     if (!isHost && s.tx!==undefined){ s.x += (s.tx-s.x)*.35; s.y += (s.ty-s.y)*.35; s.squish=Math.max(0,s.squish-dt/160); s.flash=Math.max(0,s.flash-dt/120); }
   }
   if (isHost && started) hostTick(now,dt);
-  if (started) localHitCheck(now);
+  if (started && !paused) localHitCheck(now);
 
   // camera eases after the sword — push toward an edge to travel the world
   {
@@ -1118,8 +1380,38 @@ function frame(now){
     p.x += (p.tx-p.x)*.4; p.y += (p.ty-p.y)*.4;
     drawSword(NX(p.x),NY(p.y),p.angle,p.weapon,p.color,p.name,false,now,p.spinning,p.ext||0);
   }
-  // my sword on top
-  if (started || true){ const bl = bladeAt(now); drawSword(NX(me.x),NY(me.y),bl.ang,me.weapon,me.color, started?me.name:'', true, now, now<me.spinUntil, bl.ext); }
+  // my sword on top, with a fading slash trail recorded while an attack is live
+  {
+    const bl = bladeAt(now);
+    if (started){
+      const spinningNow = now < me.spinUntil;
+      const attacking = spinningNow
+        || (myWeapon().motion==='swing' && me.swingT0 && now-me.swingT0<190)
+        || (myWeapon().motion==='stab'  && me.stabT0  && now-me.stabT0<150);
+      if (attacking){
+        const ang = spinningNow ? (now/38)%(Math.PI*2) : bl.ang;
+        const reach = myReach() * (spinningNow?1.15:1) * (1 + bl.ext);
+        myTrail.push({ x: me.x + Math.cos(ang)*reach, y: me.y + Math.sin(ang)*reach, t: now });
+        if (myTrail.length > 14) myTrail.splice(0, myTrail.length-14);
+      }
+      myTrail = myTrail.filter(p => now - p.t < 140);
+      if (myTrail.length > 1){
+        ctx.save(); ctx.lineCap='round'; ctx.lineJoin='round';
+        for (let i=1; i<myTrail.length; i++){
+          const p0 = myTrail[i-1], p1 = myTrail[i];
+          const a = 1 - (now - p1.t)/140;
+          ctx.strokeStyle = myWeapon().color; ctx.globalAlpha = .45*a;
+          ctx.lineWidth = 2 + 11*a;
+          ctx.beginPath(); ctx.moveTo(NX(p0.x), NY(p0.y)); ctx.lineTo(NX(p1.x), NY(p1.y)); ctx.stroke();
+          ctx.strokeStyle = '#ffffff'; ctx.globalAlpha = .5*a;
+          ctx.lineWidth = (2 + 11*a)*.45;
+          ctx.beginPath(); ctx.moveTo(NX(p0.x), NY(p0.y)); ctx.lineTo(NX(p1.x), NY(p1.y)); ctx.stroke();
+        }
+        ctx.restore(); ctx.globalAlpha = 1;
+      }
+    }
+    drawSword(NX(me.x),NY(me.y),bl.ang,me.weapon,me.color, started?me.name:'', true, now, now<me.spinUntil, bl.ext);
+  }
 
   // scoreboard refresh (cheap, 2/s)
   if (started && now-(frame._b||0)>500){ frame._b=now; refreshHUD(); refreshPeers(); }
@@ -1136,6 +1428,7 @@ setInterval(()=>{ if(!started){ // ambient wander on title
 // ONE single world for everyone — fixed Trystero room id under the hood, never shown to players.
 const WORLD_ID = 'slime-world-1';
 $('#nameIn').value = 'Knight-' + Math.floor(rand(10,99));
+loadGame();
 $('#playBtn').onclick = ()=>{
   me.name = cleanName($('#nameIn').value);
   scores[me.id]={name:me.name,kills:0};
@@ -1143,6 +1436,8 @@ $('#playBtn').onclick = ()=>{
   $('#hud').classList.remove('hidden');
   started=true;
   buildRack(); refreshHUD(); refreshPeers();
+  if (!bounty) rollBounty();
+  updateHint();
   try { joinWorld(WORLD_ID); }
   catch(e){ toast('Multiplayer failed to start — playing solo. ('+e.message+')', 4000); isHost=true; hostId=me.id; if(slimes.size===0) for(let i=0;i<30;i++) spawnSlime(); }
   toast('Slash the slimes! One world — everyone with the link is in it.', 2600);
