@@ -28,6 +28,9 @@
   #hpText { font-size:12px; font-weight:800; color:#c0392b; line-height:1.1; }
   #hpTrack { width:130px; height:12px; background:#e8c9c9; border:2px solid #5b3a1e; border-radius:99px; overflow:hidden; }
   #hpFill { height:100%; width:100%; background:linear-gradient(90deg,#ff5f6d,#e5484d); transition:width .25s; }
+  #mpText { font-size:12px; font-weight:800; color:#2255aa; line-height:1.1; }
+  #mpTrack { width:130px; height:12px; background:#c9d8e8; border:2px solid #5b3a1e; border-radius:99px; overflow:hidden; }
+  #mpFill { height:100%; width:100%; background:linear-gradient(90deg,#57b6ff,#2e7de1); transition:width .25s; }
   #boardBadge { top:74px; right:14px; font-size:14px; padding:8px 14px; border-radius:22px; flex-direction:column; align-items:flex-start; gap:2px; max-width:210px; }
   #boardBadge b { font-size:15px; }
   #boardBadge .row { display:flex; gap:6px; white-space:nowrap; }
@@ -100,7 +103,7 @@
 
   /* ---------- polish pass: bounty / combo / hint / king banner / pause ---------- */
   #bountyBadge {
-    position:fixed; z-index:20; top:178px; left:14px; max-width:232px;
+    position:fixed; z-index:20; top:216px; left:14px; max-width:232px;
     background:#fff8e7; border:4px solid #5b3a1e; border-radius:22px; padding:8px 14px;
     color:#5b3a1e; box-shadow:0 5px 0 #5b3a1e;
   }
@@ -179,9 +182,11 @@
     #lvlBadge { top:50px; left:8px; font-size:12.5px; padding:4px 10px; border-width:3px; border-radius:16px; box-shadow:0 3px 0 #5b3a1e; }
     #xpTrack { width:84px; height:9px; }
     #peerBadge { top:max(8px, env(safe-area-inset-top)); right:8px; font-size:12.5px; padding:4px 10px; border-width:3px; box-shadow:0 3px 0 #5b3a1e; }
-    #bountyBadge { top:120px; left:8px; max-width:158px; padding:5px 9px; border-width:3px; border-radius:16px; box-shadow:0 3px 0 #5b3a1e; pointer-events:none; }
+    #bountyBadge { top:142px; left:8px; max-width:158px; padding:5px 9px; border-width:3px; border-radius:16px; box-shadow:0 3px 0 #5b3a1e; pointer-events:none; }
     #hpTrack { width:84px; height:9px; }
     #hpText { font-size:10.5px; }
+    #mpTrack { width:84px; height:9px; }
+    #mpText { font-size:10.5px; }
     #items { left:8px; bottom:158px; gap:8px; }
     .ibtn { width:44px; height:44px; }
     #interactPrompt { bottom:158px; font-size:14px; padding:8px 18px; }
@@ -193,7 +198,9 @@
     #pauseBtn { left:auto; right:8px; top:94px; bottom:auto; width:36px; height:36px; font-size:11px; border-width:3px; box-shadow:0 3px 0 #5b3a1e; }
     #rack { bottom:max(8px, env(safe-area-inset-bottom)); gap:5px; width:100vw; }
     #forgeBtn { bottom:78px; right:8px; font-size:13px; padding:8px 12px; border-width:3px; border-radius:16px; box-shadow:0 4px 0 #5b3a1e; }
-    #actives { bottom:134px; right:8px; gap:8px; }
+    #actives { bottom:178px; right:8px; gap:8px; }
+    #wSkillBtn { width:96px; font-size:10px; }
+    #treeBtn { bottom:124px; right:8px; font-size:13px; padding:8px 12px; border-width:3px; border-radius:16px; box-shadow:0 4px 0 #5b3a1e; }
     .abtn { width:48px; height:48px; font-size:10px; border-width:3px; }
     #comboBadge { right:auto; left:8px; bottom:326px; font-size:15px; padding:5px 12px; border-width:3px; box-shadow:0 3px 0 #5b3a1e; }
     #hint { bottom:160px; font-size:13px; max-width:72vw; white-space:normal; text-align:center; padding:6px 12px; }
@@ -307,7 +314,7 @@
   }
 
   /* ---------- active skill buttons ---------- */
-  #actives { position:fixed; right:14px; bottom:92px; z-index:21; display:flex; flex-direction:column; gap:10px; }
+  #actives { position:fixed; right:14px; bottom:140px; z-index:21; display:flex; flex-direction:column; gap:10px; }
   .abtn {
     position:relative; width:58px; height:58px; border-radius:50%; cursor:pointer; overflow:hidden;
     border:3.5px solid #5b3a1e; background:#fff8e7; color:#5b3a1e;
@@ -317,6 +324,53 @@
   .abtn .k { font-size:9px; color:#97754a; }
   .abtn .cdov { position:absolute; left:0; right:0; bottom:0; background:rgba(30,30,60,.45); pointer-events:none; }
   .abtn:active { transform:translateY(3px); box-shadow:0 1px 0 #5b3a1e; }
+
+  /* ---------- weapon skill button + skill tree ---------- */
+  #treeBtn {
+    position:fixed; z-index:21; bottom:76px; right:14px; cursor:pointer;
+    background:#8e6bc8; border:4px solid #5b3a1e; border-radius:20px; color:#fff;
+    font-family:inherit; font-weight:800; font-size:18px; padding:12px 18px;
+    box-shadow:0 6px 0 #5b3a1e; text-shadow:0 2px 0 rgba(0,0,0,.25);
+  }
+  #treeBtn:active { transform:translateY(4px); box-shadow:0 2px 0 #5b3a1e; }
+  #wSkillBtn {
+    position:relative; width:118px; padding:8px 6px; border-radius:16px; cursor:pointer; overflow:hidden;
+    border:3.5px solid #5b3a1e; background:#fff8e7; color:#5b3a1e;
+    font-family:inherit; font-weight:900; font-size:11.5px; box-shadow:0 4px 0 #5b3a1e;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; line-height:1.15;
+  }
+  #wSkillBtn .k { font-size:9.5px; color:#97754a; }
+  #wSkillBtn .cdov { position:absolute; left:0; right:0; bottom:0; background:rgba(30,30,60,.45); pointer-events:none; }
+  #wSkillBtn.off { filter:grayscale(.85); opacity:.6; }
+  #wSkillBtn:active { transform:translateY(3px); box-shadow:0 1px 0 #5b3a1e; }
+  .trow {
+    display:flex; align-items:center; gap:10px; background:#fff; border:3px solid #5b3a1e;
+    border-radius:16px; padding:8px 10px; margin-bottom:8px; text-align:left;
+  }
+  .trow.notowned { filter:grayscale(.7); opacity:.75; }
+  .trow img { width:84px; height:40px; object-fit:contain; flex:none; }
+  .tmain { flex:1; min-width:0; }
+  .tname { font-weight:900; color:#5b3a1e; font-size:15px; }
+  .tname .tnot { display:block; font-size:11px; color:#c0392b; font-weight:800; }
+  .tchips { display:flex; align-items:center; gap:5px; margin-top:5px; flex-wrap:wrap; }
+  .tchip {
+    font-family:inherit; font-weight:800; font-size:11px; cursor:pointer;
+    background:#e8e2d2; color:#5b3a1e; border:3px solid #b8a888; border-radius:12px; padding:6px 8px;
+  }
+  .tchip.owned { color:#fff; border-color:#5b3a1e; text-shadow:0 1px 0 rgba(0,0,0,.3); }
+  .tchip.avail { border-color:#ffb52e; animation:nodePulse 1.2s ease-in-out infinite; }
+  .tchip.sel { outline:3px solid #5b3a1e; }
+  .tlink { flex:0 0 8px; height:3px; background:#b8a888; border-radius:2px; }
+  .tcard { margin-top:2px; background:#fff; border:3px solid #5b3a1e; border-radius:16px; padding:10px 12px; text-align:left; }
+  .tcard b { color:#5b3a1e; font-size:16px; display:block; }
+  .tcard .ntype { font-size:11px; font-weight:900; letter-spacing:1px; }
+  .tcard p { color:#7a5c33; font-weight:700; font-size:13px; margin:3px 0 8px; line-height:1.35; }
+  .tcard button {
+    font-family:inherit; font-weight:800; font-size:15px; cursor:pointer; width:100%;
+    background:#ffd94d; border:3px solid #5b3a1e; border-radius:12px; padding:8px; color:#5b3a1e; box-shadow:0 3px 0 #5b3a1e;
+  }
+  .tcard button:active { transform:translateY(2px); box-shadow:0 1px 0 #5b3a1e; }
+  .tcard button:disabled { filter:grayscale(1); opacity:.55; cursor:default; }
 
   /* ---------- title screen ---------- */
   #title {
@@ -382,6 +436,8 @@
     <div id="xpTrack"><div id="xpFill"></div></div>
     <div id="hpText">HP 100</div>
     <div id="hpTrack"><div id="hpFill"></div></div>
+    <div id="mpText">MP 100</div>
+    <div id="mpTrack"><div id="mpFill"></div></div>
   </div>
   <div class="badge" id="peerBadge"><span class="dot"></span><span id="peers">Solo</span></div>
   <div class="badge" id="boardBadge"><b>TOP SLAYERS</b><div id="board"></div></div>
@@ -400,9 +456,10 @@
   </div>
   <button id="interactPrompt" class="hidden">OPEN BANK</button>
   <div id="bossBar" class="hidden"><b>SLIME EMPEROR</b><div id="bossTrack"><div id="bossFill"></div></div></div>
-  <div id="actives"></div>
+  <div id="actives"><button id="wSkillBtn"><span id="wsName">SKILL LOCKED</span><span class="k" id="wsSub">V · SKILLS tree (K)</span><div class="cdov" id="wsCdov" style="height:0%"></div></button></div>
   <button id="shareBtn">INVITE LINK</button>
   <button id="forgeBtn">SPHERE</button>
+  <button id="treeBtn">SKILLS</button>
   <div id="comboBadge" class="hidden">x3 COMBO</div>
   <button id="pauseBtn" title="Pause">| |</button>
 
@@ -434,7 +491,7 @@
     <button class="pbtn main" id="resumeBtn">RESUME</button>
     <button class="pbtn" id="soundBtn">SOUND: ON</button>
     <button class="pbtn" id="restartBtn">RESET SAVE</button>
-    <div class="pcontrols">Drag to slash · Click / Tap or SPACE = Spin Slash · Keys 1-6 = weapons · F = Sphere Grid · Q / E / R / T = skills · Z / X / C = items · B = bank / shop · Esc = pause</div>
+    <div class="pcontrols">Drag to slash · Click / Tap or SPACE = Spin Slash · Keys 1-6 = weapons · F = Sphere Grid · K = weapon skill tree · V = weapon skill · Q / E / R / T = skills · Z / X / C = items · B = bank / shop / hospital · Esc = pause</div>
   </div>
 </div>
 <div id="bankPanel" class="hidden panelWrap">
@@ -454,6 +511,29 @@
     <div class="bankLine">Carried: <b id="shopCoins">0</b> coins</div>
     <div id="shopRows"></div>
     <button class="pbtn" id="shopCloseBtn">CLOSE</button>
+  </div>
+</div>
+<div id="hospitalPanel" class="hidden panelWrap">
+  <div class="pauseCard" style="width:min(94vw,410px)">
+    <h2>HOSPITAL</h2>
+    <div class="bankLine">HP: <b id="hospHp">100 / 100</b></div>
+    <div class="bankLine">Carried: <b id="hospCoins">0</b> coins</div>
+    <div id="hospRows"></div>
+    <button class="pbtn" id="hospCloseBtn">CLOSE</button>
+  </div>
+</div>
+<div id="treePanel" class="hidden panelWrap">
+  <div class="pauseCard" style="width:min(94vw,560px);max-height:88dvh;overflow-y:auto">
+    <h2>WEAPON SKILLS</h2>
+    <div class="bankLine" style="text-align:center">Sphere Points: <b id="treeSp">0</b></div>
+    <div id="treeRows"></div>
+    <div id="treeDetail" class="hidden tcard">
+      <span class="ntype" id="tdType"></span>
+      <b id="tdName"></b>
+      <p id="tdDesc"></p>
+      <button id="tdBtn"></button>
+    </div>
+    <button class="pbtn" id="treeCloseBtn">CLOSE</button>
   </div>
 </div>
 
@@ -523,6 +603,54 @@ const WEAPONS = [
 ];
 const WEAPON_IMGS = {};
 for (const w of WEAPONS){ const im=new Image(); im.src='assets/weapons/'+w.id+'.png'; WEAPON_IMGS[w.id]=im; }
+
+/* ============================================================ weapon skill trees
+   Every weapon has its own 3-node path (spent with the SAME Sphere Points and
+   stored in the SAME `unlocked` set as the Sphere Grid). Nodes 1-2 are stats
+   that apply ONLY while that weapon is equipped; node 3 is its V-key active. */
+const WTREES = {
+  dagger: [
+    { id:'w01', name:'Keen Edge',      desc:'Crit damage +30% with the Dagger.', cost:1, kind:'stat' },
+    { id:'w02', name:'Rapid Hands',    desc:'Attack cooldown -10% with the Dagger.', cost:1, kind:'stat' },
+    { id:'w03', name:'Shadow Stab',    desc:'ACTIVE SKILL (key V, 25 MP): dash forward, cutting everything in your path for 3x damage.', cost:2, kind:'active' },
+  ],
+  sword: [
+    { id:'w11', name:'Heavy Blade',    desc:'+3 damage with the Sword.', cost:1, kind:'stat' },
+    { id:'w12', name:'Sweeping Arc',   desc:'Splash radius +0.04 with the Sword.', cost:1, kind:'stat' },
+    { id:'w13', name:'Whirlwind',      desc:'ACTIVE SKILL (key V, 30 MP): spin and hit everything around you for 1.6x damage.', cost:2, kind:'active' },
+  ],
+  katana: [
+    { id:'w21', name:'Long Blade',     desc:'Reach +12% with the Katana.', cost:1, kind:'stat' },
+    { id:'w22', name:'Keen Eye',       desc:'Crit chance +10% with the Katana.', cost:1, kind:'stat' },
+    { id:'w23', name:'Iaido Wave',     desc:'ACTIVE SKILL (key V, 30 MP): a fast, long crescent wave for 2.2x damage.', cost:2, kind:'active' },
+  ],
+  spear: [
+    { id:'w31', name:'Piercing Point', desc:'Crit damage +30% with the Spear.', cost:1, kind:'stat' },
+    { id:'w32', name:'Long Haft',      desc:'Reach +10% with the Spear.', cost:1, kind:'stat' },
+    { id:'w33', name:'Throw Spear',    desc:'ACTIVE SKILL (key V, 35 MP): hurl your spear — it pierces every slime in a line for 2.5x damage.', cost:2, kind:'active' },
+  ],
+  great: [
+    { id:'w41', name:'Wider Cleave',   desc:'Splash radius +0.04 with the Greatsword.', cost:1, kind:'stat' },
+    { id:'w42', name:'Heavy Blade',    desc:'+6 damage with the Greatsword.', cost:1, kind:'stat' },
+    { id:'w43', name:'Earthshaker',    desc:'ACTIVE SKILL (key V, 40 MP): slam the ground — 2.2x damage to everything near you.', cost:2, kind:'active' },
+  ],
+  hammer: [
+    { id:'w51', name:'Heavy Head',     desc:'+8 damage with the Warhammer.', cost:1, kind:'stat' },
+    { id:'w52', name:'Shockwave',      desc:'Splash radius +0.03 with the Warhammer.', cost:1, kind:'stat' },
+    { id:'w53', name:'Thunder Smash',  desc:'ACTIVE SKILL (key V, 40 MP): 3x damage to everything at your sword tip, in a burst of lightning.', cost:2, kind:'active' },
+  ],
+};
+const WTREE_IDS = new Set(Object.values(WTREES).flat().map(n=>n.id));
+const WSKILLS = [   // per weapon index: the V-key active granted by tree node 3
+  { name:'SHADOW STAB',   mp:25, cd:8000,  node:'w03' },
+  { name:'WHIRLWIND',     mp:30, cd:10000, node:'w13' },
+  { name:'IAIDO WAVE',    mp:30, cd:9000,  node:'w23' },
+  { name:'THROW SPEAR',   mp:35, cd:7000,  node:'w33' },
+  { name:'EARTHSHAKER',   mp:40, cd:12000, node:'w43' },
+  { name:'THUNDER SMASH', mp:40, cd:12000, node:'w53' },
+];
+// tree bonus helper: true only while the matching weapon is equipped
+const wHas = (wi, nid) => me.weapon===wi && unlocked.has(nid);
 const weaponSVG = (w,locked)=> locked
  ? `<svg viewBox="0 0 40 40"><path d="M13 18v-3a7 7 0 0114 0v3h3v14H10V18h3zm7 4a3.2 3.2 0 00-2 5.4V30h4v-2.6a3.2 3.2 0 00-2-5.4z" fill="#8d6e63"/></svg>`
  : `<img src="assets/weapons/${w.id}.png" alt="${w.name}" style="width:34px;height:34px;object-fit:contain;transform:rotate(-38deg)">`;
@@ -542,8 +670,9 @@ const weaponSVG_unused = (w,locked)=>`
 
 /* ============================================================ state */
 const cv = $('#game'), ctx = cv.getContext('2d');
+ctx.imageSmoothingEnabled = false;   // pixel-art sprites stay crisp
 let W=0,H=0,DPR=1;
-function resize(){ DPR=Math.min(2,devicePixelRatio||1); W=innerWidth; H=innerHeight; cv.width=W*DPR; cv.height=H*DPR; cv.style.width=W+'px'; cv.style.height=H+'px'; }
+function resize(){ DPR=Math.min(2,devicePixelRatio||1); W=innerWidth; H=innerHeight; cv.width=W*DPR; cv.height=H*DPR; cv.style.width=W+'px'; cv.style.height=H+'px'; ctx.imageSmoothingEnabled=false; }
 addEventListener('resize',resize); resize();
 /* The world is WORLD x WORLD units — much bigger than one screen.
    1 unit ≈ one screenful. The camera (cam = top-left, world coords) follows your sword. */
@@ -560,6 +689,7 @@ const me = {
   sp:0, actCd:{ wave:0, meteor:0, frenzy:0, goldrush:0 }, frenzyUntil:0, goldRushUntil:0,
   // survival + economy (HP is LOCAL only — never networked)
   hp:100, maxHp:100, invulnUntil:0, lastDmgAt:0, shieldUntil:0,
+  mp:100, maxMp:100, wSkillCdUntil:0,   // MP is LOCAL only too — never networked, never persisted (loads full, like HP)
   banked:0, items:{ potion:0, bomb:0, shield:0 }, purse:false, owned:new Set([0]),
   stabT0:0, stabAng:0,
   ptrSpeedPx:0,   // latest pointer speed (px/s, max of recent events, decayed per frame) — an idle blade must not cut
@@ -599,6 +729,7 @@ let started=false, room=null, sendPos=null, sendHit=null, sendWorld=null, sendKi
 const CONTACT_DMG = { baby:4, dart:4, mid:6, gold:2, splitter:7, big:9, tank:13, king:16, boss:20 };
 const BANK_POS = { x: WORLD/2 - .42, y: WORLD/2 - .34 };
 const SHOP_POS = { x: WORLD/2 + .42, y: WORLD/2 - .34 };
+const HOSPITAL_POS = { x: WORLD/2, y: WORLD/2 + .44 };
 let bullets = [];               // boss bullet-hell orbs (client-local sim, never networked)
 let spiralEmitters = [];
 let pendingVolleys = [];   // boss 'spread': timed 5-way volleys (client-local)        // active spiral bullet emitters (client-local)
@@ -606,7 +737,7 @@ let bossSpawnAt = Infinity;     // host: next SLIME EMPEROR spawn time
 let bossFireAt = 0;             // host: next bullet-pattern volley
 let bossPatternIdx = 0;         // host: pattern rotation ring -> fan -> spiral
 let dmgFlashAt = 0;             // last time the player took damage (red vignette decay)
-let nearBuilding = null;        // 'bank' | 'shop' | null — drives the interact prompt
+let nearBuilding = null;        // 'bank' | 'shop' | 'hospital' | null — drives the interact prompt
 const seenBosses = new Set();   // boss ids already announced by the banner
 let isHost=false, hostId=null, lastWorldAt=0, scores = {}; // id -> {name,kills}
 const hitClaimsAt = new Map(); // host-side rate limiting
@@ -846,11 +977,22 @@ function bossEvent(d){
 /* ============================================================ combat */
 function myWeapon(){ return WEAPONS[me.weapon]; }
 function myDamage(){
-  const base = myWeapon().dmg + S.dmg + (me.level-1);
+  let base = myWeapon().dmg + S.dmg + (me.level-1);
+  if (wHas(1,'w11')) base += 3;   // Sword tree: Heavy Blade
+  if (wHas(4,'w42')) base += 6;   // Greatsword tree: Heavy Blade
+  if (wHas(5,'w51')) base += 8;   // Warhammer tree: Heavy Head
   return (combo>=15 && performance.now()<comboUntil) ? base*1.15 : base;   // ON FIRE combo bonus
 }
-function myReach(){ return myWeapon().reach * (1 + S.reach); }
-function myCd(){ return Math.max(50, myWeapon().cd * (1 + S.cd)) * (performance.now()<me.frenzyUntil ? .55 : 1); }
+function myReach(){
+  let r = myWeapon().reach;
+  if (wHas(2,'w21')) r *= 1.12;   // Katana tree: Long Blade
+  if (wHas(3,'w32')) r *= 1.10;   // Spear tree: Long Haft
+  return r * (1 + S.reach);
+}
+function myCd(){
+  const wCd = myWeapon().cd * (wHas(0,'w02') ? .90 : 1);   // Dagger tree: Rapid Hands
+  return Math.max(50, wCd * (1 + S.cd)) * (performance.now()<me.frenzyUntil ? .55 : 1);
+}
 
 // The blade only cuts while it is being WIELDED: spinning, mid-swing-arc
 // (same 190ms window swordAngleAt animates), mid-stab-lunge (same 150ms
@@ -898,8 +1040,13 @@ function localHitCheck(now){
       if (now < me.frenzyUntil) dmg *= 1.5;
       if (s.kind==='king') dmg *= (1 + S.kingBane);
       if (S.exec && s.hp < s.max*.35) dmg *= (1 + S.exec);   // Executioner: finish wounded slimes harder
+      let critCh = myWeapon().crit + S.crit;
+      if (wHas(2,'w22')) critCh += .10;   // Katana tree: Keen Eye
+      let critMul = myWeapon().critDmg;
+      if (wHas(0,'w01')) critMul += .30;  // Dagger tree: Keen Edge
+      if (wHas(3,'w31')) critMul += .30;  // Spear tree: Piercing Point
       let crit = false;
-      if (Math.random() < myWeapon().crit + S.crit){ dmg *= myWeapon().critDmg; crit = true; }
+      if (Math.random() < critCh){ dmg *= critMul; crit = true; }
       doHit(s, Math.round(dmg), { crit });
     }
   }
@@ -913,7 +1060,11 @@ function doHit(s, dmg, opts={}){
   addFloat(s.x+rand(-.01,.01), s.y-s.r-.015, (opts.crit?'CRIT ':'')+'-'+dmg, opts.crit?'#ffd94d':'#fff', { size:fsize });
   if (isHost) hostApplyHit(s.id, dmg, me.id);
   else if (sendHit) sendHit({ id:s.id, d:dmg });
-  const spR = Math.max(S.splash, myWeapon().splash||0);   // swing weapons splash natively; passive adds more
+  let treeSplash = 0;
+  if (wHas(1,'w12')) treeSplash += .04;   // Sword tree: Sweeping Arc
+  if (wHas(4,'w41')) treeSplash += .04;   // Greatsword tree: Wider Cleave
+  if (wHas(5,'w52')) treeSplash += .03;   // Warhammer tree: Shockwave
+  const spR = Math.max(S.splash, (myWeapon().splash||0) + treeSplash);   // swing weapons splash natively; passive + tree add more
   if (!opts.noSplash && spR>0){
     for (const o of slimes.values())
       if (o!==s && dist2(o.x,o.y,s.x,s.y) < spR*spR)
@@ -965,6 +1116,7 @@ function onKillFx(f){
     let cg = Math.round(f.coins * (1 + S.coin));
     if (now < me.goldRushUntil) cg *= 2;   // GOLD RUSH: double coins
     me.coins += cg; me.kills++;
+    me.mp = Math.min(me.maxMp, me.mp + 2);   // +2 MP per kill (own kills only)
     gainXp(f.xp); sfx.coin();
     addFloat(f.x, f.y-.04, '+'+cg+' coins', '#ffd94d');
     if (f.kind==='king'){ me.sp++; bubble('KING SLAYER! +1 SP', me.x, me.y); setTimeout(()=>toast('KING BONUS: +1 Sphere Point!'), 600); }
@@ -1104,20 +1256,59 @@ function buyItem(id){
   sfx.buy();
   buildShopRows(); refreshHUD(); saveGame();
 }
+/* ============================================================ hospital: pay coins, get healed */
+function openHospital(){ $('#hospitalPanel').classList.remove('hidden'); buildHospitalRows(); }
+function fullHealPrice(){ return Math.max(15, Math.ceil((me.maxHp - me.hp) * .8)); }
+function buildHospitalRows(){
+  $('#hospHp').textContent = Math.max(0, Math.ceil(me.hp)) + ' / ' + me.maxHp;
+  $('#hospCoins').textContent = me.coins;
+  const wrap = $('#hospRows'); wrap.innerHTML = '';
+  const rows = [
+    { id:'patch', name:'PATCH UP',       price:30,              desc:'Heal 40 HP' },
+    { id:'full',  name:'FULL TREATMENT', price:fullHealPrice(), desc:'Heal to full' },
+  ];
+  for (const r of rows){
+    const row = document.createElement('div'); row.className = 'shopRow';
+    row.innerHTML = `<div class="info"><b>${r.name} — ${r.price}c</b><span>${r.desc}</span></div>`;
+    const btn = document.createElement('button');
+    btn.textContent = 'HEAL';
+    btn.disabled = me.hp >= me.maxHp || me.coins < r.price;   // carried coins only, like the shop
+    btn.onclick = ()=>buyHeal(r.id);
+    row.appendChild(btn);
+    wrap.appendChild(row);
+  }
+}
+function buyHeal(id){
+  const price = id==='full' ? fullHealPrice() : 30;
+  if (me.hp >= me.maxHp || me.coins < price) return;
+  me.coins -= price;
+  me.hp = id==='full' ? me.maxHp : Math.min(me.maxHp, me.hp + 40);
+  sfx.buy();
+  beep(660,.1,'sine',.1,330); setTimeout(()=>beep(880,.12,'sine',.09,220), 90);   // pleasant heal chime
+  for (let i=0;i<12;i++) particles.push({ x:me.x, y:me.y, vx:rand(-.06,.06), vy:rand(-.14,-.03), life:1, color:'#57d93d', r:rand(2,5) });
+  capParticles();
+  addFloat(me.x, me.y-.06, 'HEALED!', '#57d93d');
+  buildHospitalRows(); refreshHUD(); saveGame();
+}
 function updateInteract(){
   const pr = $('#interactPrompt');
   if (!started){ pr.classList.add('hidden'); nearBuilding = null; return; }
   const db = Math.sqrt(dist2(me.x,me.y,BANK_POS.x,BANK_POS.y));
   const ds = Math.sqrt(dist2(me.x,me.y,SHOP_POS.x,SHOP_POS.y));
-  nearBuilding = db < .17 ? 'bank' : ds < .17 ? 'shop' : null;
-  const panelOpen = !$('#bankPanel').classList.contains('hidden') || !$('#shopPanel').classList.contains('hidden');
+  const dh = Math.sqrt(dist2(me.x,me.y,HOSPITAL_POS.x,HOSPITAL_POS.y));
+  let nd = db, nb = 'bank';   // nearest building wins the prompt
+  if (ds < nd){ nd = ds; nb = 'shop'; }
+  if (dh < nd){ nd = dh; nb = 'hospital'; }
+  nearBuilding = nd < .17 ? nb : null;
+  const panelOpen = !$('#bankPanel').classList.contains('hidden') || !$('#shopPanel').classList.contains('hidden') || !$('#hospitalPanel').classList.contains('hidden');
   if (nearBuilding && !panelOpen){
-    pr.textContent = nearBuilding==='bank' ? 'OPEN BANK' : 'OPEN SHOP';
+    pr.textContent = nearBuilding==='bank' ? 'OPEN BANK' : nearBuilding==='shop' ? 'OPEN SHOP' : 'OPEN HOSPITAL';
     pr.classList.remove('hidden');
   } else pr.classList.add('hidden');
   // walk away (> .3 units) and the panel closes itself
   if (!$('#bankPanel').classList.contains('hidden') && db > .3) $('#bankPanel').classList.add('hidden');
   if (!$('#shopPanel').classList.contains('hidden') && ds > .3) $('#shopPanel').classList.add('hidden');
+  if (!$('#hospitalPanel').classList.contains('hidden') && dh > .3) $('#hospitalPanel').classList.add('hidden');
 }
 
 /* ============================================================ items */
@@ -1276,6 +1467,8 @@ addEventListener('pointercancel', ()=>{ downInfo = null; });
 addEventListener('touchmove', e=>{ e.preventDefault(); }, {passive:false});
 addEventListener('keydown', e=>{
   if (!started) return;
+  if (e.key==='Escape' && !$('#treePanel').classList.contains('hidden')){ toggleTree(false); return; }
+  if (e.key==='Escape' && !$('#hospitalPanel').classList.contains('hidden')){ $('#hospitalPanel').classList.add('hidden'); return; }
   if (e.key==='Escape' || e.key==='p' || e.key==='P'){ togglePause(); return; }
   const n = parseInt(e.key);
   if (n>=1 && n<=WEAPONS.length) equip(n-1);
@@ -1286,7 +1479,9 @@ addEventListener('keydown', e=>{
   if (lk==='e') castActive('meteor');
   if (lk==='r') castActive('frenzy');
   if (lk==='t') castActive('goldrush');
-  if (lk==='b'){ if (nearBuilding==='bank') openBank(); else if (nearBuilding==='shop') openShop(); }
+  if (lk==='b'){ if (nearBuilding==='bank') openBank(); else if (nearBuilding==='shop') openShop(); else if (nearBuilding==='hospital') openHospital(); }
+  if (lk==='v') castWeaponSkill();
+  if (lk==='k') toggleTree();
   if (lk==='z') useItem('potion');
   if (lk==='x') useItem('bomb');
   if (lk==='c') useItem('shield');
@@ -1309,6 +1504,9 @@ function refreshHUD(){
   // player HP (local only)
   $('#hpFill').style.width = clamp(me.hp/me.maxHp*100,0,100)+'%';
   $('#hpText').textContent = 'HP ' + Math.max(0, Math.ceil(me.hp));
+  // player MP (local only, mirrors the HP rows)
+  $('#mpFill').style.width = clamp(me.mp/me.maxMp*100,0,100)+'%';
+  $('#mpText').textContent = 'MP ' + Math.floor(me.mp);
   // SLIME EMPEROR boss bar — visible while a boss lives anywhere in the world
   const bossS = [...slimes.values()].find(s=>s.kind==='boss');
   if (bossS){ $('#bossBar').classList.remove('hidden'); $('#bossFill').style.width = clamp(bossS.hp/bossS.max*100,0,100)+'%'; }
@@ -1320,6 +1518,19 @@ function refreshHUD(){
     b.classList.toggle('empty', me.items[id]<=0);
   }
   if (!$('#bankPanel').classList.contains('hidden')) updateBankPanel();
+  if (!$('#hospitalPanel').classList.contains('hidden')){
+    $('#hospHp').textContent = Math.max(0, Math.ceil(me.hp)) + ' / ' + me.maxHp;
+    $('#hospCoins').textContent = me.coins;
+  }
+  if (!$('#treePanel').classList.contains('hidden')) $('#treeSp').textContent = me.sp;
+  // weapon skill button: the label follows the equipped weapon's tree active
+  const wsk = WSKILLS[me.weapon];
+  if (wsk){
+    const has = unlocked.has(wsk.node);
+    $('#wsName').textContent = has ? wsk.name : 'SKILL LOCKED';
+    $('#wsSub').textContent = has ? ('V · ' + wsk.mp + ' MP') : 'V · SKILLS tree (K)';
+    $('#wSkillBtn').classList.toggle('off', !has || me.mp < wsk.mp);
+  }
   // scoreboard — my own row always shows LIVE me.kills/me.name (local kills are
   // credited in a path that does not write into scores, so the table lagged)
   const sEntries = Object.entries(scores);
@@ -1360,7 +1571,7 @@ function buildRack(){
 function equip(i){
   const w=WEAPONS[i];
   if (!me.owned.has(i)){ toast('Buy the '+w.name+' at the SHOP — '+w.price+'c'); return; }
-  me.weapon=i; me.lastHitAt.clear(); buildRack(); beep(600,.06,'triangle',.08);
+  me.weapon=i; me.lastHitAt.clear(); buildRack(); beep(600,.06,'triangle',.08); refreshHUD();
   bubble(w.name.toUpperCase()+'!', me.x, me.y, 900);
 }
 function toggleForge(){
@@ -1575,7 +1786,7 @@ function checkZone(){
 /* ---------- tutorial hints (one at a time, in sequence) ---------- */
 function updateHint(){
   const h = $('#hint');
-  if (!started || paused || nearBuilding || !$('#forge').classList.contains('hidden')){ h.classList.add('hidden'); return; }
+  if (!started || paused || nearBuilding || !$('#forge').classList.contains('hidden') || !$('#treePanel').classList.contains('hidden')){ h.classList.add('hidden'); return; }
   let txt = '';
   if (!hintsSeen.slash) txt = 'DRAG TO SLASH!';
   else if (!hintsSeen.spin) txt = 'CLICK / TAP — SPIN SLASH';
@@ -1597,9 +1808,9 @@ function setMuted(v){
 }
 function resetRun(){
   me.level=1; me.xp=0; me.coins=0; me.kills=0; me.sp=0; me.weapon=0; me.owned=new Set([0]);
-  me.hp=me.maxHp; me.banked=0; me.items={ potion:0, bomb:0, shield:0 }; me.purse=false; me.shieldUntil=0;
-  $('#bankPanel').classList.add('hidden'); $('#shopPanel').classList.add('hidden');
-  unlocked.clear(); recalc();
+  me.hp=me.maxHp; me.mp=me.maxMp; me.wSkillCdUntil=0; me.banked=0; me.items={ potion:0, bomb:0, shield:0 }; me.purse=false; me.shieldUntil=0;
+  $('#bankPanel').classList.add('hidden'); $('#shopPanel').classList.add('hidden'); $('#hospitalPanel').classList.add('hidden'); $('#treePanel').classList.add('hidden');
+  unlocked.clear(); recalc();   // one shared set: Sphere nodes AND weapon-tree nodes both reset
   combo=0; comboUntil=0; updateComboBadge(false);
   if (scores[me.id]) scores[me.id].kills = 0;
   hintsSeen = { slash:false, spin:false, sphere:false };
@@ -1629,7 +1840,7 @@ function loadGame(){
   me.level = Math.max(1, d.level|0 || 1);
   me.xp = Math.max(0, d.xp|0); me.coins = Math.max(0, d.coins|0);
   me.kills = Math.max(0, d.kills|0); me.sp = Math.max(0, d.sp|0);
-  if (Array.isArray(d.unlocked)) for (const id of d.unlocked) if (NODES.some(n=>n.id===id)) unlocked.add(id);
+  if (Array.isArray(d.unlocked)) for (const id of d.unlocked) if (NODES.some(n=>n.id===id) || WTREE_IDS.has(id)) unlocked.add(id);
   recalc();
   if (Array.isArray(d.owned)) me.owned = new Set(d.owned.filter(i=>WEAPONS[i|0]).map(i=>i|0));
   else { // legacy save (pre-shop): keep every weapon your level had unlocked
@@ -1661,6 +1872,11 @@ function drawMinimap(){
   g.fillStyle = '#79c25f'; g.fillRect(0,0,c.width,c.height);
   g.strokeStyle = 'rgba(255,255,255,.8)'; g.lineWidth = 1.5;
   g.strokeRect(cam.x*S2, cam.y*S2, (W/UNIT())*S2, (H/UNIT())*S2);
+  // building markers: BANK gold, SHOP red, HOSPITAL white with a red centre dot
+  g.fillStyle = '#ffd94d'; g.fillRect(BANK_POS.x*S2-2.5, BANK_POS.y*S2-2.5, 5, 5);
+  g.fillStyle = '#e5484d'; g.fillRect(SHOP_POS.x*S2-2.5, SHOP_POS.y*S2-2.5, 5, 5);
+  g.fillStyle = '#ffffff'; g.fillRect(HOSPITAL_POS.x*S2-2.5, HOSPITAL_POS.y*S2-2.5, 5, 5);
+  g.fillStyle = '#e5484d'; g.beginPath(); g.arc(HOSPITAL_POS.x*S2, HOSPITAL_POS.y*S2, 1.4, 0, 7); g.fill();
   for (const s of slimes.values()){
     g.fillStyle = (s.kind==='king' || s.kind==='boss') ? '#ffd94d' : 'rgba(30,90,20,.55)';
     g.beginPath(); g.arc(s.x*S2, s.y*S2, s.kind==='boss'?6 : s.kind==='king'?4.5:2, 0, 7); g.fill();
@@ -1671,7 +1887,7 @@ function drawMinimap(){
 }
 
 /* ============================================================ active skills */
-let waves = [], meteors = [];
+let waves = [], meteors = [], shots = [];   // shots: thrown-spear projectiles (client-local, pierce)
 const ACTIVES = {
   wave:   { icon:'WAV', label:'WAVE',   key:'Q', cd:9000  },
   meteor: { icon:'MET', label:'METEOR', key:'E', cd:16000 },
@@ -1679,7 +1895,7 @@ const ACTIVES = {
   goldrush:{ icon:'GLD', label:'RUSH',  key:'T', cd:30000 },
 };
 function buildActives(){
-  const wrap = $('#actives'); wrap.innerHTML = '';
+  const wrap = $('#actives'); wrap.querySelectorAll('.abtn').forEach(b=>b.remove());   // #wSkillBtn lives in #actives too — it stays
   for (const [id, a] of Object.entries(ACTIVES)){
     if (!S.actives.has(id)) continue;
     const b = document.createElement('button');
@@ -1700,15 +1916,15 @@ function castActive(id){
 }
 function tickActives(now, dt){
   // waves fly and cut
-  waves = waves.filter(w => now - w.t0 < 780);
+  waves = waves.filter(w => now - w.t0 < (w.life||780));
   for (const w of waves){
-    w.x += Math.cos(w.ang)*dt*.00042; w.y += Math.sin(w.ang)*dt*.00042;
+    w.x += Math.cos(w.ang)*dt*(w.spd||.00042); w.y += Math.sin(w.ang)*dt*(w.spd||.00042);
     for (const s of slimes.values()){
       if (w.hit.has(s.id)) continue;
-      if (dist2(w.x,w.y,s.x,s.y) < (s.r+.035)**2){ w.hit.add(s.id); doHit(s, Math.round(myDamage()*1.2)); }
+      if (dist2(w.x,w.y,s.x,s.y) < (s.r+.035)**2){ w.hit.add(s.id); doHit(s, Math.round(myDamage()*(w.dmgMul||1.2))); }
     }
     ctx.save(); ctx.translate(NX(w.x), NY(w.y)); ctx.rotate(w.ang);
-    ctx.strokeStyle = '#bfe9ff'; ctx.globalAlpha = .9; ctx.lineWidth = 7; ctx.lineCap='round';
+    ctx.strokeStyle = w.col || '#bfe9ff'; ctx.globalAlpha = .9; ctx.lineWidth = 7; ctx.lineCap='round';
     ctx.beginPath(); ctx.arc(0, 0, SCALE()*.045, -.9, .9); ctx.stroke();
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5;
     ctx.beginPath(); ctx.arc(0, 0, SCALE()*.045, -.9, .9); ctx.stroke();
@@ -1733,6 +1949,9 @@ function tickActives(now, dt){
         if (dist2(m.x,m.y,s.x,s.y) < (.13+s.r)**2) doHit(s, 70 + myDamage());
     }
   }
+  // weapon skill button cooldown sweep
+  const wsOv = document.getElementById('wsCdov');
+  if (wsOv){ const sk = WSKILLS[me.weapon]; wsOv.style.height = (sk ? clamp((me.wSkillCdUntil-now)/sk.cd*100, 0, 100) : 0) + '%'; }
   // cooldown overlays
   for (const [id, a] of Object.entries(ACTIVES)){
     const b = document.getElementById('abtn-'+id); if (!b) continue;
@@ -1743,6 +1962,129 @@ function tickActives(now, dt){
     if (id==='goldrush' && now<me.goldRushUntil) b.style.background = '#ffd94d';
     else if (id==='goldrush') b.style.background = '#fff8e7';
   }
+}
+/* ============================================================ weapon skills (V)
+   One active per weapon, granted by node 3 of its skill tree, paid in MP.
+   All effects are LOCAL claims through doHit — the host still validates. */
+function castWeaponSkill(){
+  if (!started || paused) return;
+  const now = performance.now();
+  const sk = WSKILLS[me.weapon]; if (!sk) return;
+  if (!unlocked.has(sk.node)){ toast('Unlock ' + sk.name + ' in the SKILLS tree (key K)'); return; }
+  if (now < me.wSkillCdUntil) return;
+  if (me.mp < sk.mp){ toast('Not enough MP!'); return; }
+  me.mp -= sk.mp; me.wSkillCdUntil = now + sk.cd;
+  const dmg = myDamage(), ang = bladeAt(now).ang, wcol = myWeapon().color;
+  if (me.weapon===0){          // DAGGER — SHADOW STAB: dash along the blade, cutting the path
+    const x0 = me.x, y0 = me.y;
+    const x1 = clamp(me.x + Math.cos(ang)*.45, .05, WORLD-.05), y1 = clamp(me.y + Math.sin(ang)*.45, .05, WORLD-.05);
+    for (let i=0;i<=8;i++) particles.push({ x:x0+(x1-x0)*i/8, y:y0+(y1-y0)*i/8, vx:rand(-.03,.03), vy:rand(-.03,.03), life:1, color:wcol, r:rand(2,5) });
+    capParticles();
+    const dx = x1-x0, dy = y1-y0, L2 = dx*dx + dy*dy || 1e-6;
+    for (const s of [...slimes.values()]){
+      const t = clamp(((s.x-x0)*dx + (s.y-y0)*dy)/L2, 0, 1);
+      if (dist2(x0+dx*t, y0+dy*t, s.x, s.y) < .13*.13) doHit(s, Math.round(dmg*3));
+    }
+    me.x = x1; me.y = y1; me.px = x1; me.py = y1;
+    me.trailBreak = true; myTrail.length = 0;
+    popRings.push({ x:me.x, y:me.y, r:.03, life:1, color:wcol });
+    beep(200,.15,'sawtooth',.08,600);
+  } else if (me.weapon===1){   // SWORD — WHIRLWIND
+    const R = myReach()*1.6;
+    for (const s of [...slimes.values()]) if (dist2(s.x,s.y,me.x,me.y) < R*R) doHit(s, Math.round(dmg*1.6));
+    popRings.push({ x:me.x, y:me.y, r:myReach(), life:1, color:wcol });
+    me.spinUntil = now + 260;   // reuse the spin render
+    sfx.spin();
+  } else if (me.weapon===2){   // KATANA — IAIDO WAVE: faster, longer, harder crescent
+    waves.push({ x:me.x, y:me.y, ang, t0:now, hit:new Set(), dmgMul:2.2, spd:.00065, life:1150, col:'#f8bbd0' });
+    beep(300,.18,'sawtooth',.06,1200);
+  } else if (me.weapon===3){   // SPEAR — THROW SPEAR: piercing projectile along the blade
+    shots.push({ x:me.x, y:me.y, vx:Math.cos(ang)*2.6, vy:Math.sin(ang)*2.6, dmg:Math.round(dmg*2.5), until:now+620, hitSet:new Set() });
+    beep(500,.12,'triangle',.08,300);
+  } else if (me.weapon===4){   // GREATSWORD — EARTHSHAKER
+    for (const s of [...slimes.values()]) if (dist2(s.x,s.y,me.x,me.y) < .30*.30) doHit(s, Math.round(dmg*2.2));
+    popRings.push({ x:me.x, y:me.y, r:.30, life:1, color:wcol });
+    spawnHitFx(me.x, me.y, wcol, 30);
+    sfx.pop();
+  } else if (me.weapon===5){   // WARHAMMER — THUNDER SMASH at the sword tip
+    const bl = bladeAt(now), reach = myReach() * (1 + bl.ext);
+    const tx = me.x + Math.cos(bl.ang)*reach, ty = me.y + Math.sin(bl.ang)*reach;
+    for (const s of [...slimes.values()]) if (dist2(s.x,s.y,tx,ty) < .24*.24) doHit(s, Math.round(dmg*3));
+    popRings.push({ x:tx, y:ty, r:.05, life:1, color:'#ffe082' });
+    spawnPopFx(tx, ty, '#ffe082', 18, .02);
+    beep(120,.2,'square',.1,40); setTimeout(()=>beep(880,.12,'square',.06,-200), 30);
+  }
+  refreshHUD();
+}
+
+/* ============================================================ weapon skill tree panel */
+let selTreeNode = null;
+function treeNodeState(wi, ni){
+  const nodes = WTREES[WEAPONS[wi].id];
+  if (unlocked.has(nodes[ni].id)) return 'owned';
+  if (!me.owned.has(wi)) return 'locked';
+  if (ni>0 && !unlocked.has(nodes[ni-1].id)) return 'locked';
+  return 'avail';
+}
+function toggleTree(force){
+  const p = $('#treePanel');
+  const show = force!==undefined ? !!force : p.classList.contains('hidden');
+  p.classList.toggle('hidden', !show);
+  if (show) buildTree();
+  updateHint();
+}
+function buildTree(){
+  $('#treeSp').textContent = me.sp;
+  const wrap = $('#treeRows'); wrap.innerHTML = '';
+  WEAPONS.forEach((w, wi)=>{
+    const ownedW = me.owned.has(wi);
+    const row = document.createElement('div');
+    row.className = 'trow' + (ownedW ? '' : ' notowned');
+    const img = document.createElement('img');
+    img.src = 'assets/weapons/' + w.id + '.png'; img.alt = w.name;
+    row.appendChild(img);
+    const main = document.createElement('div'); main.className = 'tmain';
+    main.innerHTML = `<div class="tname">${w.name}${ownedW ? '' : '<span class="tnot">NOT OWNED — buy at the SHOP</span>'}</div>`;
+    const chips = document.createElement('div'); chips.className = 'tchips';
+    WTREES[w.id].forEach((n, ni)=>{
+      if (ni>0){ const lnk = document.createElement('div'); lnk.className = 'tlink'; chips.appendChild(lnk); }
+      const st = treeNodeState(wi, ni);
+      const c = document.createElement('button');
+      c.className = 'tchip' + (st==='owned' ? ' owned' : st==='avail' ? ' avail' : '') + (selTreeNode===n.id ? ' sel' : '');
+      if (st==='owned') c.style.background = w.color;
+      c.textContent = n.name;
+      c.onclick = ()=>{ selTreeNode = n.id; buildTree(); };
+      chips.appendChild(c);
+    });
+    main.appendChild(chips);
+    row.appendChild(main);
+    wrap.appendChild(row);
+  });
+  renderTreeDetail();
+}
+function renderTreeDetail(){
+  const card = $('#treeDetail');
+  let node = null, fwi = -1, fni = -1;
+  WEAPONS.forEach((w, wi)=>WTREES[w.id].forEach((n, ni)=>{ if (n.id===selTreeNode){ node = n; fwi = wi; fni = ni; } }));
+  if (!node){ card.classList.add('hidden'); return; }
+  card.classList.remove('hidden');
+  const w = WEAPONS[fwi];
+  $('#tdType').textContent = (node.kind==='active' ? 'ACTIVE SKILL' : 'STAT') + ' · ' + w.name.toUpperCase() + ' TREE';
+  $('#tdType').style.color = '#8e6bc8';
+  $('#tdName').textContent = node.name;
+  $('#tdDesc').textContent = node.desc;
+  const btn = $('#tdBtn'), st = treeNodeState(fwi, fni);
+  if (st==='owned'){ btn.textContent = 'UNLOCKED'; btn.disabled = true; }
+  else if (!me.owned.has(fwi)){ btn.textContent = 'BUY THE ' + w.name.toUpperCase() + ' AT THE SHOP FIRST'; btn.disabled = true; }
+  else if (st==='locked'){ btn.textContent = 'UNLOCK THE PREVIOUS NODE FIRST'; btn.disabled = true; }
+  else if (me.sp < node.cost){ btn.textContent = 'NEED ' + node.cost + ' SP — YOU HAVE ' + me.sp; btn.disabled = true; }
+  else { btn.textContent = 'UNLOCK — ' + node.cost + ' SP'; btn.disabled = false; }
+  btn.onclick = ()=>{
+    if (me.sp < node.cost || treeNodeState(fwi, fni)!=='avail') return;
+    me.sp -= node.cost; unlocked.add(node.id); sfx.buy();
+    bubble(node.name.toUpperCase() + '!', me.x, me.y, 1000);
+    buildTree(); buildSphere(); refreshHUD(); saveGame();
+  };
 }
 $('#shareBtn').onclick = async ()=>{
   const url = location.href;
@@ -1759,21 +2101,27 @@ $('#restartBtn').onclick = ()=>{
   if (!resetArmed){ resetArmed = true; b.textContent = 'TAP AGAIN TO ERASE EVERYTHING'; return; }
   resetArmed = false; b.textContent = 'RESET SAVE'; resetRun();
 };
-$('#interactPrompt').onclick = ()=>{ if (nearBuilding==='bank') openBank(); else if (nearBuilding==='shop') openShop(); };
+$('#interactPrompt').onclick = ()=>{ if (nearBuilding==='bank') openBank(); else if (nearBuilding==='shop') openShop(); else if (nearBuilding==='hospital') openHospital(); };
 $('#depBtn').onclick = ()=>{ me.banked += me.coins; me.coins = 0; sfx.buy(); updateBankPanel(); refreshHUD(); };
 $('#wdBtn').onclick = ()=>{ me.coins += me.banked; me.banked = 0; sfx.coin(); updateBankPanel(); refreshHUD(); };
 $('#bankCloseBtn').onclick = ()=>$('#bankPanel').classList.add('hidden');
 $('#shopCloseBtn').onclick = ()=>$('#shopPanel').classList.add('hidden');
+$('#hospCloseBtn').onclick = ()=>$('#hospitalPanel').classList.add('hidden');
+$('#hospitalPanel').addEventListener('click', e=>{ if (e.target.id==='hospitalPanel') e.target.classList.add('hidden'); });
+$('#treeBtn').onclick = ()=>toggleTree();
+$('#wSkillBtn').onclick = ()=>castWeaponSkill();
+$('#treeCloseBtn').onclick = ()=>toggleTree(false);
+$('#treePanel').addEventListener('click', e=>{ if (e.target.id==='treePanel') toggleTree(false); });
 $('#bankPanel').addEventListener('click', e=>{ if (e.target.id==='bankPanel') e.target.classList.add('hidden'); });
 $('#shopPanel').addEventListener('click', e=>{ if (e.target.id==='shopPanel') e.target.classList.add('hidden'); });
 $('#itemPotion').onclick = ()=>useItem('potion');
 $('#itemBomb').onclick = ()=>useItem('bomb');
 $('#itemShield').onclick = ()=>useItem('shield');
 
-/* ============================================================ SVG slimes (hand-drawn vector sprites) */
+/* ============================================================ pixel slimes (generated pixel-art sprites) */
 const SLIME_IMGS = {};
 for (const n of ['pink','green','blue','yellow','purple','mint','orange','king']){
-  const im=new Image(); im.src='assets/svg/slime-'+n+'.svg'; SLIME_IMGS[n]=im;
+  const im=new Image(); im.src='assets/img/slime-'+n+'.png'; SLIME_IMGS[n]=im;
 }
 const COLOR2IMG = {
   '#7ee787':'green', '#8affd1':'mint', '#ffe066':'yellow', '#6fd3ff':'blue',
@@ -1806,7 +2154,8 @@ const DECOR = (()=>{
       const x = .12 + rng()*(WORLD-.24), y = .14 + rng()*(WORLD-.24);
       if (Math.hypot(x-cx, y-cy) > minC &&
           Math.hypot(x-BANK_POS.x, y-BANK_POS.y) > .27 &&
-          Math.hypot(x-SHOP_POS.x, y-SHOP_POS.y) > .27) return { x, y };
+          Math.hypot(x-SHOP_POS.x, y-SHOP_POS.y) > .27 &&
+          Math.hypot(x-HOSPITAL_POS.x, y-HOSPITAL_POS.y) > .27) return { x, y };
     }
     return { x:.2, y:.2 };
   };
@@ -1935,6 +2284,28 @@ function drawBuildings(){
     ctx.restore();
     ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 3; roundRect(ax, ay, aw, ah, 5); ctx.stroke();
     sign(x, y-.155*u, 'SHOP', '#c0392b', '#ffffff');
+  }
+  // ---- HOSPITAL: white walls, red roof, big red cross ----
+  {
+    const x = NX(HOSPITAL_POS.x), y = NY(HOSPITAL_POS.y), w = .30*u, h = .19*u;
+    pad(HOSPITAL_POS.x, HOSPITAL_POS.y);
+    ctx.fillStyle = '#f7fafc'; roundRect(x-w/2, y-h/2, w, h, 6); ctx.fill();
+    ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 3; roundRect(x-w/2, y-h/2, w, h, 6); ctx.stroke();
+    ctx.fillStyle = '#e5484d';
+    ctx.beginPath(); ctx.moveTo(x-w/2-.02*u, y-h/2); ctx.lineTo(x, y-h/2-.075*u); ctx.lineTo(x+w/2+.02*u, y-h/2); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 2.5; ctx.stroke();
+    // windows
+    ctx.fillStyle = '#bfe3ff';
+    roundRect(x-w/2+.024*u, y-h/2+.030*u, .048*u, .044*u, 3); ctx.fill();
+    roundRect(x+w/2-.072*u, y-h/2+.030*u, .048*u, .044*u, 3); ctx.fill();
+    // big red cross emblem on the wall
+    ctx.fillStyle = '#e5484d';
+    ctx.fillRect(x-.008*u, y-h/2+.026*u, .016*u, .052*u);
+    ctx.fillRect(x-.026*u, y-h/2+.044*u, .052*u, .016*u);
+    // door
+    ctx.fillStyle = '#5b7a99'; roundRect(x-.028*u, y+.012*u, .056*u, h/2-.012*u, 4); ctx.fill();
+    ctx.fillStyle = '#ffd94d'; ctx.beginPath(); ctx.arc(x+.016*u, y+.055*u, .005*u, 0, 7); ctx.fill();
+    sign(x, y-h/2-.052*u, 'HOSPITAL', '#ffffff', '#e5484d');
   }
 }
 function drawEliteRing(x, y, baseR){
@@ -2160,7 +2531,18 @@ function frame(now){
       if (bossS) for (let k=0;k<5;k++){ const a = v.aim + (k-2)*.18; spawnBullet(bossS.x, bossS.y, Math.cos(a)*.42, Math.sin(a)*.42, now); }
       if (v.left<=0) pendingVolleys.splice(i,1);
     }
+    // thrown spears fly and pierce (client-local projectiles)
+    for (let i=shots.length-1;i>=0;i--){
+      const sh = shots[i];
+      sh.x += sh.vx*dt/1000; sh.y += sh.vy*dt/1000;
+      if (now > sh.until || sh.x<0 || sh.x>WORLD || sh.y<0 || sh.y>WORLD){ shots.splice(i,1); continue; }
+      for (const s of slimes.values()){
+        if (sh.hitSet.has(s.id)) continue;
+        if (dist2(sh.x,sh.y,s.x,s.y) < .05*.05){ sh.hitSet.add(s.id); doHit(s, sh.dmg); }
+      }
+    }
     if (me.hp < me.maxHp && now - me.lastDmgAt > 6000) me.hp = Math.min(me.maxHp, me.hp + 1.6*dt/1000);
+    if (me.mp < me.maxMp) me.mp = Math.min(me.maxMp, me.mp + 7*dt/1000);   // MP regen +7/s
   }
   // red damage vignette decay
   if (dmgFlashAt){
@@ -2201,6 +2583,20 @@ function frame(now){
     ctx.fillStyle='rgba(255,90,60,.35)'; ctx.beginPath(); ctx.arc(bx,by,.018*u,0,7); ctx.fill();
     ctx.fillStyle='#ff7847'; ctx.beginPath(); ctx.arc(bx,by,.011*u,0,7); ctx.fill();
     ctx.fillStyle='#ffffff'; ctx.beginPath(); ctx.arc(bx,by,.005*u,0,7); ctx.fill();
+  }
+
+  // thrown spears in flight: the spear sprite along its velocity + a white streak
+  for (const sh of shots){
+    const sx = NX(sh.x), sy = NY(sh.y), sa = Math.atan2(sh.vy, sh.vx), u = UNIT();
+    ctx.save(); ctx.translate(sx, sy); ctx.rotate(sa);
+    ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-.17*u, 0); ctx.lineTo(-.03*u, 0); ctx.stroke();
+    const simg = WEAPON_IMGS.spear;
+    if (simg && simg.complete && simg.naturalWidth){
+      const iw = .24*u, ih = iw * (simg.naturalHeight/simg.naturalWidth);
+      ctx.drawImage(simg, -iw*.86, -ih/2, iw, ih);   // tip lands on the hit point
+    }
+    ctx.restore();
   }
 
   // other players' swords
