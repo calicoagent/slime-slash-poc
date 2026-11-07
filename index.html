@@ -135,20 +135,22 @@
   .upg button:disabled { filter:grayscale(.6); opacity:.6; cursor:default; }
 
   /* ---------- NOTIFICATIONS — Sonner-style stack, pixel plates ----------
-     Handler: 'Use sonner for notification from top. All.' ONE stack at the
-     top replaces every banner/toast: notify() prepends, the newest toast
-     sits on top at full strength and older ones peek behind it (scale and
-     opacity step down by stack position), each type auto-dismisses, hard
-     cap 4. Announcements NEVER catch taps: container and toasts are
-     pointer-events:none (the dead-zone rule beats Sonner interactivity).
-     When the boss bar is up (body.boss-on) the stack slides under it. */
+     Handler: 'Use sonner for notification from top. All.' + 'Move toast
+     to very top. And stack so space isn't wasted. Only toast allowed to
+     cover other uis.' ONE stack replaces every banner/toast: it sits at
+     the VERY TOP of the screen in every layout, ABOVE everything else
+     (panels included — toasts are the only UI allowed to cover other UI),
+     and waiting toasts tuck behind the front one showing only a ~12px
+     peek each (restackToasts() positions them absolutely and sizes the
+     container = front height + 12px per waiting toast). Each type
+     auto-dismisses, hard cap 4. Announcements NEVER catch taps:
+     container and toasts are pointer-events:none. */
   #toaster {
-    position:fixed; z-index:41; top:10px; left:50%; transform:translateX(-50%);
-    display:flex; flex-direction:column; align-items:center; gap:6px;
-    width:max-content; max-width:min(92vw, 430px); pointer-events:none;
+    position:fixed; z-index:90; top:calc(env(safe-area-inset-top, 0px) + 4px); left:50%; transform:translateX(-50%);
+    width:min(92vw, 430px); height:0; pointer-events:none;
   }
-  body.boss-on #toaster { top:54px; }
   .toastN {
+    position:absolute; top:0; left:50%; width:max-content;
     pointer-events:none; text-align:center; border:3px solid #3a2b23; border-radius:0;
     background:#fff6df; color:#3a2b23; font-family:"Press Start 2P",monospace;
     font-size:11px; line-height:1.55; padding:9px 16px; max-width:100%; box-sizing:border-box;
@@ -158,11 +160,7 @@
   }
   .toastN .tsub { display:block; font-family:"VT323",monospace; font-size:17px; line-height:1.25; color:#97754a; margin-top:2px; }
   .toastN.enter { animation:toastIn .26s cubic-bezier(.2,1.6,.4,1); }
-  @keyframes toastIn { from { opacity:0; transform:translateY(-10px) scale(.96); } }
-  .toastN.behind1 { transform:scale(.97); opacity:.85; }
-  .toastN.behind2 { transform:scale(.94); opacity:.7; }
-  .toastN.behind3 { transform:scale(.92); opacity:.55; }
-  .toastN.leave { opacity:0; transform:translateY(-8px) scale(.94); }
+  @keyframes toastIn { from { opacity:0; transform:translateX(-50%) translateY(-14px) scale(.96); } }
   .toastN.t-king { background:#ffd94d; font-size:16px; line-height:1.5; padding:12px 20px; }
   .toastN.t-zone { font-size:12px; }
   .toastN.t-death { background:#40121d; color:#ffd9d9; border-color:#e5484d; font-size:13px; padding:12px 20px; }
@@ -236,14 +234,9 @@
     #hpText { font-size:14px; }
     #mpTrack { width:84px; height:14px; }
     #mpText { font-size:14px; }
-    /* items become right-side THUMB controls on a phone: chunky buttons
-       stacked above the rack dock (riding --dockH), reachable without
-       crossing the play field */
-    #items { left:auto; right:max(8px, env(safe-area-inset-right)); bottom:calc(var(--dockH, 92px) + 10px); gap:8px; }
-    /* chunky on phones too — a later 44px override used to shrink these
-       back down; the big thumb size below is the only mobile rule now */
-    .ibtn { width:84px; min-height:78px; }
-    .ibtn svg { width:40px; height:40px; }
+    /* items row joins the bottom-left cluster on phones too: 6px above
+       the minimap (minimap bottom = --dockH + 10px, 96px tall here) */
+    #items { left:max(8px, env(safe-area-inset-left)); right:auto; bottom:calc(var(--dockH, 92px) + 112px); gap:8px; }
     #interactPrompt { bottom:calc(var(--dockH, 92px) + 10px); font-size:9px; padding:9px 14px; }
     #bossBar { width:min(72vw,520px); }
     #bountyText { font-size:16px; line-height:1.2; }
@@ -264,24 +257,31 @@
     .wcard .key { font-size:7px; padding:1px 4px; top:-8px; left:-6px; }
     #menuBtn { font-size:8px; padding:9px 10px; border-width:3px; border-radius:0; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
     #actives { bottom:calc(var(--dockH, 92px) + 8px); right:8px; gap:8px; }
-    #wSkillBtn { width:96px; font-size:7px; }
+    #wSkillBtn { width:auto; max-width:40vw; font-size:7px; }
     .abtn { width:48px; height:48px; font-size:7px; border-width:3px; }
-    #comboBadge { right:auto; left:8px; bottom:calc(var(--dockH, 92px) + 142px); font-size:9px; padding:7px 10px; border-width:3px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
+    /* combo badge rides above the new items row (row top = --dockH + 164px) */
+    #comboBadge { right:auto; left:8px; bottom:calc(var(--dockH, 92px) + 172px); font-size:9px; padding:7px 10px; border-width:3px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
     #hint { bottom:calc(var(--dockH, 92px) + 12px); font-size:8px; max-width:72vw; white-space:normal; text-align:center; padding:7px 10px; }
   }
 
   /* ---------- survival pass: HP flash / boss bar / death / items / bank & shop ---------- */
+  /* FLAT red damage screen (Handler: 'Screen red when player got
+     attacked enough. No circle') — a solid full-screen red layer whose
+     alpha JS drives (per-hit flash + low-HP tint). NO gradient/vignette. */
   #dmgFlash {
-    position:fixed; inset:0; z-index:38; pointer-events:none; opacity:0;
-    background:radial-gradient(ellipse at center, rgba(229,57,53,0) 40%, rgba(229,57,53,.78) 100%);
+    position:fixed; inset:0; z-index:38; pointer-events:none;
+    background:rgba(229,57,53,0);
   }
+  /* boss bar is a SLIM STRIP, not a billboard: name inline-left, the
+     track flexes to fill, HP number rides inside the track as before */
   #bossBar {
     position:fixed; z-index:24; top:max(12px, env(safe-area-inset-top)); left:50%; transform:translateX(-50%);
     width:min(46vw,520px); background:#40121d; border:3px solid #ffd94d; border-radius:0;
-    padding:6px 14px 9px; box-shadow:5px 5px 0 rgba(0,0,0,.35); text-align:center; pointer-events:none;
+    padding:5px 10px; box-shadow:5px 5px 0 rgba(0,0,0,.35); pointer-events:none;
+    display:flex; align-items:center; gap:10px;
   }
-  #bossBar b { font-family:"Press Start 2P",monospace; color:#ffd94d; font-size:10px; display:block; margin-bottom:6px; }
-  #bossTrack { height:13px; background:#2a0a12; border:2px solid #ffd94d; border-radius:0; overflow:hidden; position:relative; }
+  #bossBar b { font-family:"Press Start 2P",monospace; color:#ffd94d; font-size:10px; white-space:nowrap; line-height:1.3; }
+  #bossTrack { flex:1; height:12px; background:#2a0a12; border:2px solid #ffd94d; border-radius:0; overflow:hidden; position:relative; }
   #bossHp { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:"Press Start 2P",monospace; font-size:8px; line-height:1; color:#fff; text-shadow:1px 1px 0 rgba(0,0,0,.7); pointer-events:none; }
   #bossFill { height:100%; width:100%; background-color:#e5484d; background-image:repeating-linear-gradient(90deg, rgba(0,0,0,0) 0 6px, rgba(0,0,0,.18) 6px 8px); transition:width .25s; }
   #interactPrompt {
@@ -291,16 +291,20 @@
     padding:11px 20px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
   }
   #interactPrompt:active { transform:translateX(-50%) translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
-  /* z-index 40: the items cluster sits ABOVE world-space labels/prompts
-     (an INN sign once covered the BOMB button) and below modal panels */
-  #items { position:fixed; left:max(14px, env(safe-area-inset-left)); bottom:222px; z-index:40; display:flex; flex-direction:column; gap:10px; pointer-events:none; }
+  /* z-index 40: the items row sits ABOVE world-space labels/prompts
+     (an INN sign once covered the BOMB button) and below modal panels.
+     The row lives in the bottom-left cluster: left-aligned with the
+     minimap, 6px above its top edge (desktop minimap: bottom 86px +
+     124px tall -> row bottom 216px). Breakpoints recompute the same
+     stack from their own minimap size. */
+  #items { position:fixed; left:max(14px, env(safe-area-inset-left)); bottom:216px; z-index:40; display:flex; flex-direction:row; gap:10px; pointer-events:none; }
   .ibtn {
-    position:relative; width:84px; min-height:78px; border-radius:0; cursor:pointer; touch-action:manipulation; pointer-events:auto;
+    position:relative; width:52px; min-height:52px; border-radius:0; cursor:pointer; touch-action:manipulation; pointer-events:auto;
     border:3px solid #3a2b23; background:#fff6df; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
-    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; padding:5px 3px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; padding:3px;
   }
-  .ibtn svg { width:40px; height:40px; }
-  .ibtn .ilabel { font-family:"VT323",monospace; font-size:15px; line-height:1; color:#3a2b23; letter-spacing:.5px; }
+  .ibtn svg { width:26px; height:26px; }
+  .ibtn .ilabel { font-family:"VT323",monospace; font-size:12px; line-height:1; color:#3a2b23; letter-spacing:.5px; }
   /* PANIC affordance: at low HP with potions in hand the POTION button
      throbs in hard pixel steps (no smooth glow) until it's used */
   @keyframes potionPanic { 0%,49% { transform:scale(1); filter:brightness(1); } 50%,100% { transform:scale(1.13); filter:brightness(1.4); } }
@@ -445,8 +449,11 @@
   .wcard .wpips { display:flex; gap:2px; justify-content:center; margin-top:3px; min-height:6px; }
   .wcard .wpips i { width:5px; height:5px; transform:rotate(45deg); background:transparent; border:1px solid #8a6f4d; }
   .wcard .wpips i.on { border-color:#3a2b23; }
+  /* compact cast button — and it only EXISTS while the equipped
+     weapon's skill is unlocked (refreshHUD hides it when locked:
+     no SKILL LOCKED billboard, the V key's unlock toast explains) */
   #wSkillBtn {
-    position:relative; width:118px; padding:8px 6px; border-radius:0; cursor:pointer; overflow:hidden;
+    position:relative; width:auto; max-width:40vw; min-height:44px; padding:6px 10px; border-radius:0; cursor:pointer; overflow:hidden;
     border:3px solid #3a2b23; background:#fff6df; color:#3a2b23;
     font-family:"Press Start 2P",monospace; font-size:8px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
     display:flex; flex-direction:column; align-items:center; justify-content:center; line-height:1.5;
@@ -555,9 +562,9 @@
      Desktop sizes are untouched. Goal: the centre ~60% of a phone screen
      carries no HUD at all, and every remaining touch target is >=44px. */
   @media (max-width:640px) {
-    /* item buttons: compact 58px thumb squares, icon + count badge only */
+    /* item buttons: compact 52px thumb squares, icon + count badge only */
     #items { gap:6px; }
-    .ibtn { width:58px; min-height:58px; padding:3px; }
+    .ibtn { width:52px; min-height:52px; padding:3px; }
     .ibtn svg { width:26px; height:26px; }
     .ibtn .ilabel { display:none; }
     .ibtn .cnt { min-width:22px; height:22px; }
@@ -591,7 +598,7 @@
   @media (max-width:700px) and (orientation: portrait) {
     /* stat panel: half the screen wide at most, tight rows; the bars
        (14px) carry their own overlaid numbers */
-    #lvlBadge { top:46px; left:8px; width:48vw; max-width:48vw; padding:6px 8px; gap:2px; font-size:11px; }
+    #lvlBadge { top:46px; left:8px; width:44vw; max-width:44vw; padding:5px 7px; gap:2px; font-size:11px; }
     #kills { font-size:11px !important; }
     #xpTrack, #hpTrack, #mpTrack { width:100%; }
     #xpTrack { height:8px; }
@@ -607,21 +614,27 @@
     /* bounty lines live in the menu's MORE tab now — just their sizes */
     #bountyText { font-size:11px; line-height:1.2; }
     #bountyProg { font-size:11px; line-height:1.2; margin:0; }
-    /* item buttons: 52px thumb squares, icon + count only. The column
-       stays bottom-anchored on the right (bottom = live --dockH + 10px
-       from the <=640px rules), so its top edge always starts far BELOW
-       the stat cluster — it can never slide under the bounty strip. */
-    .ibtn { width:52px; min-height:52px; padding:2px; }
+    /* item buttons: 48px thumb squares, icon + count only. The ROW sits
+       6px above the minimap (84px tall in portrait, its bottom edge at
+       --dockH + 10px from the <=640px rules) */
+    #items { bottom:calc(var(--dockH, 92px) + 100px); }
+    .ibtn { width:48px; min-height:48px; padding:2px; }
     .ibtn svg { width:24px; height:24px; }
     .ibtn .cnt { min-width:20px; height:20px; font-size:13px; top:-6px; right:-6px; }
-    /* minimap shrinks; the dock MENU button gets a fixed 108px width */
+    /* combo badge clears the items row (row top = --dockH + 148px here) */
+    #comboBadge { bottom:calc(var(--dockH, 92px) + 156px); }
+    /* boss bar strip, portrait: ~31px tall, nearly full width */
+    #bossBar { width:min(88vw, 520px); padding:6px 8px; gap:8px; }
+    #bossBar b { font-size:10px; }
+    #bossTrack { height:10px; }
+    /* minimap shrinks; the dock MENU button gets a fixed 96px width */
     #minimap { width:84px; height:84px; }
     #menuBtn {
-      width:108px; box-sizing:border-box; font-size:9px; letter-spacing:0; padding:5px 4px;
+      width:96px; box-sizing:border-box; font-size:9px; letter-spacing:0; padding:5px 4px;
       min-height:44px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     }
-    /* weapon-skill hint box ('SKILL LOCKED — V · SPHERE (K)') */
-    #wSkillBtn { width:auto; max-width:34vw; padding:5px 7px; font-size:9px; }
+    /* weapon-skill cast button (only exists while unlocked) */
+    #wSkillBtn { width:auto; max-width:40vw; padding:5px 7px; font-size:9px; }
     #wSkillBtn .k { font-size:9px; }
     /* peer badge ('Connecting to world...' / '2 players') + pause:
        capped at 36vw — the label ellipsises instead of stretching it */
@@ -631,8 +644,9 @@
     #pauseBtn { width:36px; height:36px; }
     /* interact prompt (OPEN INN etc.) */
     #interactPrompt { font-size:13px; padding:8px 14px; }
-    /* notification stack, portrait: below the stat cluster */
-    #toaster, body.boss-on #toaster { top:calc(env(safe-area-inset-top) + 132px); max-width:78vw; }
+    /* notification stack, portrait: still the VERY TOP (base rule) —
+       only the width narrows; toasts may cover the stat cluster */
+    #toaster { max-width:78vw; }
     .toastN.t-king { font-size:15px; }
   }
 </style>
@@ -669,7 +683,7 @@
   </div>
   <button id="interactPrompt" class="hidden px-btn">OPEN BANK</button>
   <div id="bossBar" class="hidden"><b>SLIME EMPEROR</b><div id="bossTrack"><div id="bossFill"></div><span id="bossHp"></span></div></div>
-  <div id="actives"><button id="wSkillBtn"><span id="wsName">SKILL LOCKED</span><span class="k" id="wsSub">V · SPHERE (K)</span><div class="cdov" id="wsCdov" style="height:0%"></div></button></div>
+  <div id="actives"><button id="wSkillBtn" style="display:none"><span id="wsName"></span><span class="k" id="wsSub">V</span><div class="cdov" id="wsCdov" style="height:0%"></div></button></div>
   <button id="shareBtn" class="px-btn">INVITE LINK</button>
   <div id="comboBadge" class="hidden">x3 COMBO</div>
   <button id="pauseBtn" title="Pause">| |</button>
@@ -771,6 +785,8 @@
       <div class="bankLine">Banked: <b id="menuBanked">0</b> coins</div>
       <div class="bankLine">Sphere Points: <b id="menuSp">0</b></div>
       <div class="menuHead">SYSTEM</div>
+      <button class="pbtn" id="menuShareBtn">INVITE LINK</button>
+      <div class="bankLine" id="menuPeers">Solo — invite friends!</div>
       <button class="pbtn" id="menuSoundBtn">SOUND: ON</button>
       <div class="menuHead">HOW TO PLAY</div>
       <div class="pcontrols">Move mouse / drag finger to swing your sword through slimes. Tap or click for a SPIN SLASH. Sphere Points come from level-ups, bounties, Kings (+1), Emperors (+3) and the Bank exchange (price rises with every purchase) — spend them on the SPHERE GRID: stats, passives, active skills AND every weapon's skill path (the paths CROSS at X nodes), GEMS for soul-gem sockets.<br>Keys 1-7 = weapons · M = menu · F / K = Sphere tab · G = Gems tab · V = weapon skill · Q / E / R / T = skills · Z / X / C = items · B = bank / shop / inn (in town) · Esc = close / pause<br>There is only ONE world — send the link to friends and they drop straight into it with you.</div>
@@ -1059,7 +1075,7 @@ let bossPatternIdx = 0;         // host: pattern rotation ring -> fan -> burst -
 let bossEnraged = false;        // host: ENRAGE latch (boss at <=30% HP) — fire interval x0.75, orb speeds x1.15, one-way
 let bossFury = false;           // host: FINAL FURY latch (boss at <=10% HP) — fire interval x0.6 (stacks), orb speeds x1.3, one-way
 let bossSummonAt = 0;           // host: next minion summon while the Emperor lives (every 20s)
-let dmgFlashAt = 0;             // last time the player took damage (red vignette decay)
+let dmgFlashAt = 0;             // last time the player took damage (flat red flash decay stamp)
 let nearBuilding = null;        // 'bank' | 'shop' | 'hospital' | null — drives the interact prompt
 const seenBosses = new Set();   // boss ids already announced by the banner
 let isHost=false, hostId=null, lastWorldAt=0, scores = {}; // id -> {name,kills}
@@ -1662,13 +1678,20 @@ function drawDmgFloats(now){
   }
 }
 /* ---------- notifications: ONE Sonner-style stack for ALL announcements ----------
-   notify(text, { type, sub, ms }) — the newest toast enters at the TOP of
-   #toaster and pushes older ones down; stack position sets the Sonner
-   peek (behind1/2/3 = scale .97/.94/.92, opacity .85/.7/.55). Each type
-   has its own auto-dismiss; the stack is hard-capped at 4 — beyond that
-   the oldest is dismissed on the spot. King-class events also sting. */
+   notify(text, { type, sub, ms }) — the newest toast takes the FRONT slot
+   at the very top of #toaster; waiting toasts tuck BEHIND it, each showing
+   only a TOAST_PEEK (12px) sliver, so the stack costs front-height +
+   12px per waiting toast instead of a full row each. restackToasts()
+   positions every toast absolutely (translateY = slot * 12px, scale and
+   opacity stepping down) and sizes the container from the front toast's
+   measured height. Each type has its own auto-dismiss; the stack is
+   hard-capped at 4 — beyond that the oldest is dismissed on the spot.
+   King-class events also sting. */
 const TOAST_MS = { king:2800, zone:2400, death:3200, streak:1700, success:2600, info:2400 };
 const TOAST_CAP = 4;
+const TOAST_PEEK = 12;
+const TOAST_SCALES = [1, .97, .94, .92];
+const TOAST_ALPHA = [1, .85, .7, .55];
 function notify(text, opts = {}){
   const type = opts.type || 'info';
   const box = $('#toaster');
@@ -1691,16 +1714,20 @@ function dismissToast(el, now){
   el._gone = true;
   clearTimeout(el._h);
   if (now){ el.remove(); restackToasts(); return; }
-  el.classList.add('leave');
+  el.style.opacity = '0';
+  el.style.transform = 'translateX(-50%) translateY(-8px) scale(.94)';
   setTimeout(() => { el.remove(); restackToasts(); }, 240);
 }
 function restackToasts(){
-  const kids = $('#toaster').children;
+  const box = $('#toaster');
+  const kids = box.children;
   for (let i = 0; i < kids.length; i++){
-    kids[i].classList.toggle('behind1', i === 1);
-    kids[i].classList.toggle('behind2', i === 2);
-    kids[i].classList.toggle('behind3', i >= 3);
+    const el = kids[i], d = Math.min(i, 3);
+    el.style.transform = 'translateX(-50%) translateY(' + (i * TOAST_PEEK) + 'px) scale(' + TOAST_SCALES[d] + ')';
+    el.style.opacity = TOAST_ALPHA[d];
+    el.style.zIndex = 10 - i;
   }
+  box.style.height = kids.length ? (kids[0].offsetHeight + (kids.length - 1) * TOAST_PEEK + 6) + 'px' : '0px';
 }
 let bubbleTimer=null;
 function bubble(text,x,y,ms=1600){ const b=$('#bubble'); b.textContent=text; b.style.left=NX(x)+'px'; b.style.top=NY(y)+'px'; b.classList.remove('hidden'); clearTimeout(bubbleTimer); bubbleTimer=setTimeout(()=>b.classList.add('hidden'),ms); }
@@ -1991,6 +2018,30 @@ function gainXp(n){
    boss object (host sets it at spawn; clients get it from the world
    payload's boss block). Falls back to the unscaled 12 with no boss. */
 function bossOrbDmg(){ const b = [...slimes.values()].find(s=>s.kind==='boss'); return b ? (b.bOrb || 12) : 12; }
+/* FLAT red damage screen — no vignette, no circle (Handler). Two layers
+   summed into one solid rgba on #dmgFlash:
+   - per-hit flash: alpha .22 the moment damagePlayer lands a hit,
+     decaying linearly to 0 over ~350ms (dmgFlashAt stamps the hit);
+   - low-HP state: 0 at >=45% HP, rising linearly to ~.30 at 0 HP,
+     with a slow +-0.05 pulse (~1.2s period) once under 20% HP.
+   Called from damagePlayer (paints the flash the same tick) and from
+   frame() every tick (decay + HP tracking). */
+function updateDmgFlash(now){
+  let flash = 0;
+  if (dmgFlashAt){
+    const el = now - dmgFlashAt;
+    flash = el < 350 ? .22 * (1 - el / 350) : 0;
+    if (!flash) dmgFlashAt = 0;
+  }
+  let low = 0;
+  const frac = me.maxHp > 0 ? me.hp / me.maxHp : 1;
+  if (started && frac < .45){
+    low = .30 * (1 - frac / .45);
+    if (frac < .20) low += Math.sin(now * (Math.PI * 2 / 1200)) * .05;
+  }
+  const a = clamp(flash + low, 0, .55);
+  $('#dmgFlash').style.background = 'rgba(229,57,53,' + a.toFixed(3) + ')';
+}
 function damagePlayer(amount, now){
   if (!started || paused) return;
   /* TOWN SAFE ZONE — sanctuaries: no damage while a building panel, the
@@ -2007,7 +2058,7 @@ function damagePlayer(amount, now){
   me.invulnUntil = now + 800;
   me.lastDmgAt = now;
   dmgFlashAt = now;
-  $('#dmgFlash').style.opacity = '0.95';   // paint the flash NOW — don't wait for the decay pass
+  updateDmgFlash(now);   // paint the flat red flash NOW — don't wait for the frame pass
   sfx.hurt();
   if (me.hp <= 0) death();
   refreshHUD();
@@ -2481,13 +2532,18 @@ function refreshHUD(){
   if (!$('#bankPanel').classList.contains('hidden')) updateBankPanel();
   if (!$('#shopPanel').classList.contains('hidden')) updateShopPanel();   // in-place: same nodes, fresh values/disabled states
   if (!$('#hospitalPanel').classList.contains('hidden')) updateHospitalRows();
-  // weapon skill button: the label follows the equipped weapon's Sphere-path active
+  // weapon skill button: exists ONLY while the equipped weapon's
+  // Sphere-path skill is unlocked — locked means NO billboard at all
+  // (pressing V still explains itself via castWeaponSkill's toast)
   const wsk = WSKILLS[me.weapon];
-  if (wsk){
-    const has = unlocked.has(wsk.node);
-    $('#wsName').textContent = has ? wsk.name : 'SKILL LOCKED';
-    $('#wsSub').textContent = has ? ('V · ' + wsk.mp + ' MP') : 'V · SPHERE (K)';
-    $('#wSkillBtn').classList.toggle('off', !has || me.mp < wsk.mp);
+  const wsBtn = $('#wSkillBtn');
+  if (wsk && unlocked.has(wsk.node)){
+    wsBtn.style.display = '';
+    $('#wsName').textContent = wsk.name;
+    $('#wsSub').textContent = 'V · ' + wsk.mp + ' MP';
+    wsBtn.classList.toggle('off', me.mp < wsk.mp);
+  } else {
+    wsBtn.style.display = 'none';
   }
   // scoreboard — my own row always shows LIVE me.kills/me.name (local kills are
   // credited in a path that does not write into scores, so the table lagged)
@@ -2515,7 +2571,12 @@ function refreshHUD(){
 let joinedAt = 0;
 function refreshPeers(){
   const n = peers.size;
-  $('#peers').textContent = n===0 ? (joinedAt && performance.now()-joinedAt<15000 ? 'Connecting to world…' : 'Solo — invite friends!') : (n+1)+' players in world';
+  const connecting = joinedAt && performance.now()-joinedAt<15000;
+  // HUD badge: compact state ONLY (dot + 'Solo' / 'N online'); the long
+  // string lives in the menu's MORE tab, next to the INVITE LINK button
+  $('#peers').textContent = n===0 ? (connecting ? 'Connecting…' : 'Solo') : (n+1)+' online';
+  const mp = $('#menuPeers');
+  if (mp) mp.textContent = n===0 ? (connecting ? 'Connecting to world…' : 'Solo — invite friends!') : (n+1)+' players in world';
   $('#peerBadge').classList.toggle('on', n>0);
   refreshHUD();
 }
@@ -3354,12 +3415,14 @@ function castWeaponSkill(){
   refreshHUD();
 }
 
-$('#shareBtn').onclick = async ()=>{
+async function shareInvite(){
   const url = location.href;
   try{ await navigator.clipboard.writeText(url); notify('Invite link copied! Send it to your friends.', { type:'success' }); }
   catch(e){ notify('Copy this page address and send it to friends!'); }
   if (navigator.share){ try{ await navigator.share({title:'Slime Slash!', url}); }catch(e){} }
-};
+}
+$('#shareBtn').onclick = shareInvite;
+$('#menuShareBtn').onclick = shareInvite;
 $('#pauseBtn').onclick = ()=>togglePause();
 $('#resumeBtn').onclick = ()=>togglePause(false);
 $('#soundBtn').onclick = ()=>{ setMuted(!muted); saveGame(); };
@@ -3380,11 +3443,7 @@ $('#bankCloseBtn').onclick = ()=>$('#bankPanel').classList.add('hidden');
 $('#shopCloseBtn').onclick = ()=>$('#shopPanel').classList.add('hidden');
 $('#hospCloseBtn').onclick = ()=>$('#hospitalPanel').classList.add('hidden');
 $('#hospitalPanel').addEventListener('click', e=>{ if (e.target.id==='hospitalPanel') e.target.classList.add('hidden'); });
-$('#wSkillBtn').onclick = ()=>{
-  const sk = WSKILLS[me.weapon];
-  if (sk && !unlocked.has(sk.node)) openMenu('sphere');   // 'SKILL LOCKED' tap routes to the weapon's path on the Sphere Grid
-  else castWeaponSkill();
-};
+$('#wSkillBtn').onclick = ()=>castWeaponSkill();   // the button is hidden while locked, so a tap is always a cast
 /* mobile sheet sticky-header buttons (hidden on desktop via CSS) */
 $('#bankSheetClose').onclick = ()=>$('#bankPanel').classList.add('hidden');
 $('#shopSheetClose').onclick = ()=>$('#shopPanel').classList.add('hidden');
@@ -4626,13 +4685,7 @@ function frame(now){
     if (me.hp < me.maxHp && now - me.lastDmgAt > 6000) me.hp = Math.min(me.maxHp, me.hp + (1.6 + (S.regen || 0))*dt/1000);   // base 1.6/s after 6s undamaged + S.regen (hook: no nodes grant it yet); all regen honours the same 6s delay — no node text promises otherwise
     if (me.mp < me.maxMp) me.mp = Math.min(me.maxMp, me.mp + 7*dt/1000);   // MP regen +7/s
   }
-  // red damage vignette: hold full strength ~150ms, then fade over ~400ms
-  if (dmgFlashAt){
-    const el = now - dmgFlashAt;
-    const a = el < 150 ? 1 : clamp(1-(el-150)/400, 0, 1);
-    $('#dmgFlash').style.opacity = (a*.95).toFixed(3);
-    if (a<=0){ dmgFlashAt = 0; $('#dmgFlash').style.opacity = 0; }
-  }
+  updateDmgFlash(now);   // flat red damage screen: per-hit flash decay + low-HP tint
 
   // camera eases after the sword — push toward an edge to travel the world
   {
