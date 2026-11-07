@@ -951,8 +951,7 @@ let bullets = [];               // boss bullet-hell orbs (client-local sim, neve
 let spiralEmitters = [];
 let pendingVolleys = [];   // boss 'spread': timed 5-way volleys (client-local)        // active spiral bullet emitters (client-local)
 let bossSpawnAt = Infinity;     // host: next SLIME EMPEROR spawn time
-let lastMetalAt = -1;           // host: last time a metal slime spawned (75s spawn guarantee; -1 = uninitialised)
-let lastMetalNearAt = -1;       // host: last time a metal slime was NEAR a player (within 2.0u) — the reachability clock the guarantee actually runs on
+let lastMetalAt = -1;           // host: the metal GUARANTEE clock — written ONLY inside spawnSlime at the moment a metal slime actually enters the world (plus reign init); -1 = uninitialised
 let bossFireAt = 0;             // host: next bullet-pattern volley
 let bossPatternIdx = 0;         // host: pattern rotation ring -> fan -> spiral
 let dmgFlashAt = 0;             // last time the player took damage (red vignette decay)
@@ -1059,7 +1058,7 @@ function spawnSlime(opts={}){
     x:sx, y:sy, vx:0, vy:0, dir:rand(0,Math.PI*2), turnAt:performance.now()+rand(800,2600),
     color: k.kind==='gold' ? '#ffe066' : k.kind==='metal' ? '#cfd8dc' : SLIME_COLORS[Math.floor(Math.random()*SLIME_COLORS.length)],
     seed:seedForId(id), squish:0, flash:0, mul: k.kind==='boss' ? 1.5 : zone.mul, elite:false };
-  if (k.kind==='metal') lastMetalAt = performance.now();   // bookkeeping only — the spawn guarantee runs on lastMetalNearAt (nearness to players, not spawn events)
+  if (k.kind==='metal') lastMetalAt = performance.now();   // THE guarantee clock: a metal entering the world is the only thing that resets it
   // ELITES: rare, tougher, much richer (never kings, the Emperor, or metal slimes)
   if (k.kind !== 'king' && k.kind !== 'boss' && k.kind !== 'metal' && Math.random() < .08){
     s.elite = true;
@@ -1149,21 +1148,30 @@ function hostTick(now,dt){
     if (Math.random()<spawnP) spawnSlime();
     if (slimes.size < target-4 && Math.random()<spawnP) spawnSlime();   // refill in pairs while well under target
   }
-  /* METAL SLIME GUARANTEE: a REACHABLE metal at least every ~75s. The old
-     rule ("none alive AND 75s since the last spawn") starved forever in
-     practice: one natural metal spawning far away and then fleeing players
-     for the rest of the session counted as "alive" and blocked every
-     top-up (0 seen in 25 gauntlet minutes). Now the clock tracks NEARNESS:
-     while any metal is within 2.0u of any player the clock holds; after
-     75s with none near, far-away metals are removed and this spawn IS a
-     metal — at hunting distance (0.5-0.9u) from a random player, outside
-     town. */
-  if (lastMetalNearAt < 0) lastMetalNearAt = now;   // timer starts when this host's reign does
+  /* METAL SLIME GUARANTEE (v3): a REACHABLE metal at least every ~75s.
+     This block runs every host tick, INDEPENDENT of the population gate
+     above, and its clock (lastMetalAt) resets ONLY when a metal slime
+     object actually enters the world — spawnSlime writes it at creation.
+     Why v3: v1 ("none alive AND 75s since last spawn") starved on one
+     far-away metal fleeing forever. v2's NEARNESS clock starved the
+     other way (two gauntlets, ~38 min, zero sightings): it reset
+     whenever any metal crossed within 2.0u of a player — but the view is
+     only ~1.9u wide x 1.0u tall, so metals parked on the town ring or
+     wandering the far side of the plaza counted as "near" while being
+     off-screen, and held the clock indefinitely (verified by simulating
+     the host in Node: the v2 block fires only after a full 75s with no
+     metal crossing the 2.0u disc). v3: if no metal is REACHABLE (within
+     2.0u of a player) and 75s have passed since the last metal ENTERED
+     the world, clear any far ones and force-spawn one at hunting
+     distance (0.5-0.9u) from a random player, outside town. The forced
+     spawn entering `slimes` is what resets the clock — a rejected or
+     skipped spawn can never move it. */
+  if (lastMetalAt < 0) lastMetalAt = now;   // the clock starts with this host's reign
   const metalSpots = [{x:me.x, y:me.y}];
   for (const p of peers.values()) metalSpots.push({ x:(p.tx!==undefined?p.tx:p.x), y:(p.ty!==undefined?p.ty:p.y) });
-  const metalNear = [...slimes.values()].some(s=>s.kind==='metal' && metalSpots.some(c=>dist2(s.x,s.y,c.x,c.y) < 2*2));
-  if (metalNear) lastMetalNearAt = now;
-  else if (now - lastMetalNearAt > 75000){
+  let metalNear = false;
+  for (const s of slimes.values()) if (s.kind==='metal' && metalSpots.some(c=>dist2(s.x,s.y,c.x,c.y) < 2*2)){ metalNear = true; break; }
+  if (!metalNear && now - lastMetalAt > 75000){
     for (const [id, s] of [...slimes]) if (s.kind==='metal') slimes.delete(id);   // every living metal is >2.0u from everyone here — unreachable; clear it
     let mx = null, my = null;
     for (let tries=0; tries<20 && mx===null; tries++){
@@ -1177,8 +1185,7 @@ function hostTick(now,dt){
       mx = clamp(WORLD/2 + Math.cos(a)*(TOWN_R+.35), .06, WORLD-.06);
       my = clamp(WORLD/2 + Math.sin(a)*(TOWN_R+.35), .1, WORLD-.06);
     }
-    spawnSlime({ kind:'metal', x:mx, y:my });
-    lastMetalNearAt = now;
+    spawnSlime({ kind:'metal', x:mx, y:my });   // entering the world resets lastMetalAt (inside spawnSlime) — and only that does
   }
   /* ---- SLIME EMPEROR: timed spawn + bullet-hell volleys (host decides,
      every client sims the bullets locally from the 'boss' events) ---- */
@@ -1265,7 +1272,7 @@ function hostMine(nodeId, d, byId){
   if (now - last < 60) return;                    // host anti-spam (same map as hit claims)
   hitClaimsAt.set(key, now);
   n.left--; n.shakeT = now;
-  for (let i=0;i<5;i++) particles.push({ x:n.x+rand(-.03,.03), y:n.y+rand(-.03,.03), vx:rand(-.1,.1), vy:rand(-.13,.02), life:1, color:'#9aa0a3', r:rand(2,4) }); capParticles();   // every lost chunk bursts grey chips (host's client)
+  mineChips(n.x, n.y, 8);   // every lost chunk bursts stone chips (host's client)
   const lv = clamp((d && d.lv|0) || 1, 1, 5);
   const chance = .55 + .06*(lv-1) + (d && d.gf ? .12 : 0) + (d && d.gr ? .40 : 0);
   const g = Math.random() < chance ? rollDrop(NODE_TYPES[n.t]) : null;
@@ -1320,9 +1327,9 @@ function applyWorld(p){
       const [id,x,y,t,left] = a; seenN.add(id);
       const old = nodes.get(id);
       if (old){
-        if (left < old.left){   // a chunk was lost — every client sees the rock shake AND a burst of grey chips
+        if (left < old.left){   // a chunk was lost — every client sees the rock shake AND a burst of stone chips
           old.shakeT = performance.now();
-          for (let i=0;i<5;i++) particles.push({ x:old.x+rand(-.03,.03), y:old.y+rand(-.03,.03), vx:rand(-.1,.1), vy:rand(-.13,.02), life:1, color:'#9aa0a3', r:rand(2,4) });
+          mineChips(old.x, old.y, 8);
           capParticles();
         }
         old.x = x; old.y = y; old.t = t; old.left = left;
@@ -1338,6 +1345,13 @@ function applyWorld(p){
 
 /* ============================================================ fx */
 function capParticles(){ if (particles.length>420) particles.splice(0, particles.length-420); }
+/* Mining chips: chunky stone shards, light greys, radius 3-7px, ~1.4s of
+   life (particle life decays at dt/480 per frame, so life 2.9 ≈ 1.4s).
+   The old chips were 5 x r2-4 x ~0.5s and two gauntlets never saw them. */
+function mineChips(x, y, n){
+  for (let i=0;i<n;i++) particles.push({ x:x+rand(-.03,.03), y:y+rand(-.03,.03), vx:rand(-.11,.11), vy:rand(-.15,.02), life:2.9, color: i%2 ? '#cfd4d6' : '#9aa0a3', r:rand(3,7) });
+  capParticles();
+}
 function spawnHitFx(x,y,color,n=6){ for(let i=0;i<n;i++) particles.push({x,y,vx:rand(-.12,.12),vy:rand(-.16,.02),life:1,color,r:rand(2,5)}); capParticles(); }
 function spawnPopFx(x,y,color,n=22,r0=.01){ for(let i=0;i<n;i++){ const a=rand(0,Math.PI*2),v=rand(.04,.22); particles.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-.05,life:1,color,r:rand(2,7)});} capParticles(); popRings.push({x,y,r:r0,life:1,color}); }
 function addFloat(x,y,text,color,opts={}){
@@ -1535,8 +1549,7 @@ function localHitCheck(now){
     me.lastHitAt.set(nk, now);
     n.shakeT = now;   // prediction: the rock shakes on my screen right away
     if (me.weapon === 6){
-      for (let i=0;i<3;i++) particles.push({ x:n.x+rand(-.03,.03), y:n.y+rand(-.03,.03), vx:rand(-.08,.08), vy:rand(-.12,.02), life:1, color:'#9aa0a3', r:rand(2,4) });
-      capParticles();
+      mineChips(n.x, n.y, 4);   // every connecting pickaxe swing sheds chips locally — mining reads as work, not just bookkeeping
       sfx.hit();
       const claim = { n:n.id, lv:wxpOf(6).lv, gf: unlocked.has('w62') ? 1 : 0, gr: now < me.gemRushUntil ? 1 : 0 };
       if (isHost) hostMine(n.id, claim, me.id);
@@ -1597,7 +1610,8 @@ function hostApplyHit(slimeId, dmg, byId){
 }
 function hostKill(s, byId){
   slimes.delete(s.id);
-  if (s.kind==='metal') lastMetalAt = performance.now();   // bookkeeping only (see lastMetalNearAt for the guarantee clock)
+  // (a metal KILL deliberately does not touch lastMetalAt — the guarantee
+  // clock moves only when a metal ENTERS the world; see hostTick)
   const k = SLIME_KINDS.find(k=>k.kind===s.kind);
   const coins = Math.round(k.coins * (s.mul||1)), xp = Math.round(k.xp * (s.mul||1));   // zone/elite reward scaling
   scores[byId] = scores[byId] || { name: byId===me.id?me.name:(peers.get(byId)?.name||'Knight'), kills:0 };
@@ -1884,16 +1898,26 @@ function updateInteract(){
   let nd = db, nb = 'bank';   // nearest building wins the prompt
   if (ds < nd){ nd = ds; nb = 'shop'; }
   if (dh < nd){ nd = dh; nb = 'hospital'; }
-  nearBuilding = nd < .34 ? nb : null;
+  /* TOWN RULE (gauntlet F4): while the sword is INSIDE TOWN_R, the nearest
+     building is always 'in range' — prompt shows, B / prompt tap opens it,
+     however far across the plaza it is. Range used to be measured from the
+     sword's exact position against the .34 radius everywhere, so prompts
+     flickered in/out around town and B often opened nothing. Outside town
+     the .34 radius rule applies unchanged. */
+  const inTown = dist2(me.x, me.y, WORLD/2, WORLD/2) < TOWN_R*TOWN_R;
+  nearBuilding = (inTown || nd < .34) ? nb : null;
   const panelOpen = !$('#bankPanel').classList.contains('hidden') || !$('#shopPanel').classList.contains('hidden') || !$('#hospitalPanel').classList.contains('hidden');
   if (nearBuilding && !panelOpen){
     pr.textContent = nearBuilding==='bank' ? 'OPEN BANK' : nearBuilding==='shop' ? 'OPEN SHOP' : 'OPEN INN';
     pr.classList.remove('hidden');
   } else pr.classList.add('hidden');
-  // walk away (> .42 units — outside the .34 interact radius) and the panel closes itself
-  if (!$('#bankPanel').classList.contains('hidden') && db > .42) $('#bankPanel').classList.add('hidden');
-  if (!$('#shopPanel').classList.contains('hidden') && ds > .42) $('#shopPanel').classList.add('hidden');
-  if (!$('#hospitalPanel').classList.contains('hidden') && dh > .42) $('#hospitalPanel').classList.add('hidden');
+  // walk away (> .42 units — outside the .34 interact radius) and the panel
+  // closes itself; inside town you are never 'away', so panels stay open
+  if (!inTown){
+    if (!$('#bankPanel').classList.contains('hidden') && db > .42) $('#bankPanel').classList.add('hidden');
+    if (!$('#shopPanel').classList.contains('hidden') && ds > .42) $('#shopPanel').classList.add('hidden');
+    if (!$('#hospitalPanel').classList.contains('hidden') && dh > .42) $('#hospitalPanel').classList.add('hidden');
+  }
 }
 
 /* ============================================================ items */
@@ -2883,12 +2907,28 @@ function whiteTintOf(img){
 function paintSlimeSprite(s, t, baseR, g){
   g = g || slimeSpriteGeom(s, t, baseR);
   if (!g) return false;
-  const flinch = t < (s.flinchUntil||0);
+  /* ISW flinch tint — DECAYING. It used to be a hard full-strength swap
+     for the whole 220ms window and screenshots still never caught it.
+     Now: full-strength #ff5a4e for the first 120ms after the hit, then a
+     linear fade to nothing at 500ms — a visible tail at any frame rate.
+     The shudder stays on the 220ms flinchUntil window (slimeSpriteGeom);
+     the hit time is derived back from flinchUntil (hit sites set
+     flinchUntil = now + 220). The tint is an alpha-blended overlay of
+     the pre-rendered red variant over the normal sprite, so the ghost
+     pass (caller alpha) composes correctly too. */
+  const fAge = t - ((s.flinchUntil||0) - 220);
+  const tintK = s.flinchUntil && fAge < 500 ? (fAge <= 120 ? 1 : 1 - (fAge-120)/380) : 0;
   ctx.save();
   ctx.translate(g.gx, g.gy - g.liftW * UNIT());   // bottom anchor, raised by the hop arc
   ctx.scale(g.sqX, g.sqY);
-  try{ ctx.filter = !flinch && s.flash>0 ? 'brightness(1.9)' : 'none'; }catch(e){}
-  ctx.drawImage(flinch ? redTintOf(g.img) : g.img, -g.dw/2, -g.dh, g.dw, g.dh);
+  try{ ctx.filter = tintK<=0 && s.flash>0 ? 'brightness(1.9)' : 'none'; }catch(e){}
+  ctx.drawImage(g.img, -g.dw/2, -g.dh, g.dw, g.dh);
+  if (tintK > 0){
+    const prevA = ctx.globalAlpha;
+    ctx.globalAlpha = prevA * tintK;
+    ctx.drawImage(redTintOf(g.img), -g.dw/2, -g.dh, g.dw, g.dh);
+    ctx.globalAlpha = prevA;
+  }
   ctx.restore();
   return true;
 }
@@ -3360,12 +3400,28 @@ function drawKindMarks(s, x, y, baseR, t){
   }
 }
 function drawSlime(s,t){
-  const x=NX(s.x), y=NY(s.y), baseR=s.r*SCALE();
+  /* VISUAL radius: the Emperor renders at 1.3x so he never reads as just
+     another King (gauntlet F5: testers counted 3-5 'bosses' — all Kings,
+     same gold crowned sprite). s.r — the hitbox — is UNCHANGED; only the
+     rendered size (and everything derived from baseR here: aura, HP bar)
+     grows. The ghost pass applies the same factor. */
+  const x=NX(s.x), y=NY(s.y), baseR=s.r*SCALE()*(s.kind==='boss' ? 1.3 : 1);
   if (s.kind==='boss'){
     // the Emperor radiates a dark red aura
     const ag = ctx.createRadialGradient(x, y, baseR*.4, x, y, baseR*1.8);
     ag.addColorStop(0, 'rgba(120,10,20,.50)'); ag.addColorStop(1, 'rgba(120,10,20,0)');
     ctx.fillStyle = ag; ctx.beginPath(); ctx.arc(x, y, baseR*1.8, 0, 7); ctx.fill();
+    // floating name label — Kings don't get one, so the real Emperor is
+    // identifiable at a glance even mid-cluster
+    ctx.save();
+    ctx.font = '10px "Press Start 2P", monospace';
+    const label = 'SLIME EMPEROR', tw = ctx.measureText(label).width;
+    const lw = tw + 14, lh = 17, lx = x - lw/2, ly = y - baseR*1.45 - lh/2;
+    ctx.fillStyle = '#40121d'; ctx.fillRect(lx, ly, lw, lh);
+    ctx.strokeStyle = '#ffd94d'; ctx.lineWidth = 2; ctx.strokeRect(lx+1, ly+1, lw-2, lh-2);
+    ctx.fillStyle = '#ffd94d'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, x, ly + lh/2 + 1);
+    ctx.restore();
   }
   if (drawVideoSlime(s,t,baseR)){
     drawKindMarks(s, x, y - baseR*.4, baseR, t);
@@ -3509,7 +3565,7 @@ function drawEntities(t){
 function drawGhosts(t, occluders){
   const u = UNIT(), vw = W/u, vh = H/u;
   for (const s of slimes.values()){
-    const baseR = s.r * SCALE();
+    const baseR = s.r * SCALE() * (s.kind==='boss' ? 1.3 : 1);   // match drawSlime's visual radius (Emperor 1.3x)
     const g = slimeSpriteGeom(s, t, baseR);
     if (!g) continue;                            // vector-fallback slimes have no sprite to ghost
     // generous sprite box (world coords): the clip only shows anything
