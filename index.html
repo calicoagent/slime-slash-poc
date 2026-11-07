@@ -4,35 +4,53 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Slime Slash! — Multiplayer POC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html,body { width:100%; height:100%; overflow:hidden; background:#79c25f; font-family:"Baloo 2","Comic Sans MS",system-ui,sans-serif; touch-action:none; user-select:none; -webkit-user-select:none; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#79c25f; font-family:"VT323",monospace; touch-action:none; user-select:none; -webkit-user-select:none; }
   #game { position:fixed; inset:0; display:block; cursor:none; }
   .hidden { display:none !important; }
+  img { image-rendering:pixelated; }
+  #minimap, .trow img, .wcard img { image-rendering:pixelated; }
 
-  /* ---------- chunky game UI ---------- */
+  /* ---------- pixel-art design system ---------- */
+  .px-panel {
+    background:#fff6df; border:3px solid #3a2b23; border-radius:0;
+    box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 5px 5px 0 rgba(0,0,0,.30);
+  }
+  .px-btn {
+    font-family:"Press Start 2P",monospace; border:3px solid #3a2b23; border-radius:0;
+    box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
+  }
+  .px-btn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
+  .px-btn:disabled { filter:grayscale(.6); opacity:.6; }
+
+  /* ---------- pixel game UI ---------- */
   .badge {
     position:fixed; z-index:20; display:flex; align-items:center; gap:8px;
-    background:#fff8e7; border:4px solid #5b3a1e; border-radius:999px;
-    padding:6px 16px 6px 8px; font-weight:800; color:#5b3a1e; font-size:20px;
-    box-shadow:0 5px 0 #5b3a1e, 0 10px 18px rgba(0,0,0,.25);
+    background:#fff6df; border:3px solid #3a2b23; border-radius:0;
+    padding:6px 16px 6px 8px; color:#3a2b23; font-size:26px; line-height:1;
+    box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 4px 4px 0 rgba(0,0,0,.30);
   }
   .badge svg { width:28px; height:28px; flex:none; }
   #coinBadge { top:14px; left:14px; }
-  #peerBadge { top:14px; right:14px; padding:6px 16px; font-size:17px; }
-  #peerBadge .dot { width:12px; height:12px; border-radius:50%; background:#c33; border:2px solid #5b3a1e; }
+  #peerBadge { top:14px; right:14px; padding:6px 16px; font-size:22px; }
+  #peerBadge .dot { width:12px; height:12px; border-radius:0; background:#c33; border:2px solid #3a2b23; }
   #peerBadge.on .dot { background:#37c978; }
-  #lvlBadge { top:74px; left:14px; font-size:16px; padding:5px 14px 5px 10px; flex-direction:column; align-items:stretch; gap:3px; border-radius:22px; }
-  #xpTrack { width:130px; height:12px; background:#e4d3ac; border:2px solid #5b3a1e; border-radius:99px; overflow:hidden; }
-  #xpFill { height:100%; width:0%; background:linear-gradient(90deg,#ffb52e,#ff8a2e); transition:width .3s; }
-  #hpText { font-size:12px; font-weight:800; color:#c0392b; line-height:1.1; }
-  #hpTrack { width:130px; height:12px; background:#e8c9c9; border:2px solid #5b3a1e; border-radius:99px; overflow:hidden; }
-  #hpFill { height:100%; width:100%; background:linear-gradient(90deg,#ff5f6d,#e5484d); transition:width .25s; }
-  #mpText { font-size:12px; font-weight:800; color:#2255aa; line-height:1.1; }
-  #mpTrack { width:130px; height:12px; background:#c9d8e8; border:2px solid #5b3a1e; border-radius:99px; overflow:hidden; }
-  #mpFill { height:100%; width:100%; background:linear-gradient(90deg,#57b6ff,#2e7de1); transition:width .25s; }
-  #boardBadge { top:74px; right:14px; font-size:14px; padding:8px 14px; border-radius:22px; flex-direction:column; align-items:flex-start; gap:2px; max-width:210px; }
-  #boardBadge b { font-size:15px; }
+  #lvlBadge { top:74px; left:14px; font-size:21px; padding:5px 14px 5px 10px; flex-direction:column; align-items:stretch; gap:3px; border-radius:0; }
+  #kills { font-size:17px !important; }
+  #xpTrack { width:130px; height:12px; background:#e4d3ac; border:2px solid #3a2b23; border-radius:0; overflow:hidden; }
+  #xpFill { height:100%; width:0%; background-color:#ff9a2e; background-image:repeating-linear-gradient(90deg, rgba(0,0,0,0) 0 6px, rgba(0,0,0,.18) 6px 8px); transition:width .3s; }
+  #hpText { font-size:17px; font-weight:700; color:#c0392b; line-height:1.1; }
+  #hpTrack { width:130px; height:12px; background:#e8c9c9; border:2px solid #3a2b23; border-radius:0; overflow:hidden; }
+  #hpFill { height:100%; width:100%; background-color:#e5484d; background-image:repeating-linear-gradient(90deg, rgba(0,0,0,0) 0 6px, rgba(0,0,0,.18) 6px 8px); transition:width .25s; }
+  #mpText { font-size:17px; font-weight:700; color:#2255aa; line-height:1.1; }
+  #mpTrack { width:130px; height:12px; background:#c9d8e8; border:2px solid #3a2b23; border-radius:0; overflow:hidden; }
+  #mpFill { height:100%; width:100%; background-color:#2e7de1; background-image:repeating-linear-gradient(90deg, rgba(0,0,0,0) 0 6px, rgba(0,0,0,.18) 6px 8px); transition:width .25s; }
+  #boardBadge { top:74px; right:14px; font-size:19px; line-height:1.15; padding:8px 14px; border-radius:0; flex-direction:column; align-items:flex-start; gap:2px; max-width:210px; }
+  #boardBadge b { font-family:"Press Start 2P",monospace; font-size:9px; }
   #boardBadge .row { display:flex; gap:6px; white-space:nowrap; }
   #boardBadge .row.me { color:#d2691e; }
 
@@ -40,172 +58,172 @@
   #rack { position:fixed; z-index:20; bottom:14px; left:50%; transform:translateX(-50%); display:flex; gap:10px; }
   .wcard {
     width:82px; padding:8px 4px 6px; text-align:center; cursor:pointer; position:relative;
-    background:#fff8e7; border:4px solid #5b3a1e; border-radius:18px;
-    box-shadow:0 5px 0 #5b3a1e; transition:transform .08s;
+    background:#fff6df; border:3px solid #3a2b23; border-radius:0;
+    box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(0,0,0,.30); transition:transform .08s;
   }
-  .wcard:active { transform:translateY(4px); box-shadow:0 1px 0 #5b3a1e; }
-  .wcard.sel { background:#ffd94d; transform:translateY(-8px) scale(1.07); box-shadow:0 10px 0 #5b3a1e; }
+  .wcard:active { transform:translate(2px,2px); box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 1px 1px 0 rgba(0,0,0,.30); }
+  .wcard.sel { background:#ffe9a8; border-color:#ffb52e; transform:translateY(-4px); box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 5px 0 rgba(0,0,0,.30); }
   .wcard.locked { filter:grayscale(.9); opacity:.65; }
   .wcard svg { width:34px; height:34px; }
-  .wcard .wn { font-size:10px; font-weight:800; color:#5b3a1e; line-height:1.05; white-space:nowrap; }
-  .wcard .wl { position:absolute; top:-10px; right:-8px; background:#5b3a1e; color:#ffd94d; font-size:11px; font-weight:800; border-radius:99px; padding:2px 8px; }
-  .wcard .key { position:absolute; top:-10px; left:-8px; background:#fff; border:2px solid #5b3a1e; color:#5b3a1e; font-size:11px; font-weight:800; border-radius:8px; padding:1px 6px; }
+  .wcard .wn { font-family:"Press Start 2P",monospace; font-size:7px; color:#3a2b23; line-height:1.3; white-space:nowrap; }
+  .wcard .wl { position:absolute; top:-10px; right:-8px; background:#3a2b23; color:#ffd94d; font-size:15px; font-weight:700; border-radius:0; padding:2px 8px; line-height:1.1; }
+  .wcard .key { position:absolute; top:-10px; left:-8px; background:#fff; border:2px solid #3a2b23; color:#3a2b23; font-family:"Press Start 2P",monospace; font-size:8px; border-radius:0; padding:2px 5px; }
 
   #forgeBtn {
     position:fixed; z-index:21; bottom:14px; right:14px; cursor:pointer;
-    background:#ff8a2e; border:4px solid #5b3a1e; border-radius:20px; color:#fff;
-    font-family:inherit; font-weight:800; font-size:18px; padding:12px 18px;
-    box-shadow:0 6px 0 #5b3a1e; text-shadow:0 2px 0 rgba(0,0,0,.25);
+    background:#ff8a2e; border:3px solid #3a2b23; border-radius:0; color:#fff;
+    font-family:"Press Start 2P",monospace; font-size:11px; padding:12px 14px;
+    box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
   }
-  #forgeBtn:active { transform:translateY(4px); box-shadow:0 2px 0 #5b3a1e; }
+  #forgeBtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
   #shareBtn {
     position:fixed; z-index:21; bottom:14px; left:14px; cursor:pointer;
-    background:#4dabff; border:4px solid #5b3a1e; border-radius:20px; color:#fff;
-    font-family:inherit; font-weight:800; font-size:16px; padding:12px 16px;
-    box-shadow:0 6px 0 #5b3a1e; text-shadow:0 2px 0 rgba(0,0,0,.25);
+    background:#4dabff; border:3px solid #3a2b23; border-radius:0; color:#fff;
+    font-family:"Press Start 2P",monospace; font-size:10px; padding:12px 12px;
+    box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
   }
-  #shareBtn:active { transform:translateY(4px); box-shadow:0 2px 0 #5b3a1e; }
+  #shareBtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
 
   /* forge popup */
   #forge {
     position:fixed; z-index:30; bottom:110px; right:14px; width:290px;
-    background:#fff8e7; border:5px solid #5b3a1e; border-radius:26px; padding:16px;
-    box-shadow:0 10px 0 rgba(91,58,30,.8), 0 24px 40px rgba(0,0,0,.35);
+    background:#fff6df; border:3px solid #3a2b23; border-radius:0; padding:16px;
+    box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 5px 5px 0 rgba(0,0,0,.30);
     animation:pop .18s cubic-bezier(.2,2.2,.4,1);
   }
   @keyframes pop { from { transform:scale(.7) translateY(20px); opacity:0; } }
-  #forge h3 { color:#5b3a1e; font-size:22px; margin-bottom:10px; text-align:center; }
-  .upg { display:flex; align-items:center; gap:10px; background:#fff; border:3px solid #5b3a1e; border-radius:16px; padding:8px 10px; margin-bottom:8px; }
+  #forge h3 { font-family:"Press Start 2P",monospace; color:#3a2b23; font-size:15px; line-height:1.5; margin-bottom:10px; text-align:center; }
+  .upg { display:flex; align-items:center; gap:10px; background:#fff; border:3px solid #3a2b23; border-radius:0; padding:8px 10px; margin-bottom:8px; }
   .upg .info { flex:1; }
-  .upg .info b { color:#5b3a1e; font-size:15px; display:block; }
-  .upg .info span { color:#97754a; font-size:12px; font-weight:700; }
+  .upg .info b { color:#3a2b23; font-size:20px; display:block; line-height:1.1; }
+  .upg .info span { color:#97754a; font-size:16px; }
   .upg button {
-    font-family:inherit; font-weight:800; font-size:14px; cursor:pointer; white-space:nowrap;
-    background:#ffd94d; border:3px solid #5b3a1e; border-radius:12px; padding:7px 10px; color:#5b3a1e;
-    box-shadow:0 3px 0 #5b3a1e;
+    font-family:"Press Start 2P",monospace; font-size:9px; cursor:pointer; white-space:nowrap;
+    background:#ffd94d; border:3px solid #3a2b23; border-radius:0; padding:8px 9px; color:#3a2b23;
+    box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35);
   }
-  .upg button:active { transform:translateY(2px); box-shadow:0 1px 0 #5b3a1e; }
-  .upg button:disabled { filter:grayscale(1); opacity:.5; cursor:default; }
+  .upg button:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
+  .upg button:disabled { filter:grayscale(.6); opacity:.6; cursor:default; }
 
   #toast {
     position:fixed; z-index:40; top:130px; left:50%; transform:translateX(-50%);
-    background:#5b3a1e; color:#ffd94d; font-weight:800; font-size:19px; text-align:center;
-    padding:10px 24px; border-radius:999px; border:4px solid #ffd94d;
-    box-shadow:0 8px 20px rgba(0,0,0,.35); animation:pop .2s cubic-bezier(.2,2.2,.4,1); pointer-events:none;
+    background:#3a2b23; color:#ffd94d; font-family:"Press Start 2P",monospace; font-size:11px; line-height:1.7; text-align:center;
+    padding:10px 20px; border-radius:0; border:3px solid #ffd94d;
+    box-shadow:5px 5px 0 rgba(0,0,0,.35); animation:pop .2s cubic-bezier(.2,2.2,.4,1); pointer-events:none;
     max-width:92vw;
   }
   #bubble {
-    position:fixed; z-index:25; pointer-events:none; background:#fff; color:#5b3a1e; font-weight:800; font-size:15px;
-    padding:6px 14px; border:3px solid #5b3a1e; border-radius:16px; transform:translate(-50%,-130%);
-    box-shadow:0 4px 0 rgba(91,58,30,.6); white-space:nowrap;
+    position:fixed; z-index:25; pointer-events:none; background:#fff; color:#3a2b23; font-size:20px; font-weight:700;
+    padding:6px 14px; border:3px solid #3a2b23; border-radius:0; transform:translate(-50%,-130%);
+    box-shadow:3px 3px 0 rgba(0,0,0,.30); white-space:nowrap;
   }
-  #bubble:after { content:""; position:absolute; left:50%; bottom:-10px; transform:translateX(-50%); border:6px solid transparent; border-top:8px solid #5b3a1e; border-bottom:0; }
+  #bubble:after { content:""; position:absolute; left:50%; bottom:-10px; transform:translateX(-50%); border:6px solid transparent; border-top:8px solid #3a2b23; border-bottom:0; }
 
   /* ---------- polish pass: bounty / combo / hint / king banner / pause ---------- */
   #bountyBadge {
     position:fixed; z-index:20; top:216px; left:14px; max-width:232px;
-    background:#fff8e7; border:4px solid #5b3a1e; border-radius:22px; padding:8px 14px;
-    color:#5b3a1e; box-shadow:0 5px 0 #5b3a1e;
+    background:#fff6df; border:3px solid #3a2b23; border-radius:0; padding:8px 14px;
+    color:#3a2b23; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 4px 4px 0 rgba(0,0,0,.30);
   }
-  #bountyBadge b { font-size:13px; letter-spacing:1.5px; color:#b8860b; display:block; }
-  #bountyText { font-weight:800; font-size:15px; line-height:1.25; }
-  #bountyProg { font-weight:700; font-size:12.5px; color:#97754a; margin-top:2px; }
+  #bountyBadge b { font-family:"Press Start 2P",monospace; font-size:8px; letter-spacing:0; color:#b8860b; display:block; margin-bottom:4px; }
+  #bountyText { font-size:20px; line-height:1.2; }
+  #bountyProg { font-size:16px; color:#97754a; margin-top:2px; }
   #comboBadge {
     position:fixed; z-index:22; bottom:108px; right:calc(50% + 118px);
-    background:#ff8a2e; color:#fff; border:4px solid #5b3a1e; border-radius:999px;
-    padding:8px 20px; font-weight:900; font-size:22px; white-space:nowrap;
-    box-shadow:0 5px 0 #5b3a1e; text-shadow:0 2px 0 rgba(0,0,0,.25);
+    background:#ff8a2e; color:#fff; border:3px solid #3a2b23; border-radius:0;
+    padding:10px 16px; font-family:"Press Start 2P",monospace; font-size:14px; white-space:nowrap;
+    box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
   }
   #comboBadge.fire { background:#e5484d; }
   #comboBadge.pop2 { animation:comboPop .22s cubic-bezier(.2,2.2,.4,1); }
   @keyframes comboPop { 40% { transform:scale(1.28) rotate(-2deg); } }
   #hint {
     position:fixed; z-index:23; bottom:118px; left:50%; transform:translateX(-50%);
-    background:#fff; color:#5b3a1e; border:3px solid #5b3a1e; border-bottom-width:7px; border-radius:14px;
-    padding:8px 18px; font-weight:900; font-size:17px; white-space:nowrap; pointer-events:none;
-    box-shadow:0 6px 14px rgba(0,0,0,.25); animation:hintBob 1s ease-in-out infinite;
+    background:#fff; color:#3a2b23; border:3px solid #3a2b23; border-radius:0;
+    padding:9px 16px; font-family:"Press Start 2P",monospace; font-size:10px; line-height:1.7; white-space:nowrap; pointer-events:none;
+    box-shadow:4px 4px 0 rgba(0,0,0,.30); animation:hintBob 1s ease-in-out infinite;
   }
   @keyframes hintBob { 0%,100% { transform:translateX(-50%) translateY(0); } 50% { transform:translateX(-50%) translateY(-5px); } }
   #kingBanner {
     position:fixed; z-index:35; top:34%; left:50%; transform:translateX(-50%);
-    font-size:min(8vw,44px); font-weight:900; color:#ffd94d; letter-spacing:1px; text-align:center;
-    -webkit-text-stroke:2px #8a5a12; text-shadow:0 4px 0 #8a5a12, 0 10px 24px rgba(0,0,0,.4);
+    font-family:"Press Start 2P",monospace; font-size:min(6.5vw,32px); line-height:1.45; color:#ffd94d; text-align:center;
+    -webkit-text-stroke:2px #8a5a12; text-shadow:4px 4px 0 #8a5a12, 8px 8px 0 rgba(0,0,0,.25);
     pointer-events:none; white-space:nowrap;
   }
   #kingBanner.show { animation:kingIn 2.5s ease forwards; }
   #streakBanner {
     position:fixed; z-index:35; top:22%; left:50%; transform:translateX(-50%);
-    font-size:min(6vw,30px); font-weight:900; color:#ff8a2e; letter-spacing:1px; text-align:center;
-    -webkit-text-stroke:1.5px #8a4a12; text-shadow:0 3px 0 #8a4a12, 0 8px 20px rgba(0,0,0,.35);
+    font-family:"Press Start 2P",monospace; font-size:min(5vw,20px); line-height:1.45; color:#ff8a2e; text-align:center;
+    -webkit-text-stroke:1.5px #8a4a12; text-shadow:3px 3px 0 #8a4a12, 6px 6px 0 rgba(0,0,0,.25);
     pointer-events:none; white-space:nowrap;
   }
   #streakBanner.show { animation:kingIn 1.6s ease forwards; }
   #zoneBanner {
     position:fixed; z-index:34; top:64px; left:50%; transform:translateX(-50%);
-    background:#fff8e7; border:4px solid #5b3a1e; border-radius:999px; padding:8px 22px;
-    color:#5b3a1e; font-weight:900; font-size:19px; letter-spacing:.5px; text-align:center;
-    box-shadow:0 5px 0 #5b3a1e, 0 10px 22px rgba(0,0,0,.3); pointer-events:none;
+    background:#fff6df; border:3px solid #3a2b23; border-radius:0; padding:8px 22px;
+    color:#3a2b23; font-family:"Press Start 2P",monospace; font-size:12px; line-height:1.6; text-align:center;
+    box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 4px 4px 0 rgba(0,0,0,.30); pointer-events:none;
   }
-  #zoneBanner small { display:block; font-size:12.5px; font-weight:800; color:#97754a; }
+  #zoneBanner small { display:block; font-family:"VT323",monospace; font-size:17px; color:#97754a; line-height:1.2; }
   @keyframes kingIn { 0% { opacity:0; transform:translateX(-50%) scale(.6); } 12% { opacity:1; transform:translateX(-50%) scale(1.08); } 20% { transform:translateX(-50%) scale(1); } 80% { opacity:1; } 100% { opacity:0; transform:translateX(-50%) scale(1); } }
   #pauseBtn {
-    position:fixed; z-index:21; left:14px; bottom:400px; width:46px; height:46px; border-radius:50%;
-    background:#fff8e7; border:3.5px solid #5b3a1e; color:#5b3a1e; cursor:pointer;
-    font-family:inherit; font-weight:900; font-size:14px; box-shadow:0 4px 0 #5b3a1e;
+    position:fixed; z-index:21; left:14px; bottom:400px; width:46px; height:46px; border-radius:0;
+    background:#fff6df; border:3px solid #3a2b23; color:#3a2b23; cursor:pointer;
+    font-family:"Press Start 2P",monospace; font-size:12px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
   }
-  #pauseBtn:active { transform:translateY(3px); box-shadow:0 1px 0 #5b3a1e; }
+  #pauseBtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
   #pauseMenu {
     position:fixed; inset:0; z-index:45; background:rgba(20,40,15,.55);
     display:flex; align-items:center; justify-content:center;
   }
   .pauseCard {
-    background:#fff8e7; border:5px solid #5b3a1e; border-radius:26px; padding:26px 30px;
-    box-shadow:0 10px 0 rgba(91,58,30,.8), 0 24px 40px rgba(0,0,0,.4);
+    background:#fff6df; border:3px solid #3a2b23; border-radius:0; padding:26px 30px;
+    box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 5px 5px 0 rgba(0,0,0,.30);
     display:flex; flex-direction:column; gap:12px; width:min(92vw,340px); text-align:center;
     animation:pop .18s cubic-bezier(.2,2.2,.4,1);
   }
-  .pauseCard h2 { color:#5b3a1e; font-size:32px; letter-spacing:2px; }
+  .pauseCard h2 { font-family:"Press Start 2P",monospace; color:#3a2b23; font-size:19px; line-height:1.5; }
   .pbtn {
-    font-family:inherit; font-weight:900; font-size:19px; cursor:pointer;
-    background:#ffd94d; border:4px solid #5b3a1e; border-radius:16px; padding:11px; color:#5b3a1e;
-    box-shadow:0 4px 0 #5b3a1e;
+    font-family:"Press Start 2P",monospace; font-size:11px; line-height:1.5; cursor:pointer;
+    background:#ffd94d; border:3px solid #3a2b23; border-radius:0; padding:12px 10px; color:#3a2b23;
+    box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
   }
-  .pbtn:active { transform:translateY(3px); box-shadow:0 1px 0 #5b3a1e; }
-  .pbtn.main { background:#57d93d; color:#fff; text-shadow:0 2px 0 rgba(0,0,0,.2); }
-  .pcontrols { color:#97754a; font-weight:700; font-size:12.5px; line-height:1.55; }
+  .pbtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
+  .pbtn.main { background:#57d93d; color:#fff; text-shadow:2px 2px 0 rgba(0,0,0,.25); }
+  .pcontrols { color:#97754a; font-size:17px; line-height:1.35; }
   @media (max-width:640px) {
     /* PHONE HUD: the play field comes first. Every HUD piece shrinks, hugs
        the edges, and lets touches pass through — only real buttons eat taps. */
     .badge { pointer-events:none; }
-    #coinBadge { top:max(8px, env(safe-area-inset-top)); left:8px; font-size:15px; padding:3px 10px 3px 5px; border-width:3px; box-shadow:0 3px 0 #5b3a1e; }
+    #coinBadge { top:max(8px, env(safe-area-inset-top)); left:8px; font-size:20px; padding:3px 10px 3px 5px; border-width:3px; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(0,0,0,.30); }
     #coinBadge svg { width:19px; height:19px; }
-    #lvlBadge { top:50px; left:8px; font-size:12.5px; padding:4px 10px; border-width:3px; border-radius:16px; box-shadow:0 3px 0 #5b3a1e; }
+    #lvlBadge { top:50px; left:8px; font-size:17px; padding:4px 10px; border-width:3px; border-radius:0; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(0,0,0,.30); }
     #xpTrack { width:84px; height:9px; }
-    #peerBadge { top:max(8px, env(safe-area-inset-top)); right:8px; font-size:12.5px; padding:4px 10px; border-width:3px; box-shadow:0 3px 0 #5b3a1e; }
-    #bountyBadge { top:142px; left:8px; max-width:158px; padding:5px 9px; border-width:3px; border-radius:16px; box-shadow:0 3px 0 #5b3a1e; pointer-events:none; }
+    #peerBadge { top:max(8px, env(safe-area-inset-top)); right:8px; font-size:17px; padding:4px 10px; border-width:3px; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(0,0,0,.30); }
+    #bountyBadge { top:142px; left:8px; max-width:158px; padding:5px 9px; border-width:3px; border-radius:0; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(0,0,0,.30); pointer-events:none; }
     #hpTrack { width:84px; height:9px; }
-    #hpText { font-size:10.5px; }
+    #hpText { font-size:14px; }
     #mpTrack { width:84px; height:9px; }
-    #mpText { font-size:10.5px; }
+    #mpText { font-size:14px; }
     #items { left:8px; bottom:158px; gap:8px; }
     .ibtn { width:44px; height:44px; }
-    #interactPrompt { bottom:158px; font-size:14px; padding:8px 18px; }
+    #interactPrompt { bottom:158px; font-size:9px; padding:9px 14px; }
     #bossBar { width:min(72vw,520px); }
-    #bountyBadge b { font-size:9.5px; letter-spacing:1px; }
-    #bountyText { font-size:11.5px; line-height:1.2; }
-    #bountyProg { font-size:10px; margin-top:1px; }
-    #minimap { width:74px; height:74px; left:8px; bottom:76px; border-width:3px; border-radius:14px; pointer-events:none; }
-    #pauseBtn { left:auto; right:8px; top:94px; bottom:auto; width:36px; height:36px; font-size:11px; border-width:3px; box-shadow:0 3px 0 #5b3a1e; }
+    #bountyBadge b { font-size:6px; letter-spacing:0; }
+    #bountyText { font-size:16px; line-height:1.2; }
+    #bountyProg { font-size:14px; margin-top:1px; }
+    #minimap { width:74px; height:74px; left:8px; bottom:76px; border-width:3px; border-radius:0; pointer-events:none; }
+    #pauseBtn { left:auto; right:8px; top:94px; bottom:auto; width:36px; height:36px; font-size:10px; border-width:3px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
     #rack { bottom:max(8px, env(safe-area-inset-bottom)); gap:5px; width:100vw; }
-    #forgeBtn { bottom:78px; right:8px; font-size:13px; padding:8px 12px; border-width:3px; border-radius:16px; box-shadow:0 4px 0 #5b3a1e; }
+    #forgeBtn { bottom:78px; right:8px; font-size:8px; padding:9px 10px; border-width:3px; border-radius:0; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
     #actives { bottom:178px; right:8px; gap:8px; }
-    #wSkillBtn { width:96px; font-size:10px; }
-    #treeBtn { bottom:124px; right:8px; font-size:13px; padding:8px 12px; border-width:3px; border-radius:16px; box-shadow:0 4px 0 #5b3a1e; }
-    .abtn { width:48px; height:48px; font-size:10px; border-width:3px; }
-    #comboBadge { right:auto; left:8px; bottom:326px; font-size:15px; padding:5px 12px; border-width:3px; box-shadow:0 3px 0 #5b3a1e; }
-    #hint { bottom:160px; font-size:13px; max-width:72vw; white-space:normal; text-align:center; padding:6px 12px; }
-    #toast { top:auto; bottom:208px; font-size:14px; padding:7px 16px; border-width:3px; }
-    #zoneBanner { font-size:15px; padding:6px 14px; max-width:94vw; }
+    #wSkillBtn { width:96px; font-size:7px; }
+    #treeBtn { bottom:124px; right:8px; font-size:8px; padding:9px 10px; border-width:3px; border-radius:0; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
+    .abtn { width:48px; height:48px; font-size:7px; border-width:3px; }
+    #comboBadge { right:auto; left:8px; bottom:326px; font-size:9px; padding:7px 10px; border-width:3px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
+    #hint { bottom:160px; font-size:8px; max-width:72vw; white-space:normal; text-align:center; padding:7px 10px; }
+    #toast { top:auto; bottom:208px; font-size:9px; padding:8px 14px; border-width:3px; }
+    #zoneBanner { font-size:10px; padding:6px 14px; max-width:94vw; }
   }
 
   /* ---------- survival pass: HP flash / boss bar / death / items / bank & shop ---------- */
@@ -215,162 +233,162 @@
   }
   #bossBar {
     position:fixed; z-index:24; top:12px; left:50%; transform:translateX(-50%);
-    width:min(46vw,520px); background:#40121d; border:4px solid #ffd94d; border-radius:18px;
-    padding:6px 14px 9px; box-shadow:0 5px 0 rgba(0,0,0,.5); text-align:center; pointer-events:none;
+    width:min(46vw,520px); background:#40121d; border:3px solid #ffd94d; border-radius:0;
+    padding:6px 14px 9px; box-shadow:5px 5px 0 rgba(0,0,0,.35); text-align:center; pointer-events:none;
   }
-  #bossBar b { color:#ffd94d; font-size:15px; letter-spacing:2px; display:block; margin-bottom:4px; }
-  #bossTrack { height:13px; background:#2a0a12; border:2px solid #ffd94d; border-radius:99px; overflow:hidden; }
-  #bossFill { height:100%; width:100%; background:linear-gradient(90deg,#ff7847,#e5484d); transition:width .25s; }
+  #bossBar b { font-family:"Press Start 2P",monospace; color:#ffd94d; font-size:10px; display:block; margin-bottom:6px; }
+  #bossTrack { height:13px; background:#2a0a12; border:2px solid #ffd94d; border-radius:0; overflow:hidden; }
+  #bossFill { height:100%; width:100%; background-color:#e5484d; background-image:repeating-linear-gradient(90deg, rgba(0,0,0,0) 0 6px, rgba(0,0,0,.18) 6px 8px); transition:width .25s; }
   #deathBanner {
     position:fixed; z-index:46; top:38%; left:50%; transform:translate(-50%,-50%);
-    background:#40121d; color:#ffd9d9; border:5px solid #e5484d; border-radius:24px;
-    padding:20px 30px; font-weight:900; font-size:22px; text-align:center; max-width:88vw;
-    box-shadow:0 10px 0 rgba(0,0,0,.45), 0 24px 40px rgba(0,0,0,.5); pointer-events:none;
+    background:#40121d; color:#ffd9d9; border:3px solid #e5484d; border-radius:0;
+    padding:20px 30px; font-family:"Press Start 2P",monospace; font-size:15px; line-height:1.8; text-align:center; max-width:88vw;
+    box-shadow:5px 5px 0 rgba(0,0,0,.35); pointer-events:none;
     animation:pop .18s cubic-bezier(.2,2.2,.4,1);
   }
   #interactPrompt {
     position:fixed; z-index:23; bottom:118px; left:50%; transform:translateX(-50%);
-    font-family:inherit; font-weight:900; font-size:17px; cursor:pointer;
-    background:#ffd94d; color:#5b3a1e; border:4px solid #5b3a1e; border-radius:999px;
-    padding:10px 26px; box-shadow:0 5px 0 #5b3a1e;
+    font-family:"Press Start 2P",monospace; font-size:11px; cursor:pointer;
+    background:#ffd94d; color:#3a2b23; border:3px solid #3a2b23; border-radius:0;
+    padding:11px 20px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
   }
-  #interactPrompt:active { transform:translateX(-50%) translateY(3px); box-shadow:0 2px 0 #5b3a1e; }
+  #interactPrompt:active { transform:translateX(-50%) translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
   #items { position:fixed; left:14px; bottom:222px; z-index:21; display:flex; flex-direction:column; gap:10px; }
   .ibtn {
-    position:relative; width:48px; height:48px; border-radius:50%; cursor:pointer;
-    border:3.5px solid #5b3a1e; background:#fff8e7; box-shadow:0 4px 0 #5b3a1e;
+    position:relative; width:48px; height:48px; border-radius:0; cursor:pointer;
+    border:3px solid #3a2b23; background:#fff6df; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
     display:flex; align-items:center; justify-content:center; padding:0;
   }
   .ibtn svg { width:27px; height:27px; }
-  .ibtn:active { transform:translateY(3px); box-shadow:0 1px 0 #5b3a1e; }
+  .ibtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
   .ibtn .cnt {
     position:absolute; top:-7px; right:-7px; min-width:20px; height:20px; padding:0 5px;
-    background:#5b3a1e; color:#ffd94d; border-radius:99px; font-family:inherit;
-    font-size:12px; font-weight:900; display:flex; align-items:center; justify-content:center;
+    background:#3a2b23; color:#ffd94d; border-radius:0;
+    font-size:16px; font-weight:700; line-height:1; display:flex; align-items:center; justify-content:center;
   }
   .ibtn.empty { filter:grayscale(.9); opacity:.55; }
   .panelWrap {
     position:fixed; inset:0; z-index:44; background:rgba(20,40,15,.45);
     display:flex; align-items:center; justify-content:center;
   }
-  .bankLine { font-weight:800; color:#5b3a1e; font-size:16px; }
+  .bankLine { color:#3a2b23; font-size:22px; line-height:1.2; }
   .bankLine b { color:#b8860b; }
   .shopRow {
-    display:flex; align-items:center; gap:10px; background:#fff; border:3px solid #5b3a1e;
-    border-radius:16px; padding:8px 10px; margin-bottom:8px; text-align:left;
+    display:flex; align-items:center; gap:10px; background:#fff; border:3px solid #3a2b23;
+    border-radius:0; padding:8px 10px; margin-bottom:8px; text-align:left;
   }
   .shopRow .info { flex:1; }
-  .shopRow .info b { color:#5b3a1e; font-size:15px; display:block; }
-  .shopRow .info span { color:#97754a; font-size:12px; font-weight:700; }
-  .shopRow .own { font-weight:900; color:#b8860b; font-size:14px; min-width:36px; text-align:center; }
+  .shopRow .info b { color:#3a2b23; font-size:20px; display:block; line-height:1.1; }
+  .shopRow .info span { color:#97754a; font-size:16px; }
+  .shopRow .own { font-family:"Press Start 2P",monospace; color:#b8860b; font-size:8px; min-width:36px; text-align:center; }
   .shopRow button {
-    font-family:inherit; font-weight:800; font-size:14px; cursor:pointer; white-space:nowrap;
-    background:#ffd94d; border:3px solid #5b3a1e; border-radius:12px; padding:7px 12px; color:#5b3a1e;
-    box-shadow:0 3px 0 #5b3a1e;
+    font-family:"Press Start 2P",monospace; font-size:9px; cursor:pointer; white-space:nowrap;
+    background:#ffd94d; border:3px solid #3a2b23; border-radius:0; padding:8px 9px; color:#3a2b23;
+    box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35);
   }
-  .shopRow button:active { transform:translateY(2px); box-shadow:0 1px 0 #5b3a1e; }
-  .shopRow button:disabled { filter:grayscale(1); opacity:.5; cursor:default; }
+  .shopRow button:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
+  .shopRow button:disabled { filter:grayscale(.6); opacity:.6; cursor:default; }
 
   /* ---------- sphere grid ---------- */
   #forge { width:min(94vw,472px); }
-  #spBar { text-align:center; font-weight:900; color:#5b3a1e; font-size:16px; margin-bottom:8px; }
-  #spBar b { background:#5b3a1e; color:#ffd94d; border-radius:99px; padding:2px 14px; margin-left:6px; font-size:18px; }
+  #spBar { text-align:center; color:#3a2b23; font-size:22px; margin-bottom:8px; }
+  #spBar b { font-family:"Press Start 2P",monospace; background:#3a2b23; color:#ffd94d; border-radius:0; padding:3px 10px; margin-left:6px; font-size:10px; }
   #sphereBoard {
     position:relative; width:min(86vw,424px); aspect-ratio:1; margin:0 auto;
-    background:radial-gradient(circle at 50% 42%, #2b3a6e 0%, #1b2450 55%, #12173a 100%);
+    background:#1b2450;
     border:4px solid #0d1030; border-radius:50%;
-    box-shadow:inset 0 0 44px rgba(120,170,255,.35), 0 6px 18px rgba(0,0,0,.3);
+    box-shadow:6px 6px 0 rgba(0,0,0,.30);
     overflow:hidden;
   }
   #sphereLines { position:absolute; inset:0; width:100%; height:100%; }
   .snode {
-    position:absolute; width:8.6%; aspect-ratio:1; margin:-4.3% 0 0 -4.3%; border-radius:50%;
+    position:absolute; width:8.6%; aspect-ratio:1; margin:-4.3% 0 0 -4.3%; border-radius:0;
     border:3px solid rgba(255,255,255,.35); background:#39406e; color:#cfd8ff;
-    font-family:inherit; font-weight:900; font-size:clamp(8px,2.4vw,11px); cursor:pointer; z-index:2;
-    display:flex; align-items:center; justify-content:center; letter-spacing:.5px;
-    box-shadow:0 3px 8px rgba(0,0,0,.45); transition:transform .12s;
+    font-family:"Press Start 2P",monospace; font-size:clamp(6px,2vw,8px); cursor:pointer; z-index:2;
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:2px 2px 0 rgba(0,0,0,.45); transition:transform .12s;
   }
-  .snode small { position:absolute; bottom:-15px; font-size:9px; color:#ffe9bd; text-shadow:0 1px 2px #000; white-space:nowrap; }
+  .snode small { position:absolute; bottom:-15px; font-family:"VT323",monospace; font-size:13px; color:#ffe9bd; text-shadow:1px 1px 0 #000; white-space:nowrap; }
   .snode.avail { border-color:#ffd94d; color:#fff; animation:nodePulse 1.2s ease-in-out infinite; }
   @keyframes nodePulse { 0%,100% { box-shadow:0 0 0 0 rgba(255,217,77,.55);} 50% { box-shadow:0 0 0 9px rgba(255,217,77,0);} }
   .snode.owned { color:#fff; border-color:#fff; }
   .snode.sel { transform:scale(1.22); border-color:#fff; z-index:3; }
-  .snode.center { background:radial-gradient(circle,#ffe9a8,#ffb52e); color:#5b3a1e; border-color:#fff2c9; font-size:10px; cursor:default; }
-  #nodeCard { margin-top:10px; background:#fff; border:3px solid #5b3a1e; border-radius:16px; padding:10px 12px; }
-  #nodeCard b { color:#5b3a1e; font-size:16px; display:block; }
-  #nodeCard .ntype { font-size:11px; font-weight:900; letter-spacing:1px; }
-  #nodeCard p { color:#7a5c33; font-weight:700; font-size:13px; margin:3px 0 8px; line-height:1.35; }
+  .snode.center { background:#ffb52e; color:#3a2b23; border-color:#fff2c9; font-size:8px; cursor:default; }
+  #nodeCard { margin-top:10px; background:#fff; border:3px solid #3a2b23; border-radius:0; padding:10px 12px; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4); }
+  #nodeCard b { color:#3a2b23; font-size:21px; display:block; line-height:1.1; }
+  #nodeCard .ntype { font-family:"Press Start 2P",monospace; font-size:8px; }
+  #nodeCard p { color:#7a5c33; font-size:18px; margin:3px 0 8px; line-height:1.3; }
   #nodeCard button {
-    font-family:inherit; font-weight:800; font-size:15px; cursor:pointer; width:100%;
-    background:#ffd94d; border:3px solid #5b3a1e; border-radius:12px; padding:8px; color:#5b3a1e; box-shadow:0 3px 0 #5b3a1e;
+    font-family:"Press Start 2P",monospace; font-size:10px; cursor:pointer; width:100%;
+    background:#ffd94d; border:3px solid #3a2b23; border-radius:0; padding:9px; color:#3a2b23; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35);
   }
-  #nodeCard button:active { transform:translateY(2px); box-shadow:0 1px 0 #5b3a1e; }
-  #nodeCard button:disabled { filter:grayscale(1); opacity:.55; cursor:default; }
+  #nodeCard button:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
+  #nodeCard button:disabled { filter:grayscale(.6); opacity:.55; cursor:default; }
 
   #minimap {
     position:fixed; left:14px; bottom:86px; z-index:19; width:124px; height:124px;
-    border:3.5px solid #5b3a1e; border-radius:18px; background:#79c25f;
-    box-shadow:0 4px 0 rgba(91,58,30,.7);
+    border:3px solid #3a2b23; border-radius:0; background:#79c25f;
+    box-shadow:4px 4px 0 rgba(0,0,0,.30);
   }
 
   /* ---------- active skill buttons ---------- */
   #actives { position:fixed; right:14px; bottom:140px; z-index:21; display:flex; flex-direction:column; gap:10px; }
   .abtn {
-    position:relative; width:58px; height:58px; border-radius:50%; cursor:pointer; overflow:hidden;
-    border:3.5px solid #5b3a1e; background:#fff8e7; color:#5b3a1e;
-    font-family:inherit; font-weight:900; font-size:11px; box-shadow:0 4px 0 #5b3a1e;
-    display:flex; flex-direction:column; align-items:center; justify-content:center; line-height:1.05;
+    position:relative; width:58px; height:58px; border-radius:0; cursor:pointer; overflow:hidden;
+    border:3px solid #3a2b23; background:#fff6df; color:#3a2b23;
+    font-family:"Press Start 2P",monospace; font-size:8px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; line-height:1.4;
   }
-  .abtn .k { font-size:9px; color:#97754a; }
+  .abtn .k { font-family:"VT323",monospace; font-size:13px; color:#97754a; line-height:1.1; }
   .abtn .cdov { position:absolute; left:0; right:0; bottom:0; background:rgba(30,30,60,.45); pointer-events:none; }
-  .abtn:active { transform:translateY(3px); box-shadow:0 1px 0 #5b3a1e; }
+  .abtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
 
   /* ---------- weapon skill button + skill tree ---------- */
   #treeBtn {
     position:fixed; z-index:21; bottom:76px; right:14px; cursor:pointer;
-    background:#8e6bc8; border:4px solid #5b3a1e; border-radius:20px; color:#fff;
-    font-family:inherit; font-weight:800; font-size:18px; padding:12px 18px;
-    box-shadow:0 6px 0 #5b3a1e; text-shadow:0 2px 0 rgba(0,0,0,.25);
+    background:#8e6bc8; border:3px solid #3a2b23; border-radius:0; color:#fff;
+    font-family:"Press Start 2P",monospace; font-size:11px; padding:12px 14px;
+    box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
   }
-  #treeBtn:active { transform:translateY(4px); box-shadow:0 2px 0 #5b3a1e; }
+  #treeBtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
   #wSkillBtn {
-    position:relative; width:118px; padding:8px 6px; border-radius:16px; cursor:pointer; overflow:hidden;
-    border:3.5px solid #5b3a1e; background:#fff8e7; color:#5b3a1e;
-    font-family:inherit; font-weight:900; font-size:11.5px; box-shadow:0 4px 0 #5b3a1e;
-    display:flex; flex-direction:column; align-items:center; justify-content:center; line-height:1.15;
+    position:relative; width:118px; padding:8px 6px; border-radius:0; cursor:pointer; overflow:hidden;
+    border:3px solid #3a2b23; background:#fff6df; color:#3a2b23;
+    font-family:"Press Start 2P",monospace; font-size:8px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; line-height:1.5;
   }
-  #wSkillBtn .k { font-size:9.5px; color:#97754a; }
+  #wSkillBtn .k { font-family:"VT323",monospace; font-size:14px; color:#97754a; line-height:1.1; }
   #wSkillBtn .cdov { position:absolute; left:0; right:0; bottom:0; background:rgba(30,30,60,.45); pointer-events:none; }
   #wSkillBtn.off { filter:grayscale(.85); opacity:.6; }
-  #wSkillBtn:active { transform:translateY(3px); box-shadow:0 1px 0 #5b3a1e; }
+  #wSkillBtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
   .trow {
-    display:flex; align-items:center; gap:10px; background:#fff; border:3px solid #5b3a1e;
-    border-radius:16px; padding:8px 10px; margin-bottom:8px; text-align:left;
+    display:flex; align-items:center; gap:10px; background:#fff; border:3px solid #3a2b23;
+    border-radius:0; padding:8px 10px; margin-bottom:8px; text-align:left;
   }
   .trow.notowned { filter:grayscale(.7); opacity:.75; }
   .trow img { width:84px; height:40px; object-fit:contain; flex:none; }
   .tmain { flex:1; min-width:0; }
-  .tname { font-weight:900; color:#5b3a1e; font-size:15px; }
-  .tname .tnot { display:block; font-size:11px; color:#c0392b; font-weight:800; }
+  .tname { color:#3a2b23; font-size:20px; line-height:1.1; }
+  .tname .tnot { display:block; font-family:"VT323",monospace; font-size:15px; color:#c0392b; }
   .tchips { display:flex; align-items:center; gap:5px; margin-top:5px; flex-wrap:wrap; }
   .tchip {
-    font-family:inherit; font-weight:800; font-size:11px; cursor:pointer;
-    background:#e8e2d2; color:#5b3a1e; border:3px solid #b8a888; border-radius:12px; padding:6px 8px;
+    font-family:"Press Start 2P",monospace; font-size:8px; cursor:pointer; line-height:1.4;
+    background:#e8e2d2; color:#3a2b23; border:3px solid #b8a888; border-radius:0; padding:6px 7px;
   }
-  .tchip.owned { color:#fff; border-color:#5b3a1e; text-shadow:0 1px 0 rgba(0,0,0,.3); }
+  .tchip.owned { color:#fff; border-color:#3a2b23; text-shadow:1px 1px 0 rgba(0,0,0,.3); }
   .tchip.avail { border-color:#ffb52e; animation:nodePulse 1.2s ease-in-out infinite; }
-  .tchip.sel { outline:3px solid #5b3a1e; }
-  .tlink { flex:0 0 8px; height:3px; background:#b8a888; border-radius:2px; }
-  .tcard { margin-top:2px; background:#fff; border:3px solid #5b3a1e; border-radius:16px; padding:10px 12px; text-align:left; }
-  .tcard b { color:#5b3a1e; font-size:16px; display:block; }
-  .tcard .ntype { font-size:11px; font-weight:900; letter-spacing:1px; }
-  .tcard p { color:#7a5c33; font-weight:700; font-size:13px; margin:3px 0 8px; line-height:1.35; }
+  .tchip.sel { outline:3px solid #3a2b23; }
+  .tlink { flex:0 0 8px; height:3px; background:#b8a888; border-radius:0; }
+  .tcard { margin-top:2px; background:#fff; border:3px solid #3a2b23; border-radius:0; padding:10px 12px; text-align:left; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4); }
+  .tcard b { color:#3a2b23; font-size:21px; display:block; line-height:1.1; }
+  .tcard .ntype { font-family:"Press Start 2P",monospace; font-size:8px; }
+  .tcard p { color:#7a5c33; font-size:18px; margin:3px 0 8px; line-height:1.3; }
   .tcard button {
-    font-family:inherit; font-weight:800; font-size:15px; cursor:pointer; width:100%;
-    background:#ffd94d; border:3px solid #5b3a1e; border-radius:12px; padding:8px; color:#5b3a1e; box-shadow:0 3px 0 #5b3a1e;
+    font-family:"Press Start 2P",monospace; font-size:10px; cursor:pointer; width:100%;
+    background:#ffd94d; border:3px solid #3a2b23; border-radius:0; padding:9px; color:#3a2b23; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35);
   }
-  .tcard button:active { transform:translateY(2px); box-shadow:0 1px 0 #5b3a1e; }
-  .tcard button:disabled { filter:grayscale(1); opacity:.55; cursor:default; }
+  .tcard button:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
+  .tcard button:disabled { filter:grayscale(.6); opacity:.55; cursor:default; }
 
   /* ---------- title screen ---------- */
   #title {
@@ -379,45 +397,45 @@
     padding:20px;
   }
   #logo {
-    font-size:min(15vw,96px); font-weight:900; color:#fff; letter-spacing:1px; text-align:center; line-height:.95;
-    -webkit-text-stroke:3px #3c7a27; text-shadow:0 6px 0 #3c7a27, 0 12px 0 rgba(0,0,0,.2), 0 20px 34px rgba(0,0,0,.4);
+    font-family:"Press Start 2P",monospace; font-size:min(10vw,52px); color:#fff; text-align:center; line-height:1.3;
+    -webkit-text-stroke:2px #3c7a27; text-shadow:4px 4px 0 #3c7a27, 8px 8px 0 rgba(0,0,0,.25);
     animation:bob 2.2s ease-in-out infinite;
   }
-  #logo .slash { color:#ffd94d; -webkit-text-stroke:3px #8a5a12; text-shadow:0 6px 0 #8a5a12, 0 12px 0 rgba(0,0,0,.2); }
+  #logo .slash { color:#ffd94d; -webkit-text-stroke:2px #8a5a12; text-shadow:4px 4px 0 #8a5a12, 8px 8px 0 rgba(0,0,0,.2); }
   @keyframes bob { 0%,100% { transform:rotate(-1.5deg) translateY(0); } 50% { transform:rotate(1.5deg) translateY(-10px); } }
-  #tagline { color:#fff; font-weight:800; font-size:min(5vw,21px); text-shadow:0 3px 0 rgba(0,0,0,.35); text-align:center; }
+  #tagline { color:#fff; font-size:min(6vw,28px); text-shadow:2px 2px 0 rgba(0,0,0,.35); text-align:center; line-height:1.2; }
   .sign {
-    background:#a06a35; border:5px solid #5b3a1e; border-radius:20px; padding:14px 20px;
-    box-shadow:0 8px 0 #5b3a1e, inset 0 0 0 3px rgba(255,255,255,.15);
+    background:#a06a35; border:3px solid #3a2b23; border-radius:0; padding:14px 20px;
+    box-shadow:inset 0 0 0 2px rgba(255,255,255,.15), 5px 5px 0 rgba(0,0,0,.30);
     display:flex; flex-direction:column; gap:10px; width:min(92vw,380px);
   }
-  .sign label { color:#ffe9bd; font-weight:800; font-size:14px; letter-spacing:1px; }
+  .sign label { font-family:"Press Start 2P",monospace; color:#ffe9bd; font-size:9px; line-height:1.6; }
   .sign input {
-    font-family:inherit; font-weight:800; font-size:20px; color:#5b3a1e; text-align:center;
-    background:#fff8e7; border:3px solid #5b3a1e; border-radius:12px; padding:9px; width:100%; outline:none;
+    font-family:"VT323",monospace; font-size:26px; color:#3a2b23; text-align:center;
+    background:#fff6df; border:3px solid #3a2b23; border-radius:0; padding:9px; width:100%; outline:none;
     text-transform:none;
   }
   .sign input.code { text-transform:uppercase; letter-spacing:4px; }
-  #titleReset { display:block; margin:10px auto 0; background:none; border:none; color:#a33; font-weight:900; font-size:12px; letter-spacing:1px; cursor:pointer; opacity:.75; text-decoration:underline; }
+  #titleReset { display:block; margin:10px auto 0; background:none; border:none; color:#b03a2e; font-family:"Press Start 2P",monospace; font-size:8px; cursor:pointer; opacity:.85; }
   #titleReset.hidden { display:none; }
   #playBtn {
-    font-family:inherit; font-size:34px; font-weight:900; color:#fff; cursor:pointer;
-    background:linear-gradient(180deg,#57d93d,#35b01e); border:5px solid #1e6410; border-radius:999px;
-    padding:14px 64px; box-shadow:0 10px 0 #1e6410, 0 20px 30px rgba(0,0,0,.35);
-    text-shadow:0 3px 0 rgba(0,0,0,.25); animation:pulse 1.4s ease-in-out infinite;
+    font-family:"Press Start 2P",monospace; font-size:20px; color:#fff; cursor:pointer;
+    background:#46c22c; border:3px solid #3a2b23; border-radius:0;
+    padding:16px 52px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 4px 4px 0 rgba(0,0,0,.35);
+    animation:pulse 1.4s ease-in-out infinite;
   }
   @keyframes pulse { 0%,100% { transform:scale(1); } 50% { transform:scale(1.05); } }
-  #playBtn:active { transform:translateY(6px); box-shadow:0 4px 0 #1e6410; }
-  #howto { color:#fff; font-weight:700; font-size:15px; text-shadow:0 2px 0 rgba(0,0,0,.4); text-align:center; max-width:520px; line-height:1.5; }
+  #playBtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
+  #howto { color:#fff; font-size:20px; text-shadow:2px 2px 0 rgba(0,0,0,.4); text-align:center; max-width:520px; line-height:1.35; }
   @media (max-width:640px) {
-    .wcard { width:min(56px,15vw); padding:6px 1px 5px; border-width:3px; border-radius:14px; }
-    .wcard svg { width:26px; height:26px; } .wcard .wn { font-size:8.5px; }
-    .wcard .key { display:none; } .wcard .wl { font-size:9px; padding:1px 6px; top:-8px; right:-5px; }
-    .wcard.sel { transform:translateY(-5px) scale(1.05); }
+    .wcard { width:min(56px,15vw); padding:6px 1px 5px; border-width:3px; border-radius:0; }
+    .wcard svg { width:26px; height:26px; } .wcard .wn { font-family:"VT323",monospace; font-size:13px; font-weight:700; }
+    .wcard .key { display:none; } .wcard .wl { font-size:13px; padding:1px 6px; top:-8px; right:-5px; }
+    .wcard.sel { transform:translateY(-4px); }
     #shareBtn { display:none; } #boardBadge { display:none; }
     #forge { right:50%; transform:translateX(50%); bottom:84px; width:94vw; padding:12px;
              max-height:calc(100dvh - 150px); overflow-y:auto; }
-    #forge h3 { font-size:19px; margin-bottom:6px; }
+    #forge h3 { font-size:13px; margin-bottom:6px; }
     #sphereBoard { width:min(82vw, 46dvh); }
   }
 </style>
@@ -454,16 +472,16 @@
     <button class="ibtn empty" id="itemBomb" title="Bomb (X) — blast every slime near your sword"><svg viewBox="0 0 40 40"><circle cx="19" cy="25" r="12" fill="#263238"/><rect x="23" y="9" width="6" height="8" rx="2" fill="#5b3a1e"/><path d="M27 9 q7-5 9 1" stroke="#ffb52e" stroke-width="2.5" fill="none" stroke-linecap="round"/><circle cx="15" cy="20" r="3.5" fill="#90a4ae"/></svg><span class="cnt">0</span></button>
     <button class="ibtn empty" id="itemShield" title="Aegis Charm (C) — shield: 6s invulnerable"><svg viewBox="0 0 40 40"><path d="M20 3 L34 8.5 V19 C34 28.5 27.5 33.5 20 37.5 C12.5 33.5 6 28.5 6 19 V8.5 Z" fill="#4dabff" stroke="#22577a" stroke-width="2.5"/><path d="M20 8 L29 11.5 V19 C29 25.5 25 29.5 20 32.5 C15 29.5 11 25.5 11 19 V11.5 Z" fill="#bfe3ff"/></svg><span class="cnt">0</span></button>
   </div>
-  <button id="interactPrompt" class="hidden">OPEN BANK</button>
+  <button id="interactPrompt" class="hidden px-btn">OPEN BANK</button>
   <div id="bossBar" class="hidden"><b>SLIME EMPEROR</b><div id="bossTrack"><div id="bossFill"></div></div></div>
   <div id="actives"><button id="wSkillBtn"><span id="wsName">SKILL LOCKED</span><span class="k" id="wsSub">V · SKILLS tree (K)</span><div class="cdov" id="wsCdov" style="height:0%"></div></button></div>
-  <button id="shareBtn">INVITE LINK</button>
-  <button id="forgeBtn">SPHERE</button>
-  <button id="treeBtn">SKILLS</button>
+  <button id="shareBtn" class="px-btn">INVITE LINK</button>
+  <button id="forgeBtn" class="px-btn">SPHERE</button>
+  <button id="treeBtn" class="px-btn">SKILLS</button>
   <div id="comboBadge" class="hidden">x3 COMBO</div>
   <button id="pauseBtn" title="Pause">| |</button>
 
-  <div id="forge" class="hidden">
+  <div id="forge" class="hidden px-panel">
     <h3>SPHERE GRID</h3>
     <div id="spBar">SPHERE POINTS <b id="spCount">0</b></div>
     <div id="sphereBoard"><svg id="sphereLines" viewBox="0 0 100 100" preserveAspectRatio="none"></svg><div id="sphereNodes"></div></div>
@@ -486,7 +504,7 @@
 <div id="zoneBanner" class="hidden"></div>
 <div id="hint" class="hidden"></div>
 <div id="pauseMenu" class="hidden">
-  <div class="pauseCard">
+  <div class="pauseCard px-panel">
     <h2>PAUSED</h2>
     <button class="pbtn main" id="resumeBtn">RESUME</button>
     <button class="pbtn" id="soundBtn">SOUND: ON</button>
@@ -495,7 +513,7 @@
   </div>
 </div>
 <div id="bankPanel" class="hidden panelWrap">
-  <div class="pauseCard">
+  <div class="pauseCard px-panel">
     <h2>THE SLIME BANK</h2>
     <div class="bankLine">Carried: <b id="bankCarried">0</b> coins</div>
     <div class="bankLine">Banked: <b id="bankBanked">0</b> coins</div>
@@ -506,7 +524,7 @@
   </div>
 </div>
 <div id="shopPanel" class="hidden panelWrap">
-  <div class="pauseCard" style="width:min(94vw,410px)">
+  <div class="pauseCard px-panel" style="width:min(94vw,410px)">
     <h2>SLIME SHOP</h2>
     <div class="bankLine">Carried: <b id="shopCoins">0</b> coins</div>
     <div id="shopRows"></div>
@@ -514,7 +532,7 @@
   </div>
 </div>
 <div id="hospitalPanel" class="hidden panelWrap">
-  <div class="pauseCard" style="width:min(94vw,410px)">
+  <div class="pauseCard px-panel" style="width:min(94vw,410px)">
     <h2>HOSPITAL</h2>
     <div class="bankLine">HP: <b id="hospHp">100 / 100</b></div>
     <div class="bankLine">Carried: <b id="hospCoins">0</b> coins</div>
@@ -523,7 +541,7 @@
   </div>
 </div>
 <div id="treePanel" class="hidden panelWrap">
-  <div class="pauseCard" style="width:min(94vw,560px);max-height:88dvh;overflow-y:auto">
+  <div class="pauseCard px-panel" style="width:min(94vw,560px);max-height:88dvh;overflow-y:auto">
     <h2>WEAPON SKILLS</h2>
     <div class="bankLine" style="text-align:center">Sphere Points: <b id="treeSp">0</b></div>
     <div id="treeRows"></div>
@@ -544,7 +562,7 @@
   <div class="sign">
     <div><label>YOUR NAME</label><input id="nameIn" maxlength="12" autocomplete="off"></div>
   </div>
-  <button id="playBtn">PLAY</button>
+  <button id="playBtn" class="px-btn">PLAY</button>
   <button id="titleReset" class="hidden">RESET SAVE</button>
   <div id="howto">Move mouse / drag finger to swing your sword through slimes.<br>Tap or click for a SPIN SLASH. Level up to earn Sphere Points — spend them on the SPHERE GRID for stats, passives and active skills.<br>There is only ONE world — send the link to friends and they drop straight into it with you. No rooms, no codes, no sign-up.</div>
 </div>
