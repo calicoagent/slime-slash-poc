@@ -50,12 +50,19 @@
   #kills { font-size:17px !important; }
   #xpTrack { width:130px; height:12px; background:#e4d3ac; border:2px solid #3a2b23; border-radius:0; overflow:hidden; }
   #xpFill { height:100%; width:0%; background-color:#ff9a2e; background-image:repeating-linear-gradient(90deg, rgba(0,0,0,0) 0 6px, rgba(0,0,0,.18) 6px 8px); transition:width .3s; }
-  #hpText { font-size:17px; font-weight:700; color:#c0392b; line-height:1.1; }
-  #hpTrack { width:130px; height:12px; background:#e8c9c9; border:2px solid #3a2b23; border-radius:0; overflow:hidden; }
+  /* HP/MP numbers live ON the bars (Handler: 'Hp Mp etc can overlay on
+     the bar') — the #hpText/#mpText spans sit inside their tracks, centred,
+     white with a dark outline so they read on filled AND empty segments.
+     The old separate text rows are gone: the stat panel loses two lines. */
+  #hpTrack { position:relative; width:130px; height:16px; background:#e8c9c9; border:2px solid #3a2b23; border-radius:0; overflow:hidden; }
   #hpFill { height:100%; width:100%; background-color:#e5484d; background-image:repeating-linear-gradient(90deg, rgba(0,0,0,0) 0 6px, rgba(0,0,0,.18) 6px 8px); transition:width .25s; }
-  #mpText { font-size:17px; font-weight:700; color:#2255aa; line-height:1.1; }
-  #mpTrack { width:130px; height:12px; background:#c9d8e8; border:2px solid #3a2b23; border-radius:0; overflow:hidden; }
+  #mpTrack { position:relative; width:130px; height:16px; background:#c9d8e8; border:2px solid #3a2b23; border-radius:0; overflow:hidden; }
   #mpFill { height:100%; width:100%; background-color:#2e7de1; background-image:repeating-linear-gradient(90deg, rgba(0,0,0,0) 0 6px, rgba(0,0,0,.18) 6px 8px); transition:width .25s; }
+  #hpText, #mpText {
+    position:absolute; inset:0; z-index:1; display:flex; align-items:center; justify-content:center;
+    font-size:14px; font-weight:700; line-height:1; color:#fff; pointer-events:none;
+    text-shadow:1px 0 0 #3a2b23, -1px 0 0 #3a2b23, 0 1px 0 #3a2b23, 0 -1px 0 #3a2b23, 1px 1px 0 rgba(58,43,35,.6);
+  }
   #boardBadge { top:74px; right:max(14px, env(safe-area-inset-right)); font-size:19px; line-height:1.15; padding:8px 14px; border-radius:0; flex-direction:column; align-items:flex-start; gap:2px; max-width:210px; }
   #boardBadge b { font-family:"Press Start 2P",monospace; font-size:9px; }
   #boardBadge .row { display:flex; gap:6px; white-space:nowrap; }
@@ -169,14 +176,16 @@
   @keyframes hintBob { 0%,100% { transform:translateX(-50%) translateY(0); } 50% { transform:translateX(-50%) translateY(-5px); } }
   #kingBanner {
     position:fixed; z-index:35; top:34%; left:50%; transform:translateX(-50%);
-    font-family:"Press Start 2P",monospace; font-size:min(6.5vw,32px); line-height:1.45; color:#ffd94d; text-align:center;
+    font-family:"Press Start 2P",monospace; font-size:clamp(18px, 7.2vw, 40px); line-height:1.45; color:#ffd94d; text-align:center;
+    max-width:100vw; box-sizing:border-box; padding:0 8px;
     -webkit-text-stroke:2px #8a5a12; text-shadow:4px 4px 0 #8a5a12, 8px 8px 0 rgba(0,0,0,.25);
     pointer-events:none; white-space:nowrap;
   }
   #kingBanner.show { animation:kingIn 2.5s ease forwards; }
   #streakBanner {
     position:fixed; z-index:35; top:22%; left:50%; transform:translateX(-50%);
-    font-family:"Press Start 2P",monospace; font-size:min(5vw,20px); line-height:1.45; color:#ff8a2e; text-align:center;
+    font-family:"Press Start 2P",monospace; font-size:clamp(13px, 5.5vw, 20px); line-height:1.45; color:#ff8a2e; text-align:center;
+    max-width:100vw; box-sizing:border-box; padding:0 8px;
     -webkit-text-stroke:1.5px #8a4a12; text-shadow:3px 3px 0 #8a4a12, 6px 6px 0 rgba(0,0,0,.25);
     pointer-events:none; white-space:nowrap;
   }
@@ -226,9 +235,9 @@
     #xpTrack { width:84px; height:9px; }
     #peerBadge { top:max(8px, env(safe-area-inset-top)); right:8px; font-size:17px; padding:4px 10px; border-width:3px; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(0,0,0,.30); }
     #bountyBadge { top:190px; left:8px; max-width:158px; padding:5px 9px; border-width:3px; border-radius:0; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(0,0,0,.30); pointer-events:none; }
-    #hpTrack { width:84px; height:9px; }
+    #hpTrack { width:84px; height:14px; }
     #hpText { font-size:14px; }
-    #mpTrack { width:84px; height:9px; }
+    #mpTrack { width:84px; height:14px; }
     #mpText { font-size:14px; }
     /* items become right-side THUMB controls on a phone: chunky buttons
        stacked above the rack dock (riding --dockH), reachable without
@@ -285,7 +294,7 @@
   #deathBanner {
     position:fixed; z-index:46; top:38%; left:50%; transform:translate(-50%,-50%);
     background:#40121d; color:#ffd9d9; border:3px solid #e5484d; border-radius:0;
-    padding:20px 30px; font-family:"Press Start 2P",monospace; font-size:15px; line-height:1.8; text-align:center; max-width:88vw;
+    padding:20px 30px; font-family:"Press Start 2P",monospace; font-size:clamp(12px, 3.8vw, 15px); line-height:1.8; text-align:center; max-width:88vw; box-sizing:border-box;
     box-shadow:5px 5px 0 rgba(0,0,0,.35); pointer-events:none;
     animation:pop .18s cubic-bezier(.2,2.2,.4,1);
   }
@@ -597,6 +606,66 @@
     /* boss bar: at most 70vw on phones */
     #bossBar { width:min(70vw,520px); }
   }
+
+  /* ---------- portrait-phone HUD overhaul (<=700px, portrait) ----------
+     Handler's iPhone screenshot: the LV/HP/MP panel ate the top-left
+     quarter, the item column stacked down over the BOUNTY panel (POTION
+     hidden behind it), the king banner overflowed BOTH screen edges and
+     the SKILL LOCKED box was huge. This block is appended LAST in the
+     stylesheet so it wins the cascade over every earlier <=640px block
+     on portrait phones. Landscape and desktop are untouched by it. */
+  @media (max-width:700px) and (orientation: portrait) {
+    /* stat panel: half the screen wide at most, tight rows; the bars
+       (14px) carry their own overlaid numbers */
+    #lvlBadge { top:46px; left:8px; width:48vw; max-width:48vw; padding:6px 8px; gap:2px; font-size:11px; }
+    #kills { font-size:11px !important; }
+    #xpTrack, #hpTrack, #mpTrack { width:100%; }
+    #xpTrack { height:8px; }
+    #hpTrack, #mpTrack { height:14px; }
+    #hpText, #mpText { font-size:13px; }
+    /* coin badge + gem chips: small */
+    #coinBadge { padding:4px 8px; font-size:13px; }
+    #gemBadge { top:128px; left:8px; padding:3px 6px; font-size:11px; gap:5px; }
+    /* BOUNTY becomes a slim one-line strip across the top centre:
+       'BOUNTY · Slay 12 PURPLE · 8/12'. Its top (156px) clears the stat
+       panel (46 + ~73 tall = ~119) and the gem row (~128-148, left side
+       only); it is centred, so it never touches the item column. */
+    #bountyBadge {
+      top:156px; left:50%; transform:translateX(-50%); width:max-content; max-width:52vw;
+      display:flex; align-items:center; gap:6px; padding:4px 8px; white-space:nowrap; overflow:hidden;
+    }
+    #bountyBadge b { display:inline; margin:0; font-size:8px; }
+    #bountyBadge b::after { content:' ·'; }
+    #bountyText { font-size:11px; line-height:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    #bountyProg { font-size:11px; line-height:1; margin:0; white-space:nowrap; }
+    #bountyProg::before { content:'· '; }
+    /* with a boss up the left column shifts down (earlier boss-on rules);
+       the gem row and the bounty strip follow it down */
+    body.boss-on #gemBadge { top:186px; }
+    body.boss-on #bountyBadge { top:214px; }
+    /* item buttons: 52px thumb squares, icon + count only. The column
+       stays bottom-anchored on the right (bottom = live --dockH + 10px
+       from the <=640px rules), so its top edge always starts far BELOW
+       the stat cluster — it can never slide under the bounty strip. */
+    .ibtn { width:52px; min-height:52px; padding:2px; }
+    .ibtn svg { width:24px; height:24px; }
+    .ibtn .cnt { min-width:20px; height:20px; font-size:13px; top:-6px; right:-6px; }
+    /* minimap + dock stack (SKILLS / SPHERE / GEMS) shrink */
+    #minimap { width:84px; height:84px; }
+    #forgeBtn, #treeBtn, #gemBtn { font-size:10px; padding:5px 9px; min-height:44px; }
+    /* weapon-skill hint box ('SKILL LOCKED — V · SKILLS tree (K)') */
+    #wSkillBtn { width:auto; max-width:42vw; padding:6px 8px; font-size:10px; }
+    #wSkillBtn .k { font-size:11px; }
+    /* peer badge ('Connecting to world...' / '2 players') + pause */
+    #peerBadge { font-size:11px; padding:4px 8px; }
+    #peerBadge .dot { width:9px; height:9px; }
+    #pauseBtn { width:36px; height:36px; }
+    /* interact prompt (OPEN INN etc.) */
+    #interactPrompt { font-size:13px; padding:8px 14px; }
+    /* banners wrap inside the screen instead of clipping off the edges */
+    #kingBanner { white-space:normal; letter-spacing:0; width:100vw; }
+    #streakBanner { white-space:normal; letter-spacing:0; max-width:100vw; }
+  }
 </style>
 </head>
 <body>
@@ -612,10 +681,8 @@
   <div class="badge" id="lvlBadge">
     <div>LV <span id="lvl">1</span> &nbsp;<span id="kills" style="color:#97754a;font-size:13px;">0 kills</span></div>
     <div id="xpTrack"><div id="xpFill"></div></div>
-    <div id="hpText">HP 100</div>
-    <div id="hpTrack"><div id="hpFill"></div></div>
-    <div id="mpText">MP 100</div>
-    <div id="mpTrack"><div id="mpFill"></div></div>
+    <div id="hpTrack"><div id="hpFill"></div><span id="hpText">100 / 100</span></div>
+    <div id="mpTrack"><div id="mpFill"></div><span id="mpText">100</span></div>
   </div>
   <div class="badge" id="peerBadge"><span class="dot"></span><span id="peers">Solo</span></div>
   <div class="badge" id="boardBadge"><b>TOP SLAYERS</b><div id="board"></div></div>
@@ -2358,10 +2425,10 @@ function refreshHUD(){
   $('#xpFill').style.width = clamp(me.xp/(me.level*100)*100,0,100)+'%';
   // player HP (local only)
   $('#hpFill').style.width = clamp(me.hp/me.maxHp*100,0,100)+'%';
-  $('#hpText').textContent = 'HP ' + Math.max(0, Math.ceil(me.hp)) + ' / ' + me.maxHp;
+  $('#hpText').textContent = Math.max(0, Math.ceil(me.hp)) + ' / ' + me.maxHp;   // overlaid ON the bar — numbers only, no 'HP' prefix
   // player MP (local only, mirrors the HP rows)
   $('#mpFill').style.width = clamp(me.mp/me.maxMp*100,0,100)+'%';
-  $('#mpText').textContent = 'MP ' + Math.floor(me.mp);
+  $('#mpText').textContent = '' + Math.floor(me.mp);   // overlaid ON the bar — number only, no 'MP' prefix
   // SLIME EMPEROR boss bar — visible while a boss lives anywhere in the world
   const bossS = [...slimes.values()].find(s=>s.kind==='boss');
   if (bossS){ $('#bossBar').classList.remove('hidden'); $('#bossFill').style.width = clamp(bossS.hp/bossS.max*100,0,100)+'%'; }
