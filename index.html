@@ -234,8 +234,10 @@
        stacked above the rack dock (riding --dockH), reachable without
        crossing the play field */
     #items { left:auto; right:max(8px, env(safe-area-inset-right)); bottom:calc(var(--dockH, 196px) + 10px); gap:8px; }
-    .ibtn { width:64px; min-height:60px; }
-    .ibtn { width:44px; height:44px; }
+    /* chunky on phones too — a later 44px override used to shrink these
+       back down; the big thumb size below is the only mobile rule now */
+    .ibtn { width:68px; min-height:64px; }
+    .ibtn svg { width:32px; height:32px; }
     #interactPrompt { bottom:calc(var(--dockH, 196px) + 10px); font-size:9px; padding:9px 14px; }
     #bossBar { width:min(72vw,520px); }
     #bountyBadge b { font-size:6px; letter-spacing:0; }
@@ -294,14 +296,16 @@
     padding:11px 20px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
   }
   #interactPrompt:active { transform:translateX(-50%) translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
-  #items { position:fixed; left:max(14px, env(safe-area-inset-left)); bottom:222px; z-index:21; display:flex; flex-direction:column; gap:10px; }
+  /* z-index 40: the items cluster sits ABOVE world-space labels/prompts
+     (an INN sign once covered the BOMB button) and below modal panels */
+  #items { position:fixed; left:max(14px, env(safe-area-inset-left)); bottom:222px; z-index:40; display:flex; flex-direction:column; gap:10px; }
   .ibtn {
-    position:relative; width:60px; min-height:60px; border-radius:0; cursor:pointer; touch-action:manipulation;
+    position:relative; width:68px; min-height:64px; border-radius:0; cursor:pointer; touch-action:manipulation;
     border:3px solid #3a2b23; background:#fff6df; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
-    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; padding:4px 2px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; padding:5px 3px;
   }
-  .ibtn svg { width:26px; height:26px; }
-  .ibtn .ilabel { font-family:"VT323",monospace; font-size:14px; line-height:1; color:#3a2b23; letter-spacing:.5px; }
+  .ibtn svg { width:30px; height:30px; }
+  .ibtn .ilabel { font-family:"VT323",monospace; font-size:16px; line-height:1; color:#3a2b23; letter-spacing:.5px; }
   /* PANIC affordance: at low HP with potions in hand the POTION button
      throbs in hard pixel steps (no smooth glow) until it's used */
   @keyframes potionPanic { 0%,49% { transform:scale(1); filter:brightness(1); } 50%,100% { transform:scale(1.13); filter:brightness(1.4); } }
@@ -319,6 +323,7 @@
   }
   .bankLine { color:#3a2b23; font-size:22px; line-height:1.2; }
   .bankLine b { color:#b8860b; }
+  .shopRow .wstate { display:contents; }   /* state wrapper is layout-transparent: cost chips / XP text stay direct flex items */
   .shopRow {
     display:flex; align-items:center; gap:10px; background:#fff; border:3px solid #3a2b23;
     border-radius:0; padding:8px 10px; margin-bottom:8px; text-align:left;
@@ -675,6 +680,7 @@
     <div class="bankLine">Carried: <b id="hospCoins">0</b> coins</div>
     <div class="bankLine">Respawn: <b id="hospSpawn">Town Centre</b></div>
     <div id="hospRows"></div>
+    <div class="pcontrols">Sleep cost scales with missing HP.</div>
     <button class="pbtn" id="hospCloseBtn">CLOSE</button>
   </div>
 </div>
@@ -1010,6 +1016,7 @@ let spiralEmitters = [];
 let pendingVolleys = [];   // boss 'spread': timed 5-way volleys (client-local)        // active spiral bullet emitters (client-local)
 let bossSpawnAt = Infinity;     // host: next SLIME EMPEROR spawn time
 let lastMetalAt = -1;           // host: the metal GUARANTEE clock — written ONLY inside spawnSlime at the moment a metal slime actually enters the world (plus reign init); -1 = uninitialised
+let metalNoneNearSince = 0;     // host: since when NO metal has been REACHABLE (within 1.2u of any player); 0 = a metal is reachable right now
 let bossFireAt = 0;             // host: next bullet-pattern volley
 let bossPatternIdx = 0;         // host: pattern rotation ring -> fan -> spiral
 let dmgFlashAt = 0;             // last time the player took damage (red vignette decay)
@@ -1039,7 +1046,7 @@ const SLIME_KINDS = [
   { kind:'tank',  hp:190, r:.062, coins:34, xp:60, speed:.005, weight:8,  hopCycle:1050, hopDist:.030 },
   { kind:'splitter', hp:46, r:.040, coins:14, xp:24, speed:.010, weight:12, hopCycle:740, hopDist:.034 },
   { kind:'gold',  hp:10,  r:.022, coins:60, xp:30, speed:.026, weight:3,  hopCycle:540,  hopDist:.040 },
-  { kind:'metal', hp:14,  r:.024, coins:150,xp:120,speed:.002, weight:3,  hopCycle:430,  hopDist:.052 },   // METAL SLIME — exactly 1 dmg per hit, flees, rich
+  { kind:'metal', hp:14,  r:.024, coins:150,xp:120,speed:.002, weight:3,  hopCycle:430,  hopDist:.044 },   // METAL SLIME — exactly 1 dmg per hit, flees, rich (still the fastest hop)
   { kind:'boss',  hp:1500,r:.14,  coins:800,xp:600,speed:.007, weight:0,  hopCycle:1350, hopDist:.045 },   // SLIME EMPEROR — timed host spawn only, never random
 ];
 /* Hop phase is a pure function of (slime, now) so host and every client
@@ -1206,44 +1213,59 @@ function hostTick(now,dt){
     if (Math.random()<spawnP) spawnSlime();
     if (slimes.size < target-4 && Math.random()<spawnP) spawnSlime();   // refill in pairs while well under target
   }
-  /* METAL SLIME GUARANTEE (v3): a REACHABLE metal at least every ~75s.
-     This block runs every host tick, INDEPENDENT of the population gate
-     above, and its clock (lastMetalAt) resets ONLY when a metal slime
-     object actually enters the world — spawnSlime writes it at creation.
-     Why v3: v1 ("none alive AND 75s since last spawn") starved on one
-     far-away metal fleeing forever. v2's NEARNESS clock starved the
-     other way (two gauntlets, ~38 min, zero sightings): it reset
-     whenever any metal crossed within 2.0u of a player — but the view is
-     only ~1.9u wide x 1.0u tall, so metals parked on the town ring or
-     wandering the far side of the plaza counted as "near" while being
-     off-screen, and held the clock indefinitely (verified by simulating
-     the host in Node: the v2 block fires only after a full 75s with no
-     metal crossing the 2.0u disc). v3: if no metal is REACHABLE (within
-     2.0u of a player) and 75s have passed since the last metal ENTERED
-     the world, clear any far ones and force-spawn one at hunting
-     distance (0.5-0.9u) from a random player, outside town. The forced
-     spawn entering `slimes` is what resets the clock — a rejected or
-     skipped spawn can never move it. */
+  /* METAL SLIME GUARANTEE (v4): a REACHABLE metal at least every ~75s.
+     Why v4 (three gauntlets, 60+ min, ZERO sightings under v3): v3's
+     trigger was `now - lastMetalAt > 75000` — but lastMetalAt is written
+     inside spawnSlime on EVERY metal creation, including NATURAL spawns
+     (weight 3) anywhere on the map. With ~100 slimes churning, a natural
+     metal enters every minute or two, so the 75s window kept restarting;
+     and the far-away natural metal itself never despawned (metals flee
+     forever), while `metalNear` (2.0u disc — bigger than the view) could
+     also be held by an off-screen metal. The Node sim didn't reproduce
+     the natural-spawn clock resets at real rates, so v3 "worked" there
+     and starved in the real game.
+     v4 removes the whole class: (1) the trigger is a NONE-NEAR clock —
+     it runs only while no metal is within 1.2u of any player, and far
+     spawns can never reset it; (2) when it fires, the metal is built
+     DIRECTLY into the slime map at a position computed valid here —
+     spawnSlime (and all its candidate logic) is not involved at all;
+     (3) the spawn announces itself with the king banner and the metal
+     sheds silver sparkles while alive, so it cannot be missed. */
   if (lastMetalAt < 0) lastMetalAt = now;   // the clock starts with this host's reign
   const metalSpots = [{x:me.x, y:me.y}];
   for (const p of peers.values()) metalSpots.push({ x:(p.tx!==undefined?p.tx:p.x), y:(p.ty!==undefined?p.ty:p.y) });
   let metalNear = false;
-  for (const s of slimes.values()) if (s.kind==='metal' && metalSpots.some(c=>dist2(s.x,s.y,c.x,c.y) < 2*2)){ metalNear = true; break; }
-  if (!metalNear && now - lastMetalAt > 75000){
-    for (const [id, s] of [...slimes]) if (s.kind==='metal') slimes.delete(id);   // every living metal is >2.0u from everyone here — unreachable; clear it
+  for (const s of slimes.values()) if (s.kind==='metal' && metalSpots.some(c=>dist2(s.x,s.y,c.x,c.y) < 1.2*1.2)){ metalNear = true; break; }
+  if (metalNear) metalNoneNearSince = 0;
+  else if (!metalNoneNearSince) metalNoneNearSince = now;
+  else if (now - metalNoneNearSince > 75000){
+    metalNoneNearSince = now;
+    for (const [id, s] of [...slimes]) if (s.kind==='metal') slimes.delete(id);   // every living metal is unreachable — clear it
+    // position computed valid HERE: 0.6u from a random player in a random
+    // direction, >= TOWN_R + .15 from centre, inside world bounds; up to
+    // 8 tries, else the town-ring point at TOWN_R + .35 toward the player
+    const c = metalSpots[Math.floor(Math.random()*metalSpots.length)];
     let mx = null, my = null;
-    for (let tries=0; tries<20 && mx===null; tries++){
-      const c = metalSpots[Math.floor(Math.random()*metalSpots.length)];
-      const a = rand(0,Math.PI*2), d = rand(.5,.9);
-      const x = clamp(c.x + Math.cos(a)*d, .06, WORLD-.06), y = clamp(c.y + Math.sin(a)*d, .1, WORLD-.06);
-      if (Math.hypot(x-WORLD/2, y-WORLD/2) > TOWN_R + .10){ mx = x; my = y; }
-    }
-    if (mx===null){   // players camped in/near town: drop it on a ring just outside the boundary instead
+    for (let tries=0; tries<8 && mx===null; tries++){
       const a = rand(0,Math.PI*2);
+      const x = c.x + Math.cos(a)*.6, y = c.y + Math.sin(a)*.6;
+      if (x>=.06 && x<=WORLD-.06 && y>=.1 && y<=WORLD-.06 && Math.hypot(x-WORLD/2, y-WORLD/2) >= TOWN_R + .15){ mx = x; my = y; }
+    }
+    if (mx===null){
+      const a = Math.atan2(c.y-WORLD/2, c.x-WORLD/2);
       mx = clamp(WORLD/2 + Math.cos(a)*(TOWN_R+.35), .06, WORLD-.06);
       my = clamp(WORLD/2 + Math.sin(a)*(TOWN_R+.35), .1, WORLD-.06);
     }
-    spawnSlime({ kind:'metal', x:mx, y:my });   // entering the world resets lastMetalAt (inside spawnSlime) — and only that does
+    // DIRECT construction into the map (mirror of spawnSlime's object
+    // shape, incl. zone scaling) — no spawnSlime call on this path
+    const mk = SLIME_KINDS.find(m=>m.kind==='metal'), mzone = ZONES[zoneOf(mx, my)];
+    const mid = (hostId||me.id).slice(0,4)+'-'+(slimeSeq++);
+    const mhp = Math.round(mk.hp * mzone.hp);
+    slimes.set(mid, { id:mid, kind:'metal', hp:mhp, max:mhp, r:mk.r,
+      x:mx, y:my, vx:0, vy:0, dir:rand(0,Math.PI*2), turnAt:now+rand(800,2600),
+      color:'#cfd8dc', seed:seedForId(mid), squish:0, flash:0, mul:mzone.mul, elite:false });
+    lastMetalAt = now;   // a metal entered the world
+    showKingBanner('A WILD METAL SLIME APPEARED!');
   }
   /* ---- SLIME EMPEROR: timed spawn + bullet-hell volleys (host decides,
      every client sims the bullets locally from the 'boss' events) ---- */
@@ -1265,7 +1287,7 @@ function hostTick(now,dt){
       bossFireAt = now + 1500;
       const p = ['ring','fan','spiral','spread'][bossPatternIdx++ % 4];
       let payload;
-      if (p==='ring') payload = { p:'ring', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now, n:34, spd:.32 };
+      if (p==='ring') payload = { p:'ring', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now, n:22, spd:.32 };
       else if (p==='fan' || p==='spread'){
         let bx=me.x, by=me.y, bd=dist2(boss.x,boss.y,me.x,me.y);
         for (const pp of peers.values()){
@@ -1340,7 +1362,7 @@ function hostMine(nodeId, d, byId){
   if (now - last < 60) return;                    // host anti-spam (same map as hit claims)
   hitClaimsAt.set(key, now);
   n.left--; n.shakeT = now;
-  mineChips(n.x, n.y, 8);   // every lost chunk bursts stone chips (host's client)
+  mineChips(n.x, n.y, 10);   // every lost chunk bursts stone chips (host's client)
   const lv = clamp((d && d.lv|0) || 1, 1, 5);
   const chance = .55 + .06*(lv-1) + (d && d.gf ? .12 : 0) + (d && d.gr ? .40 : 0);
   const g = Math.random() < chance ? rollDrop(NODE_TYPES[n.t]) : null;
@@ -1397,7 +1419,7 @@ function applyWorld(p){
       if (old){
         if (left < old.left){   // a chunk was lost — every client sees the rock shake AND a burst of stone chips
           old.shakeT = performance.now();
-          mineChips(old.x, old.y, 8);
+          mineChips(old.x, old.y, 10);
           capParticles();
         }
         old.x = x; old.y = y; old.t = t; old.left = left;
@@ -1417,7 +1439,11 @@ function capParticles(){ if (particles.length>420) particles.splice(0, particles
    life (particle life decays at dt/480 per frame, so life 2.9 ≈ 1.4s).
    The old chips were 5 x r2-4 x ~0.5s and two gauntlets never saw them. */
 function mineChips(x, y, n){
-  for (let i=0;i<n;i++) particles.push({ x:x+rand(-.03,.03), y:y+rand(-.03,.03), vx:rand(-.11,.11), vy:rand(-.15,.02), life:2.9, color: i%2 ? '#cfd4d6' : '#9aa0a3', r:rand(3,7) });
+  // bright stone chips with an UPWARD pop (negative vy = up-screen): three
+  // playtests in a row couldn't see the old small grey sideways chips, so
+  // these are bigger (4-8px), near-white, launched up and given ~1.2s of
+  // life (life 2.5 at the particles' dt/480 decay) to arc and fall
+  for (let i=0;i<n;i++) particles.push({ x:x+rand(-.03,.03), y:y+rand(-.03,.03), vx:rand(-.13,.13), vy:rand(-.24,-.08), life:2.5, color: i%2 ? '#e8ecec' : '#b9c0c2', r:rand(4,8) });
   capParticles();
 }
 function spawnHitFx(x,y,color,n=6){ for(let i=0;i<n;i++) particles.push({x,y,vx:rand(-.12,.12),vy:rand(-.16,.02),life:1,color,r:rand(2,5)}); capParticles(); }
@@ -1509,7 +1535,7 @@ function bubble(text,x,y,ms=1600){ const b=$('#bubble'); b.textContent=text; b.s
    Bullets are never added to the world payload. */
 function spawnBullet(x,y,vx,vy,now){
   bullets.push({ x, y, vx, vy, born:now, life:3000 });
-  if (bullets.length > 600) bullets.splice(0, bullets.length-600);
+  if (bullets.length > 260) bullets.splice(0, bullets.length-260);   // global live-orb cap: cull the OLDEST first
 }
 function bossEvent(d){
   if (!d || typeof d.x!=='number' || typeof d.y!=='number') return;
@@ -1617,7 +1643,7 @@ function localHitCheck(now){
     me.lastHitAt.set(nk, now);
     n.shakeT = now;   // prediction: the rock shakes on my screen right away
     if (me.weapon === 6){
-      mineChips(n.x, n.y, 4);   // every connecting pickaxe swing sheds chips locally — mining reads as work, not just bookkeeping
+      mineChips(n.x, n.y, 5);   // every connecting pickaxe swing sheds chips locally — mining reads as work, not just bookkeeping
       sfx.hit();
       const claim = { n:n.id, lv:wxpOf(6).lv, gf: unlocked.has('w62') ? 1 : 0, gr: now < me.gemRushUntil ? 1 : 0 };
       if (isHost) hostMine(n.id, claim, me.id);
@@ -1832,22 +1858,37 @@ const SHOP_ITEMS = [
   { id:'shield', name:'Aegis Charm', price:100, desc:'Shield: 6s invulnerable' },
   { id:'purse',  name:'Coin Purse',  price:500, desc:'PERMANENT: death takes only 25% of carried coins' },
 ];
+/* Panel rows are built ONCE on open; while a panel stays open, values
+   refresh IN PLACE via these updaters (text + disabled on the SAME
+   nodes). Rebuilding rows mid-session replaced button nodes between a
+   touch's pointerdown and its click — taps on an apparently-enabled
+   button silently died (the inn SLEEP & SAVE report). */
+let shopUpdaters = [], hospUpdaters = [];
+function updateShopPanel(){
+  $('#shopCoins').textContent = me.coins;
+  for (const u of shopUpdaters) u();
+}
 function buildShopRows(){
   $('#shopCoins').textContent = me.coins;
+  shopUpdaters = [];
   const wrap = $('#shopRows'); wrap.innerHTML = '';
   for (const it of SHOP_ITEMS){
     const row = document.createElement('div'); row.className = 'shopRow';
-    const owned = it.id==='purse' ? (me.purse ? 'OWNED' : '') : ('x' + me.items[it.id]);
-    row.innerHTML = `<div class="info"><b>${it.name} — ${it.price}c</b><span>${it.desc}</span></div><div class="own">${owned}</div>`;
+    row.innerHTML = `<div class="info"><b>${it.name} — ${it.price}c</b><span>${it.desc}</span></div><div class="own"></div>`;
+    const ownEl = row.querySelector('.own');
     const btn = document.createElement('button');
-    const ownedPurse = it.id==='purse' && me.purse;
-    btn.textContent = ownedPurse ? 'OWNED' : 'BUY';
-    btn.disabled = ownedPurse || me.coins < it.price;   // carried coins only
     btn.onclick = ()=>buyItem(it.id);
     row.appendChild(btn);
     wrap.appendChild(row);
+    shopUpdaters.push(()=>{
+      ownEl.textContent = it.id==='purse' ? (me.purse ? 'OWNED' : '') : ('x' + me.items[it.id]);
+      const ownedPurse = it.id==='purse' && me.purse;
+      btn.textContent = ownedPurse ? 'OWNED' : 'BUY';
+      btn.disabled = ownedPurse || me.coins < it.price;   // carried coins only
+    });
   }
   buildWeaponRows(wrap);
+  updateShopPanel();
 }
 /* ---- the FORGE: weapons are CRAFTED for coins + gems (mined from ore
    rocks). Levelling is free-flow from XP; the Forge's other job is the
@@ -1867,7 +1908,7 @@ function craftWeapon(i){
   const cost = CRAFT_RECIPES[i];
   if (!cost || me.owned.has(i) || !canAfford(cost)) return;
   payCost(cost); me.owned.add(i); wxpOf(i);
-  sfx.buy(); buildShopRows(); buildRack(); refreshHUD(); saveGame();
+  sfx.buy(); updateShopPanel(); buildRack(); refreshHUD(); saveGame();
   toast(WEAPONS[i].name.toUpperCase()+' CRAFTED! Press '+(i+1)+' to wield it');
 }
 function breakthroughWeapon(i){
@@ -1876,7 +1917,7 @@ function breakthroughWeapon(i){
   const cost = BREAKTHROUGH_COSTS[wp.lv];
   if (!canAfford(cost)) return;
   payCost(cost); wp.lv++; wp.xp = 0;   // through the gate — XP flows again from 0
-  sfx.buy(); buildShopRows(); buildRack(); refreshHUD(); saveGame();
+  sfx.buy(); updateShopPanel(); buildRack(); refreshHUD(); saveGame();
   toast('BREAKTHROUGH! '+WEAPONS[i].name.toUpperCase()+' LV '+wp.lv);
 }
 function buildWeaponRows(wrap){
@@ -1885,26 +1926,33 @@ function buildWeaponRows(wrap){
   head.style.margin = '10px 0 4px'; wrap.appendChild(head);
   WEAPONS.forEach((w,i)=>{
     const row = document.createElement('div'); row.className = 'shopRow';
-    const owned = me.owned.has(i), wp = wxpOf(i);
-    let state = '', btn = null;
-    if (!owned){
-      const cost = CRAFT_RECIPES[i];
-      state = `<span class="costline">${costHTML(cost)}</span>`;
-      btn = document.createElement('button'); btn.textContent = 'CRAFT'; btn.disabled = !canAfford(cost);
-      btn.onclick = ()=>craftWeapon(i);
-    }
-    else if (wp.lv >= WLV_MAX) state = '<div class="own">LV 50 — MAX LEVEL</div>';
-    else if (isGate(wp.lv) && wp.xp >= xpNeed(wp.lv)){
-      const cost = BREAKTHROUGH_COSTS[wp.lv];
-      state = `<span class="costline">${costHTML(cost)}</span>`;
-      btn = document.createElement('button'); btn.textContent = 'BREAKTHROUGH'; btn.disabled = !canAfford(cost);
-      btn.onclick = ()=>breakthroughWeapon(i);
-    }
-    else if (isGate(wp.lv)) state = `<div class="own">XP ${wp.xp}/${xpNeed(wp.lv)} — GATE LV ${wp.lv}: fill the bar to break through</div>`;
-    else state = `<div class="own">XP ${wp.xp}/${xpNeed(wp.lv)}</div>`;
-    row.innerHTML = `<img src="assets/weapons/${w.id}.png" alt="" style="width:64px;height:20px;object-fit:contain;flex:none"><div class="info"><b>${w.name}${owned ? ' · Lv '+wp.lv : ''}</b><span>${w.dmg} dmg · ${w.desc}</span></div>${state}`;
-    if (btn) row.appendChild(btn);
+    row.innerHTML = `<img src="assets/weapons/${w.id}.png" alt="" style="width:64px;height:20px;object-fit:contain;flex:none"><div class="info"><b></b><span>${w.dmg} dmg · ${w.desc}</span></div><span class="wstate"></span>`;
+    const nameEl = row.querySelector('.info b'), stateEl = row.querySelector('.wstate');
+    const btn = document.createElement('button');
+    btn.onclick = ()=>{ if (!me.owned.has(i)) craftWeapon(i); else breakthroughWeapon(i); };   // role decided at tap time, node never replaced
+    row.appendChild(btn);
     wrap.appendChild(row);
+    shopUpdaters.push(()=>{
+      const owned = me.owned.has(i), wp = wxpOf(i);
+      nameEl.textContent = w.name + (owned ? ' · Lv ' + wp.lv : '');
+      let mode = null;   // null = no button (pure state text)
+      if (!owned){
+        stateEl.innerHTML = `<span class="costline">${costHTML(CRAFT_RECIPES[i])}</span>`;
+        mode = 'CRAFT';
+      }
+      else if (wp.lv >= WLV_MAX) stateEl.innerHTML = '<div class="own">LV 50 — MAX LEVEL</div>';
+      else if (isGate(wp.lv) && wp.xp >= xpNeed(wp.lv)){
+        stateEl.innerHTML = `<span class="costline">${costHTML(BREAKTHROUGH_COSTS[wp.lv])}</span>`;
+        mode = 'BREAKTHROUGH';
+      }
+      else if (isGate(wp.lv)) stateEl.innerHTML = `<div class="own">XP ${wp.xp}/${xpNeed(wp.lv)} — GATE LV ${wp.lv}: fill the bar to break through</div>`;
+      else stateEl.innerHTML = `<div class="own">XP ${wp.xp}/${xpNeed(wp.lv)}</div>`;
+      if (mode){
+        btn.style.display = '';
+        btn.textContent = mode;
+        btn.disabled = !canAfford(mode==='CRAFT' ? CRAFT_RECIPES[i] : BREAKTHROUGH_COSTS[wp.lv]);
+      } else btn.style.display = 'none';
+    });
   });
 }
 function buyItem(id){
@@ -1914,35 +1962,45 @@ function buyItem(id){
   else me.items[id]++;
   me.coins -= it.price;
   sfx.buy();
-  buildShopRows(); refreshHUD(); saveGame();
+  updateShopPanel(); refreshHUD(); saveGame();
 }
 /* ============================================================ THE INN: sleep to full, or sleep & save your respawn */
 function openHospital(){ $('#hospitalPanel').classList.remove('hidden'); buildHospitalRows(); }
 function fullHealPrice(){ return Math.max(15, Math.ceil((me.maxHp - me.hp) * .8)); }
 function sleepSavePrice(){ return (me.hp < me.maxHp ? fullHealPrice() : 0) + 25; }   // heal (if hurt) + 25c flat for the respawn
-function buildHospitalRows(){
+function updateHospitalRows(){
   $('#hospHp').textContent = Math.max(0, Math.ceil(me.hp)) + ' / ' + me.maxHp;
   $('#hospCoins').textContent = me.coins;
   $('#hospSpawn').textContent = me.spawnAt ? 'The Inn' : 'Town Centre';
+  for (const u of hospUpdaters) u();
+}
+function buildHospitalRows(){
+  hospUpdaters = [];
   const wrap = $('#hospRows'); wrap.innerHTML = '';
-  const full = me.hp >= me.maxHp;
   const rows = [
-    { id:'sleep', name:'SLEEP',        price:fullHealPrice(), btn:'SLEEP', desc:'Heal to full HP',
-      disabled: full || me.coins < fullHealPrice() },
-    { id:'save',  name:'SLEEP & SAVE', price:sleepSavePrice(), btn:'SAVE', desc:'Heal to full + respawn at the inn',
+    { id:'sleep', name:'SLEEP',        btn:'SLEEP', desc:'Heal to full HP',
+      price:()=>fullHealPrice(),
+      disabled:()=> me.hp >= me.maxHp || me.coins < fullHealPrice() },
+    { id:'save',  name:'SLEEP & SAVE', btn:'SAVE', desc:'Heal to full + respawn at the inn',
+      price:()=>sleepSavePrice(),
       // at full HP this stays buyable (flat 25c) UNLESS the inn is already your respawn
-      disabled: (full && !!me.spawnAt) || me.coins < sleepSavePrice() },
+      disabled:()=> (me.hp >= me.maxHp && !!me.spawnAt) || me.coins < sleepSavePrice() },
   ];
   for (const r of rows){
     const row = document.createElement('div'); row.className = 'shopRow';
-    row.innerHTML = `<div class="info"><b>${r.name} — ${r.price}c</b><span>${r.desc}</span></div>`;
+    row.innerHTML = `<div class="info"><b></b><span>${r.desc}</span></div>`;
+    const nameEl = row.querySelector('.info b');
     const btn = document.createElement('button');
     btn.textContent = r.btn;
-    btn.disabled = r.disabled;   // carried coins only, like the shop
     btn.onclick = ()=>buyInn(r.id);
     row.appendChild(btn);
     wrap.appendChild(row);
+    hospUpdaters.push(()=>{
+      nameEl.textContent = `${r.name} — ${r.price()}c`;
+      btn.disabled = r.disabled();   // carried coins only, like the shop — updated on the SAME node while open
+    });
   }
+  updateHospitalRows();
 }
 function buyInn(id){
   if (id === 'save'){
@@ -1964,7 +2022,7 @@ function buyInn(id){
   for (let i=0;i<12;i++) particles.push({ x:me.x, y:me.y, vx:rand(-.06,.06), vy:rand(-.14,-.03), life:1, color:'#57d93d', r:rand(2,5) });
   capParticles();
   addFloat(me.x, me.y-.06, 'HEALED!', '#57d93d');
-  buildHospitalRows(); refreshHUD(); saveGame();
+  updateHospitalRows(); refreshHUD(); saveGame();
 }
 function updateInteract(){
   const pr = $('#interactPrompt');
@@ -2224,11 +2282,8 @@ function refreshHUD(){
   // panic pulse: dying (HP < 35%) with a potion in hand -> POTION throbs
   $('#itemPotion').classList.toggle('panic', me.hp < me.maxHp*.35 && me.items.potion > 0);
   if (!$('#bankPanel').classList.contains('hidden')) updateBankPanel();
-  if (!$('#hospitalPanel').classList.contains('hidden')){
-    $('#hospHp').textContent = Math.max(0, Math.ceil(me.hp)) + ' / ' + me.maxHp;
-    $('#hospCoins').textContent = me.coins;
-    $('#hospSpawn').textContent = me.spawnAt ? 'The Inn' : 'Town Centre';
-  }
+  if (!$('#shopPanel').classList.contains('hidden')) updateShopPanel();   // in-place: same nodes, fresh values/disabled states
+  if (!$('#hospitalPanel').classList.contains('hidden')) updateHospitalRows();
   if (!$('#treePanel').classList.contains('hidden')) $('#treeSp').textContent = me.sp;
   // weapon skill button: the label follows the equipped weapon's tree active
   const wsk = WSKILLS[me.weapon];
@@ -3194,7 +3249,7 @@ function drawSlimeFace(s, t, g){
   else if (mouthStyle === 4){ ctx.beginPath(); ctx.moveTo(mx - mw*.4, my - mw*.10); ctx.lineTo(mx - mw*.30, my); ctx.lineTo(mx + mw*.30, my); ctx.lineTo(mx + mw*.4, my - mw*.10); ctx.stroke(); }   // CONTENT: straight line, tiny UPturned ends
   else { ctx.beginPath(); ctx.moveTo(mx - mw*.5, my + mw*.04); ctx.quadraticCurveTo(mx, my + mw*.36, mx + mw*.5, my - mw*.12); ctx.stroke(); }   // SMUG: one end higher
 }
-function paintSlimeSprite(s, t, baseR, g){
+function paintSlimeSprite(s, t, baseR, g, faceK){
   g = g || slimeSpriteGeom(s, t, baseR);
   if (!g) return false;
   /* ISW flinch tint — DECAYING. It used to be a hard full-strength swap
@@ -3221,7 +3276,13 @@ function paintSlimeSprite(s, t, baseR, g){
   }
   // the face goes on AFTER body + tint: flinch reddens the body only, the
   // eyes stay readable. King/Boss keep their baked faces — skipped.
-  if (s.kind !== 'king' && s.kind !== 'boss') drawSlimeFace(s, t, g);
+  // faceK scales ONLY the face's alpha: the ghost pass passes 1 (face
+  // inherits the caller's .38, same as the body); the normal pass passes
+  // s._faceFade (.38 when this slime is ghosted — see drawEntities).
+  if (s.kind !== 'king' && s.kind !== 'boss'){
+    if (faceK !== undefined && faceK < 1){ ctx.save(); ctx.globalAlpha *= faceK; drawSlimeFace(s, t, g); ctx.restore(); }
+    else drawSlimeFace(s, t, g);
+  }
   ctx.restore();
   return true;
 }
@@ -3236,8 +3297,8 @@ function drawVideoSlime(s,t,baseR){
   ctx.beginPath(); ctx.ellipse(g.gx, g.gy - baseR*.06, g.dw*.40*(1 - g.liftN*.22), baseR*.20, 0, 0, 7); ctx.fill();
   ctx.restore();
   if (s.elite) drawEliteAura(g.gx, g.gy - baseR*.06, baseR, s.seed, t);   // aura pools on the ground (shadow anchor), sprite hops inside it
-  paintSlimeSprite(s, t, baseR, g);
-  return true;
+  paintSlimeSprite(s, t, baseR, g, (s._faceFade ?? 1));
+  return g;   // the geom — drawSlime floats the HP bar off the sprite's real top edge
 }
 
 /* ============================================================ drawing */
@@ -3419,8 +3480,11 @@ function drawNode(n, t){
     const f1 = Math.abs(Math.sin(seed*12.9 + i*78.2) * 43758.5453) % 1;
     const f2 = Math.abs(Math.sin(seed*78.3 + i*39.4) * 28001.8384) % 1;
     const f3 = Math.abs(Math.sin(seed*37.7 + i*11.3) * 12543.2197) % 1;
-    const cx = (f1 - .5) * w * .62, cy = -h * (.38 + f2 * .45);
-    let cs = (.018 + f3 * .018) * u;
+    // crystals sit EMBEDDED in the rock's upper surface: pulled toward
+    // the rock's centre (narrower spread, lower band) and drawn at .7x —
+    // at full size on the old high band they floated in front of the rock
+    const cx = (f1 - .5) * w * .50, cy = -h * (.30 + f2 * .32);
+    let cs = (.018 + f3 * .018) * u * .7;
     if (rush){ cs *= 1 + .18 * Math.sin(t/120 + i*1.7); ctx.globalAlpha = .8 + .2 * Math.sin(t/120 + i*1.7); }
     ctx.fillStyle = GEMS[type.crystals[i % type.crystals.length]].col;
     ctx.save(); ctx.translate(cx, cy); ctx.rotate(Math.PI/4);
@@ -3646,9 +3710,13 @@ function drawBuildings(only){
 function drawEliteAura(x, y, baseR, seed, t){
   const pr = 1 + 0.07 * Math.sin(t/260 + seed * 9);   // pulse
   ctx.save();
-  // ground light: diamond pool (rotated square), squashed flat
-  const rx = baseR*1.5*pr, ry = rx*.45;
-  ctx.fillStyle = 'rgba(255,183,47,.13)';
+  // ground light: diamond pool (rotated square), squashed flat. At the
+  // old size (r*1.5, alpha .13) the body (halfwidth 1.04r, sitting on this
+  // anchor) covered all but a hairline crescent and the crescent was too
+  // faint to see — playtests never spotted it. r*1.9 at .18 puts a clear
+  // diamond of light out from under the base on every side.
+  const rx = baseR*1.9*pr, ry = rx*.45;
+  ctx.fillStyle = 'rgba(255,183,47,.18)';
   ctx.beginPath();
   ctx.moveTo(x, y - ry); ctx.lineTo(x + rx, y); ctx.lineTo(x, y + ry); ctx.lineTo(x - rx, y);
   ctx.closePath(); ctx.fill();
@@ -3680,8 +3748,18 @@ function drawEliteAura(x, y, baseR, seed, t){
 }
 function drawKindMarks(s, x, y, baseR, t){
   if (s.kind==='tank'){
-    ctx.strokeStyle = 'rgba(88,99,114,.92)'; ctx.lineWidth = Math.max(2.5, baseR*.09);
-    ctx.beginPath(); ctx.arc(x, y, baseR*1.04, 0, 7); ctx.stroke();
+    /* Tank mark: two slate PAULDRONS (pixel squares) on the body's upper
+       sides. This used to be a slate RING stroked around the whole body
+       (arc at baseR*1.04) — in playtest screenshots that ring read as a
+       stray grey circle around slimes, cutting across faces and HP bars,
+       so the circle is GONE; squares keep the tank readable, circle-free. */
+    const pw = baseR*.36, ph = baseR*.30;
+    ctx.fillStyle = 'rgba(88,99,114,.95)';
+    ctx.fillRect(x - baseR*.92, y - baseR*.34, pw, ph);
+    ctx.fillRect(x + baseR*.92 - pw, y - baseR*.34, pw, ph);
+    ctx.fillStyle = 'rgba(55,65,78,.95)';
+    ctx.fillRect(x - baseR*.92, y - baseR*.34, pw, Math.max(2, baseR*.07));
+    ctx.fillRect(x + baseR*.92 - pw, y - baseR*.34, pw, Math.max(2, baseR*.07));
   }
   if (s.kind==='gold'){
     const p = 1 + Math.sin(t/140)*.25, r = baseR*.30*p, sx = x, sy = y - baseR*1.3;
@@ -3716,10 +3794,18 @@ function drawSlime(s,t){
     ctx.fillText(label, x, ly + lh/2 + 1);
     ctx.restore();
   }
-  if (drawVideoSlime(s,t,baseR)){
+  const sg = drawVideoSlime(s,t,baseR);
+  if (sg){
     drawKindMarks(s, x, y - baseR*.4, baseR, t);
     if (s.hp < s.max){
-      const bw=baseR*1.6, bh=Math.max(5,baseR*.14), bx=x-bw/2, by=y-baseR*1.02;
+      /* HP bar floats ABOVE the sprite — off its CURRENT top edge (ground
+         anchor - hop lift - squashed height), with a small gap. The old
+         fixed offset (y - baseR*1.02) sat mid-body: every hop stretch
+         (sqY up to 1.13 + lift up to 1.15r) pushed the sprite's face up
+         THROUGH the bar. Exactly ONE bar per slime is drawn — here, and
+         nowhere else; the ghost pass (paintSlimeSprite only) draws none. */
+      const bw=baseR*1.6, bh=Math.max(5,baseR*.14), bx=x-bw/2;
+      const by = sg.gy - sg.liftW*UNIT() - sg.dh*sg.sqY - bh - 4;
       ctx.fillStyle='rgba(40,30,20,.65)'; roundRect(bx-2,by-2,bw+4,bh+4,5); ctx.fill();
       ctx.fillStyle='#e5484d'; roundRect(bx,by,bw,bh,3); ctx.fill();
       ctx.fillStyle='#57d93d'; roundRect(bx,by,bw*clamp(s.hp/s.max,0,1),bh,3); ctx.fill();
@@ -3842,15 +3928,65 @@ function drawEntities(t){
     if (n.x<cam.x-.55 || n.x>cam.x+vw+.55 || n.y<cam.y-.55 || n.y>cam.y+vh+.55) continue;   // view-culled like decor
     ents.push({ baseY:n.y + .07, kind:'node', n });
   }
+  /* Boss orbs join the SAME y-sort (base = orb centre + its radius), so a
+     tree or building in front of an orb occludes it exactly like a slime —
+     orbs used to draw after the whole pass and floated over canopies. */
+  for (const b of bullets){
+    if (b.x<cam.x-.1 || b.x>cam.x+vw+.1 || b.y<cam.y-.1 || b.y>cam.y+vh+.1) continue;   // view-culled
+    ents.push({ baseY:b.y + .02, kind:'orb', b });
+  }
+  /* G7 face fade: the face IS drawn inside paintSlimeSprite, so the
+     ghost pass faded it correctly — but in the NORMAL pass a ghosted
+     slime's face still rendered at FULL strength wherever it poked above
+     a canopy (outside the prop's box, so never ghost-clipped), floating
+     over its own 38% ghost body. Any slime the ghost pass will touch
+     now gets its face pre-faded to the same .38 in the normal pass, so
+     face and body always read at one strength. */
+  for (const s of slimes.values()){
+    const baseR = s.r * SCALE() * (s.kind==='boss' ? 1.3 : 1);
+    const g = slimeSpriteGeom(s, t, baseR);
+    s._faceFade = (g && ghostHits(s, occluders, g).length) ? .38 : 1;
+  }
   ents.sort((a,b)=>a.baseY - b.baseY);
   for (const e of ents){
     if (e.kind === 'tree') drawTree(e.d, t);
     else if (e.kind === 'rock') drawRock(e.d);
     else if (e.kind === 'bld') drawBuildings(e.b.key);
     else if (e.kind === 'node') drawNode(e.n, t);
+    else if (e.kind === 'orb') drawOrb(e.b, t);
     else drawSlime(e.s, t);
   }
   drawGhosts(t, occluders);
+}
+/* One boss orb: outer halo / hot body / white core, fading out over its
+   last 800ms (no pop-out). Drawn only from the y-sorted entity pass. */
+function drawOrb(b, t){
+  const bx = NX(b.x), by = NY(b.y), u = UNIT();
+  ctx.save();
+  ctx.globalAlpha = clamp((b.life - (t - b.born)) / 800, 0, 1);
+  ctx.fillStyle='rgba(255,90,60,.35)'; ctx.beginPath(); ctx.arc(bx,by,.018*u,0,7); ctx.fill();
+  ctx.fillStyle='#ff7847'; ctx.beginPath(); ctx.arc(bx,by,.011*u,0,7); ctx.fill();
+  ctx.fillStyle='#ffffff'; ctx.beginPath(); ctx.arc(bx,by,.005*u,0,7); ctx.fill();
+  ctx.restore();
+}
+/* The occluder intersections for one slime: the sprite box vs every prop
+   it stands BEHIND (ground anchor above the prop's base), clipped to the
+   prop's box. Shared by the ghost pass and the face-fade test in
+   drawEntities — one definition of "this slime is ghosted". */
+function ghostHits(s, occluders, g){
+  // generous sprite box (world coords): the clip only shows anything
+  // where the sprite actually has pixels, so over-estimating is safe
+  const sb = { l:s.x - s.r*1.5, r:s.x + s.r*1.5, top:s.y - s.r*3.2 - g.liftW, bot:s.y + s.r };
+  const groundY = s.y + s.r*.8;                // the same anchor the sort used
+  const hits = [];
+  for (const o of occluders){
+    if (groundY >= o.baseY) continue;          // in front of the prop: drawn normally, no ghost
+    const il = Math.max(sb.l, o.cx - o.hw), ir = Math.min(sb.r, o.cx + o.hw);
+    const it = Math.max(sb.top, o.top), ib = Math.min(sb.bot, o.baseY);
+    if (ir <= il || ib <= it) continue;
+    hits.push({ il, ir, it, ib });
+  }
+  return hits;
 }
 /* Ghost pass: for each slime BEHIND an occluder (ground anchor above the
    occluder's base), redraw only its sprite at 38% alpha, clipped to the
@@ -3861,22 +3997,15 @@ function drawGhosts(t, occluders){
     const baseR = s.r * SCALE() * (s.kind==='boss' ? 1.3 : 1);   // match drawSlime's visual radius (Emperor 1.3x)
     const g = slimeSpriteGeom(s, t, baseR);
     if (!g) continue;                            // vector-fallback slimes have no sprite to ghost
-    // generous sprite box (world coords): the clip only shows anything
-    // where the sprite actually has pixels, so over-estimating is safe
     const sb = { l:s.x - s.r*1.5, r:s.x + s.r*1.5, top:s.y - s.r*3.2 - g.liftW, bot:s.y + s.r };
     if (sb.r < cam.x || sb.l > cam.x + vw || sb.bot < cam.y || sb.top > cam.y + vh) continue;   // off-screen
-    const groundY = s.y + s.r*.8;                // the same anchor the sort used
-    for (const o of occluders){
-      if (groundY >= o.baseY) continue;          // in front of the prop: drawn normally, no ghost
-      const il = Math.max(sb.l, o.cx - o.hw), ir = Math.min(sb.r, o.cx + o.hw);
-      const it = Math.max(sb.top, o.top), ib = Math.min(sb.bot, o.baseY);
-      if (ir <= il || ib <= it) continue;
+    for (const h of ghostHits(s, occluders, g)){
       ctx.save();
       ctx.beginPath();
-      ctx.rect(NX(il), NY(it), (ir - il) * u, (ib - it) * u);
+      ctx.rect(NX(h.il), NY(h.it), (h.ir - h.il) * u, (h.ib - h.it) * u);
       ctx.clip();
       ctx.globalAlpha = .38;
-      paintSlimeSprite(s, t, baseR, g);
+      paintSlimeSprite(s, t, baseR, g, 1);   // faceK 1: the face inherits the ghost alpha EXACTLY like the body
       ctx.restore();
     }
   }
@@ -3986,7 +4115,7 @@ function frame(now){
       const b = bullets[i];
       b.x += b.vx*dt/1000; b.y += b.vy*dt/1000;
       if (now-b.born > b.life || b.x<-.1 || b.y<-.1 || b.x>WORLD+.1 || b.y>WORLD+.1){ bullets.splice(i,1); continue; }
-      if (now > me.invulnUntil && dist2(b.x,b.y,me.x,me.y) < .032*.032){ bullets.splice(i,1); damagePlayer(10, now); }
+      if (now > me.invulnUntil && dist2(b.x,b.y,me.x,me.y) < .032*.032){ bullets.splice(i,1); damagePlayer(8, now); }
     }
     for (let i=spiralEmitters.length-1;i>=0;i--){
       const em = spiralEmitters[i];
@@ -3994,7 +4123,7 @@ function frame(now){
       if (em.nextAt < now-450) em.nextAt = now;   // never burst-spawn a backlog after a stall
       const bossS = [...slimes.values()].find(s=>s.kind==='boss');
       while (em.nextAt <= now){
-        em.nextAt += 80;
+        em.nextAt += 110;
         if (bossS){
           spawnBullet(bossS.x, bossS.y, Math.cos(em.ang)*.3, Math.sin(em.ang)*.3, now);
           spawnBullet(bossS.x, bossS.y, Math.cos(em.ang+Math.PI)*.3, Math.sin(em.ang+Math.PI)*.3, now);
@@ -4007,8 +4136,17 @@ function frame(now){
       if (now < v.nextAt) continue;
       v.nextAt = now + 170; v.left--;
       const bossS = [...slimes.values()].find(s=>s.kind==='boss');
-      if (bossS) for (let k=0;k<5;k++){ const a = v.aim + (k-2)*.18; spawnBullet(bossS.x, bossS.y, Math.cos(a)*.42, Math.sin(a)*.42, now); }
+      if (bossS) for (let k=0;k<4;k++){ const a = v.aim + (k-1.5)*.18; spawnBullet(bossS.x, bossS.y, Math.cos(a)*.42, Math.sin(a)*.42, now); }
       if (v.left<=0) pendingVolleys.splice(i,1);
+    }
+    // metal slimes shed a silver sparkle every ~120ms while alive — the
+    // guaranteed metal must be UNMISSABLE, not just technically present
+    // (client-local: every client sparkles the metals it can see)
+    for (const s of slimes.values()){
+      if (s.kind!=='metal' || now < (s._sparkAt||0)) continue;
+      s._sparkAt = now + 120;
+      particles.push({ x:s.x+rand(-s.r,s.r), y:s.y+rand(-s.r,s.r), vx:rand(-.02,.02), vy:rand(-.05,-.01), life:1, color:'#eef3f7', r:rand(2,4) });
+      capParticles();
     }
     // thrown spears fly and pierce (client-local projectiles)
     for (let i=shots.length-1;i>=0;i--){
@@ -4066,15 +4204,7 @@ function frame(now){
   for (const f of floats){ f.y-=dt*.00003; f.life-=dt/(f.big?1750:950); ctx.globalAlpha=Math.max(0,f.life); ctx.font = '900 '+(f.size || (f.big?26:17))+'px "Baloo 2",sans-serif'; ctx.lineWidth = (f.big || f.size>=20) ? 6 : 4; ctx.strokeStyle='rgba(60,40,10,.8)'; ctx.strokeText(f.text,NX(f.x),NY(f.y)); ctx.fillStyle=f.color; ctx.fillText(f.text,NX(f.x),NY(f.y)); ctx.globalAlpha=1; }
   drawDmgFloats(now);   // ISW glyph damage numbers, on their own timeline
 
-  // boss bullets: glowing bullet-hell orbs (outer halo / hot body / white core)
-  for (const b of bullets){
-    const bx=NX(b.x), by=NY(b.y), u=UNIT();
-    ctx.globalAlpha = clamp((b.life - (now - b.born)) / 800, 0, 1);   // orbs visibly fade out over their last 800ms — no pop-out, nothing reads as permanent litter
-    ctx.fillStyle='rgba(255,90,60,.35)'; ctx.beginPath(); ctx.arc(bx,by,.018*u,0,7); ctx.fill();
-    ctx.fillStyle='#ff7847'; ctx.beginPath(); ctx.arc(bx,by,.011*u,0,7); ctx.fill();
-    ctx.fillStyle='#ffffff'; ctx.beginPath(); ctx.arc(bx,by,.005*u,0,7); ctx.fill();
-    ctx.globalAlpha = 1;
-  }
+  // (boss orbs draw inside the y-sorted entity pass now — see drawOrb)
 
   // thrown spears in flight: the spear sprite along its velocity + a white
   // motion streak from (pos - vel*0.055) to pos, drawn UNDER the sprite.
