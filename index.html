@@ -1449,6 +1449,14 @@ function hostTick(now,dt){
       if (sendBoss && hasPeers()){ try { sendBoss(payload); } catch(e){} }   // broadcast is best-effort; a dead channel must not kill the volley
     }
   } else if (!boss) bossFireAt = 0;
+  /* hitClaimsAt hygiene: one key per (player, slime) and per (player,
+     rock) ever claimed, ids never reused — it grew for the whole host
+     reign. Only the last 60ms of a key matters (anti-spam window), so
+     once it is fat, entries older than 1s are dropped every 5s. */
+  if (hitClaimsAt.size > 600 && now - (hostTick._prune||0) > 5000){
+    hostTick._prune = now;
+    for (const [k, at] of hitClaimsAt) if (now - at > 1000) hitClaimsAt.delete(k);
+  }
   /* ---- ore nodes: keep 12 in the world. A depleted node's replacement
      waits on the respawn queue (20-40s); with an empty queue (fresh world,
      host migration) top up immediately. ---- */
@@ -2532,6 +2540,8 @@ addEventListener('keydown', e=>{
   if (!started) return;
   if (e.key==='Escape' && !$('#menuPanel').classList.contains('hidden')){ closeMenu(); return; }
   if (e.key==='Escape' && !$('#hospitalPanel').classList.contains('hidden')){ $('#hospitalPanel').classList.add('hidden'); return; }
+  if (e.key==='Escape' && !$('#bankPanel').classList.contains('hidden')){ $('#bankPanel').classList.add('hidden'); return; }   // Esc closes the bank / shop like the inn and menu (it used to open PAUSE over them)
+  if (e.key==='Escape' && !$('#shopPanel').classList.contains('hidden')){ $('#shopPanel').classList.add('hidden'); return; }
   if (e.key==='Escape' || e.key==='p' || e.key==='P'){ togglePause(); return; }
   const n = parseInt(e.key);
   if (n>=1 && n<=WEAPONS.length) equip(n-1);
@@ -2921,7 +2931,7 @@ const NODES = [
   {id:'p7', b:0, t:'passive', icon:'EXEC',name:'Executioner',   desc:'PASSIVE: +50% damage to slimes under 35% HP.', cost:2, fx:{exec:.5}},
   {id:'p8', b:0, t:'stat',    icon:'ATK', name:'Power +4',      desc:'Damage +4 on every hit.', cost:1, fx:{dmg:4}},
   {id:'f1', b:1, t:'stat',    icon:'SPD', name:'Quick Hands',   desc:'Hit again 10% faster.', cost:1, fx:{cd:-.10}},
-  {id:'f2', b:1, t:'stat',    icon:'CRT', name:'Keen Eye',      desc:'+8% crit chance. Crits deal DOUBLE damage.', cost:1, fx:{crit:.08}},
+  {id:'f2', b:1, t:'stat',    icon:'CRT', name:'Keen Eye',      desc:'+8% crit chance. Crits hit for your weapon\'s crit multiplier (x1.75 swing, x2.2 stab).', cost:1, fx:{crit:.08}},
   {id:'f3', b:1, t:'stat',    icon:'RCH', name:'Long Arm',      desc:'Reach +10%.', cost:1, fx:{reach:.10}},
   {id:'f4', b:1, t:'passive', icon:'DBL', name:'Double Strike', desc:'PASSIVE: 15% chance a hit strikes a second time.', cost:2, fx:{double:.15}},
   {id:'f5', b:1, t:'passive', icon:'ARC', name:'Wide Arc',      desc:'PASSIVE: your swing arc is wider — it clips slimes much more easily.', cost:2, fx:{arcWide:.014}},
@@ -5035,6 +5045,10 @@ $('#playBtn').onclick = ()=>{
   buildRack(); refreshHUD(); refreshPeers();
   if (!bounty) rollBounty();
   updateHint();
+  // the 9 title-screen ambient slimes (ids amb0..amb8, parked in the world's top-left
+  // corner, no zone scaling) must not leak into the real world: with them
+  // still in the map, electHost's slimes.size===0 check skipped the 50-slime seed
+  for (const id of [...slimes.keys()]) if (String(id).startsWith('amb')) slimes.delete(id);
   try { joinWorld(WORLD_ID); }
   catch(e){ notify('Multiplayer failed to start — playing solo. (' + e.message + ')', { ms:4000 }); isHost=true; hostId=me.id; if(slimes.size===0) for(let i=0;i<50;i++) spawnSlime(); }
   notify('Slash the slimes! One world — everyone with the link is in it.', { ms:2600 });
