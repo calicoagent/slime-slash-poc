@@ -288,7 +288,8 @@
     padding:6px 14px 9px; box-shadow:5px 5px 0 rgba(0,0,0,.35); text-align:center; pointer-events:none;
   }
   #bossBar b { font-family:"Press Start 2P",monospace; color:#ffd94d; font-size:10px; display:block; margin-bottom:6px; }
-  #bossTrack { height:13px; background:#2a0a12; border:2px solid #ffd94d; border-radius:0; overflow:hidden; }
+  #bossTrack { height:13px; background:#2a0a12; border:2px solid #ffd94d; border-radius:0; overflow:hidden; position:relative; }
+  #bossHp { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:"Press Start 2P",monospace; font-size:8px; line-height:1; color:#fff; text-shadow:1px 1px 0 rgba(0,0,0,.7); pointer-events:none; }
   #bossFill { height:100%; width:100%; background-color:#e5484d; background-image:repeating-linear-gradient(90deg, rgba(0,0,0,0) 0 6px, rgba(0,0,0,.18) 6px 8px); transition:width .25s; }
   #deathBanner {
     position:fixed; z-index:42; top:108px; left:50%; transform:translateX(-50%);
@@ -710,7 +711,7 @@
     <button class="ibtn empty" id="itemShield" title="Aegis Charm (C) — shield: 6s invulnerable"><svg viewBox="0 0 40 40"><path d="M20 3 L34 8.5 V19 C34 28.5 27.5 33.5 20 37.5 C12.5 33.5 6 28.5 6 19 V8.5 Z" fill="#4dabff" stroke="#22577a" stroke-width="2.5"/><path d="M20 8 L29 11.5 V19 C29 25.5 25 29.5 20 32.5 C15 29.5 11 25.5 11 19 V11.5 Z" fill="#bfe3ff"/></svg><span class="ilabel">AEGIS</span><span class="cnt">0</span></button>
   </div>
   <button id="interactPrompt" class="hidden px-btn">OPEN BANK</button>
-  <div id="bossBar" class="hidden"><b>SLIME EMPEROR</b><div id="bossTrack"><div id="bossFill"></div></div></div>
+  <div id="bossBar" class="hidden"><b>SLIME EMPEROR</b><div id="bossTrack"><div id="bossFill"></div><span id="bossHp"></span></div></div>
   <div id="actives"><button id="wSkillBtn"><span id="wsName">SKILL LOCKED</span><span class="k" id="wsSub">V · SKILLS tree (K)</span><div class="cdov" id="wsCdov" style="height:0%"></div></button></div>
   <button id="shareBtn" class="px-btn">INVITE LINK</button>
   <div id="comboBadge" class="hidden">x3 COMBO</div>
@@ -1148,6 +1149,7 @@ let metalNoneNearSince = 0;     // host: since when NO metal has been NEAR (with
 let bossFireAt = 0;             // host: next bullet-pattern volley
 let bossPatternIdx = 0;         // host: pattern rotation ring -> fan -> burst -> spiral -> spread
 let bossEnraged = false;        // host: ENRAGE latch (boss at <=30% HP) — fire interval x0.75, orb speeds x1.15, one-way
+let bossFury = false;           // host: FINAL FURY latch (boss at <=10% HP) — fire interval x0.6 (stacks), orb speeds x1.3, one-way
 let bossSummonAt = 0;           // host: next minion summon while the Emperor lives (every 20s)
 let dmgFlashAt = 0;             // last time the player took damage (red vignette decay)
 let nearBuilding = null;        // 'bank' | 'shop' | 'hospital' | null — drives the interact prompt
@@ -1262,6 +1264,24 @@ function spawnSlime(opts={}){
     s.mul = +(zone.mul * 3).toFixed(2);
   }
   slimes.set(id,s); return s;
+}
+/* ROYAL GUARD (host): the Emperor raises a 6s invulnerable shield at 66%
+   and again at 33% HP. Announces on every client via the 'guard' boss
+   event, fires an immediate 28-orb ring, and calls 3 minions. Damage
+   rejection itself lives in hostApplyHit (host is authoritative); the
+   shield window replicates via the world payload's boss block. */
+function royalGuard(now, boss){
+  boss.guardUntil = now + 6000;
+  const gp = { p:'guard', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now };
+  bossEvent(gp);
+  if (sendBoss){ try { sendBoss(gp); } catch(e){} }
+  const sm = (bossEnraged ? 1.15 : 1) * (bossFury ? 1.3 : 1);
+  const rp = { p:'ring', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now, n:28, spd:.32, sm };
+  bossEvent(rp);
+  if (sendBoss){ try { sendBoss(rp); } catch(e){} }
+  for (let i=0;i<3;i++)
+    spawnSlime({ kind: Math.random() < .5 ? 'mid' : 'dart', x:clamp(boss.x+rand(-.25,.25), .06, WORLD-.06), y:clamp(boss.y+rand(-.25,.25), .1, WORLD-.06) });
+  broadcastWorld();
 }
 function hostTick(now,dt){
   // wander + spawn
@@ -1428,10 +1448,31 @@ function hostTick(now,dt){
       let bx=WORLD/2, by=.3;
       for (let i=0;i<40;i++){ const x=rand(.15,WORLD-.15), y=rand(.15,WORLD-.15); if (Math.hypot(x-WORLD/2, y-WORLD/2) > 2.3){ bx=x; by=y; break; } }
       boss = spawnSlime({ kind:'boss', x:bx, y:by });
-      bossEnraged = false; bossSummonAt = 0;   // a fresh Emperor starts calm and summons on his own clock
+      bossEnraged = false; bossFury = false; bossSummonAt = 0;   // a fresh Emperor starts calm and summons on his own clock
+      /* EMPEROR SCALING: the flat 4000 melts under a geared high-level
+         player, so the Emperor scales to the STRONGEST player present
+         (peer levels ride the pos payload). Lv<=12: x1.0. Lv34: x7.6. */
+      let topLevel = me.level;
+      for (const p of peers.values()) if (p.level && p.level > topLevel) topLevel = p.level;
+      boss.bScale = 1 + 0.30 * Math.max(0, topLevel - 12);
+      boss.max = boss.hp = Math.round(4000 * boss.bScale);
+      boss.bOrb = Math.round(12 + Math.min(8, 0.4 * Math.max(0, topLevel - 12)));    // orb damage 12 -> 20 max
+      boss.bCon = Math.round(26 + Math.min(10, 0.5 * Math.max(0, topLevel - 12)));   // contact damage 26 -> 36 max
+      boss.guardUntil = 0; boss.guard66 = false; boss.guard33 = false;   // ROYAL GUARD latches start unset
     }
   }
   if (boss){
+    // ROYAL GUARD: at 66% and again at 33% HP he raises a 6s shield
+    const bFrac = boss.hp / boss.max;
+    if (!boss.guard66 && bFrac <= .66){ boss.guard66 = true; royalGuard(now, boss); }
+    else if (!boss.guard33 && bFrac <= .33){ boss.guard33 = true; royalGuard(now, boss); }
+    // FINAL FURY: at <=10% HP — interval x0.6 (stacks with enrage), orbs x1.3
+    if (!bossFury && boss.hp <= boss.max * .10){
+      bossFury = true;
+      const fp = { p:'fury', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now };
+      bossEvent(fp);
+      if (sendBoss){ try { sendBoss(fp); } catch(e){} }
+    }
     // ENRAGE: at <=30% HP the Emperor latches into a faster, meaner fight
     if (!bossEnraged && boss.hp <= boss.max * .30){
       bossEnraged = true;
@@ -1453,9 +1494,9 @@ function hostTick(now,dt){
     }
     if (!bossFireAt) bossFireAt = now + 1200;
     if (now >= bossFireAt){
-      bossFireAt = now + (bossEnraged ? 938 : 1250);   // enraged: interval x0.75 (~0.94s)
+      bossFireAt = now + 1250 * (bossEnraged ? .75 : 1) * (bossFury ? .6 : 1);   // enrage x0.75 (~0.94s), FINAL FURY x0.6 on top
       const p = ['ring','fan','burst','spiral','spread'][bossPatternIdx++ % 5];
-      const sm = bossEnraged ? 1.15 : 1;   // enraged orb-speed multiplier, carried on every pattern payload
+      const sm = (bossEnraged ? 1.15 : 1) * (bossFury ? 1.3 : 1);   // orb-speed multipliers, carried on every pattern payload
       let payload;
       if (p==='ring') payload = { p:'ring', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now, n:28, spd:.32, sm };
       else if (p==='fan' || p==='spread'){
@@ -1558,9 +1599,14 @@ function minedFx(d){
   saveGame(); refreshHUD();
 }
 function worldPayload(){
+  const boss = [...slimes.values()].find(s=>s.kind==='boss');
   return { s:[...slimes.values()].map(s=>[s.id, +s.x.toFixed(3), +s.y.toFixed(3), Math.ceil(s.hp), s.max, s.kind, s.color, +s.dir.toFixed(2), Math.round((s.mul||1)*100)/100, s.elite?1:0]),
            n:[...nodes.values()].map(n=>[n.id, +n.x.toFixed(3), +n.y.toFixed(3), n.t, n.left]),
-           sc: scores, h: hostId };
+           sc: scores, h: hostId,
+           /* Emperor scaling block: clients evaluate orb + contact damage
+              locally, so the scaled values (and the guard window, carried
+              as ms REMAINING so no clock sync is needed) ride every payload */
+           b: boss ? { sc:+(boss.bScale||1).toFixed(2), od:boss.bOrb||12, cd:boss.bCon||26, gu:Math.max(0, Math.round((boss.guardUntil||0) - performance.now())) } : null };
 }
 function applyWorld(p){
   if (!p || !Array.isArray(p.s)) return;
@@ -1580,6 +1626,10 @@ function applyWorld(p){
     }
   }
   for (const id of [...slimes.keys()]) if (!seen.has(id) && !isHost) slimes.delete(id);
+  if (p.b){   // Emperor scaling + guard window land on the local boss object
+    const bs = [...slimes.values()].find(s=>s.kind==='boss');
+    if (bs){ bs.bScale = +p.b.sc || 1; bs.bOrb = p.b.od || 12; bs.bCon = p.b.cd || 26; bs.guardUntil = performance.now() + (p.b.gu || 0); }
+  }
   if (p.sc) scores = p.sc;
   /* ore nodes ride the same payload: [id, x, y, typeIdx, chunksLeft] */
   if (Array.isArray(p.n)){
@@ -1736,6 +1786,10 @@ function bossEvent(d){
     pendingBursts.push({ left: 3, nextAt: now, sm });   // volleys fired by the frame loop, aim re-picked per volley
   } else if (d.p==='enrage'){
     showKingBanner('THE EMPEROR IS ENRAGED!');
+  } else if (d.p==='guard'){
+    showKingBanner('ROYAL GUARD!');
+  } else if (d.p==='fury'){
+    showKingBanner('FINAL FURY!');
   } else if (d.p==='summon'){
     addFloat(d.x, d.y-.16, 'THE EMPEROR CALLS!', '#ff8a7a', { big:true });
   }
@@ -1878,6 +1932,7 @@ function doHit(s, dmg, opts={}){
 function hostApplyHit(slimeId, dmg, byId){
   const s = slimes.get(slimeId); if (!s) return;
   const now = performance.now();
+  if (s.kind==='boss' && now < (s.guardUntil||0)) return;   // ROYAL GUARD: the Emperor is invulnerable — every claim bounces off the shield
   const key = byId+':'+slimeId, last = hitClaimsAt.get(key)||0;
   if (now-last < 60) return;                       // host anti-spam
   hitClaimsAt.set(key, now);
@@ -1886,17 +1941,18 @@ function hostApplyHit(slimeId, dmg, byId){
   s.hp -= dmg; s.squish=1; s.flash=1; s.flinchUntil = performance.now()+220;
   // splash (warhammer)
   const w = byId===me.id ? myWeapon() : WEAPONS.find(w=>w.id===(peers.get(byId)?.weaponId)) || WEAPONS[1];
-  if (w.splash){ for (const o of slimes.values()) if (o!==s && dist2(o.x,o.y,s.x,s.y) < w.splash*w.splash) o.hp -= o.kind==='metal' ? 1 : Math.ceil(dmg*.5); }
+  if (w.splash){ for (const o of slimes.values()) if (o!==s && dist2(o.x,o.y,s.x,s.y) < w.splash*w.splash){ if (o.kind==='boss' && now < (o.guardUntil||0)) continue; o.hp -= o.kind==='metal' ? 1 : Math.ceil(dmg*.5); } }
   if (s.hp<=0) hostKill(s, byId);
   else broadcastWorld();
 }
 function hostKill(s, byId){
   slimes.delete(s.id);
-  if (s.kind==='boss'){ bossSpawnAt = performance.now() + 240000; bossEnraged = false; bossSummonAt = 0; }   // next Emperor 240s after the KILL; enrage/summon state dies with him
+  if (s.kind==='boss'){ bossSpawnAt = performance.now() + 240000; bossEnraged = false; bossFury = false; bossSummonAt = 0; }   // next Emperor 240s after the KILL; enrage/fury/summon state dies with him
   // (a metal KILL deliberately does not touch lastMetalAt — the guarantee
   // clock moves only when a metal ENTERS the world; see hostTick)
   const k = SLIME_KINDS.find(k=>k.kind===s.kind);
-  const coins = Math.round(k.coins * (s.mul||1)), xp = Math.round(k.xp * (s.mul||1));   // zone/elite reward scaling
+  let coins = Math.round(k.coins * (s.mul||1)), xp = Math.round(k.xp * (s.mul||1));   // zone/elite reward scaling
+  if (s.kind==='boss'){ const bs = s.bScale || 1; coins = Math.round(coins * bs); xp = Math.round(xp * bs); }   // a scaled Emperor pays scaled
   scores[byId] = scores[byId] || { name: byId===me.id?me.name:(peers.get(byId)?.name||'Knight'), kills:0 };
   scores[byId].kills++;
   const fx = { id:s.id, x:s.x, y:s.y, c:s.color, by:byId, coins, xp, kind:s.kind, elite:!!s.elite, r:s.r };
@@ -1981,6 +2037,10 @@ function gainXp(n){
 /* ============================================================ survival: HP, damage, death
    HP is LOCAL to each player — it is never sent over the network. Contact
    and bullet damage are computed in frame() and funnel through here. */
+/* The Emperor's scaled orb damage for THIS client: read off the local
+   boss object (host sets it at spawn; clients get it from the world
+   payload's boss block). Falls back to the unscaled 12 with no boss. */
+function bossOrbDmg(){ const b = [...slimes.values()].find(s=>s.kind==='boss'); return b ? (b.bOrb || 12) : 12; }
 function damagePlayer(amount, now){
   if (!started || paused) return;
   /* TOWN SAFE ZONE — sanctuaries: no damage while a building panel, the
@@ -2310,7 +2370,7 @@ function joinWorld(roomCode){
     { urls:'turn:openrelay.metered.ca:443', username:'openrelayproject', credential:'openrelayproject' },
     { urls:'turns:openrelay.metered.ca:443?transport=tcp', username:'openrelayproject', credential:'openrelayproject' },
   ] } }, roomCode);
-  room.onPeerJoin(id=>{ peers.set(id,{x:.5,y:.5,tx:.5,ty:.5,angle:0,name:'Knight',color:`hsl(${hashHue(id)} 80% 60%)`,weapon:1,trail:[],lastSeen:performance.now()}); electHost(); if(isHost) setTimeout(broadcastWorld,300); refreshPeers(); });
+  room.onPeerJoin(id=>{ peers.set(id,{x:.5,y:.5,tx:.5,ty:.5,angle:0,name:'Knight',color:`hsl(${hashHue(id)} 80% 60%)`,weapon:1,level:1,trail:[],lastSeen:performance.now()}); electHost(); if(isHost) setTimeout(broadcastWorld,300); refreshPeers(); });
   room.onPeerLeave(id=>{ peers.delete(id); delete scores[id]; electHost(); refreshPeers(); });
 
   const [sendP, onP] = room.makeAction('pos');  sendPos = sendP;
@@ -2319,6 +2379,7 @@ function joinWorld(roomCode){
     p.tx=clamp(d.x,0,WORLD); p.ty=clamp(d.y,0,WORLD); p.angle=+d.a||0; p.ext=+d.e||0; p.weapon=clamp(d.w|0,0,WEAPONS.length-1); p.weaponId=WEAPONS[p.weapon].id;
     if (d.n) p.name=cleanName(d.n); if (d.c) p.color=String(d.c).slice(0,32);
     p.spinning = !!d.s; p.lastSeen=performance.now();
+    if (typeof d.l==='number') p.level = clamp(d.l|0, 1, 999);   // peer level rides the pos payload — the host scales the Emperor to the strongest player present
     if (scores[id]) scores[id].name=p.name;
   });
   const [sendH, onH] = room.makeAction('hit'); sendHit = sendH;
@@ -2339,7 +2400,7 @@ function joinWorld(roomCode){
   setTimeout(refreshPeers, 15500);
 }
 setInterval(()=>{ // sword state @ ~20Hz
-  if (started && sendPos){ const bl = bladeAt(performance.now()); sendPos({ x:+me.x.toFixed(3), y:+me.y.toFixed(3), a:+bl.ang.toFixed(2), e:+bl.ext.toFixed(2), w:me.weapon, n:me.name, c:me.color, s: performance.now()<me.spinUntil }); }
+  if (started && sendPos){ const bl = bladeAt(performance.now()); sendPos({ x:+me.x.toFixed(3), y:+me.y.toFixed(3), a:+bl.ang.toFixed(2), e:+bl.ext.toFixed(2), w:me.weapon, n:me.name, c:me.color, s: performance.now()<me.spinUntil, l: me.level }); }
 }, 50);
 
 /* ============================================================ input */
@@ -2452,7 +2513,7 @@ function refreshHUD(){
   $('#mpText').textContent = '' + Math.floor(me.mp);   // overlaid ON the bar — number only, no 'MP' prefix
   // SLIME EMPEROR boss bar — visible while a boss lives anywhere in the world
   const bossS = [...slimes.values()].find(s=>s.kind==='boss');
-  if (bossS){ $('#bossBar').classList.remove('hidden'); $('#bossFill').style.width = clamp(bossS.hp/bossS.max*100,0,100)+'%'; }
+  if (bossS){ $('#bossBar').classList.remove('hidden'); $('#bossFill').style.width = clamp(bossS.hp/bossS.max*100,0,100)+'%'; $('#bossHp').textContent = Math.max(0, Math.ceil(bossS.hp)).toLocaleString('en-US'); }
   else $('#bossBar').classList.add('hidden');
   document.body.classList.toggle('boss-on', !!bossS);   // mobile CSS shifts the left badge column clear of the lowered boss bar
   // item buttons: counts + greyed when empty
@@ -4162,6 +4223,17 @@ function drawSlime(s,t){
   const sg = drawVideoSlime(s,t,baseR);
   if (sg){
     drawKindMarks(s, x, y - baseR*.4, baseR, t);
+    if (s.kind==='boss' && performance.now() < (s.guardUntil||0)){
+      // ROYAL GUARD shield dome: a translucent shell capped over the
+      // Emperor while he is invulnerable (window replicated via payload)
+      const gr = baseR*1.28, gy2 = y - baseR*.32;
+      ctx.fillStyle = 'rgba(160,220,255,' + (.15 + .05*Math.sin(t/180)).toFixed(3) + ')';
+      ctx.beginPath(); ctx.arc(x, gy2, gr, Math.PI, 0); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(225,246,255,.9)'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(x, gy2, gr, Math.PI, 0); ctx.stroke();
+      ctx.fillStyle = 'rgba(225,246,255,.28)';
+      ctx.fillRect(x - gr, gy2 - 2, gr*2, 3);   // rim line where the dome meets the ground
+    }
     if (s.hp < s.max){
       /* HP bar floats ABOVE the sprite — off its CURRENT top edge (ground
          anchor - hop lift - squashed height), with a small gap. The old
@@ -4507,14 +4579,14 @@ function frame(now){
     if (now > me.invulnUntil){
       for (const s of slimes.values()){
         const rr = s.r + .022;
-        if (dist2(me.x,me.y,s.x,s.y) < rr*rr){ damagePlayer(CONTACT_DMG[s.kind]||6, now); break; }
+        if (dist2(me.x,me.y,s.x,s.y) < rr*rr){ damagePlayer(s.kind==='boss' ? (s.bCon || CONTACT_DMG.boss) : (CONTACT_DMG[s.kind]||6), now); break; }
       }
     }
     for (let i=bullets.length-1;i>=0;i--){
       const b = bullets[i];
       b.x += b.vx*dt/1000; b.y += b.vy*dt/1000;
       if (now-b.born > b.life || b.x<-.1 || b.y<-.1 || b.x>WORLD+.1 || b.y>WORLD+.1){ bullets.splice(i,1); continue; }
-      if (now > me.invulnUntil && dist2(b.x,b.y,me.x,me.y) < .032*.032){ bullets.splice(i,1); damagePlayer(12, now); }
+      if (now > me.invulnUntil && dist2(b.x,b.y,me.x,me.y) < .032*.032){ bullets.splice(i,1); damagePlayer(bossOrbDmg(), now); }
     }
     for (let i=spiralEmitters.length-1;i>=0;i--){
       const em = spiralEmitters[i];
