@@ -769,8 +769,9 @@ for (const w of WEAPONS){ const im=new Image(); im.src='assets/weapons/'+w.id+'.
 
 /* ============================================================ mining: gems, ore nodes, forge
    Gems come from mining ore rocks with the Pickaxe (weapon 6, free starter).
-   The Forge (in the shop) crafts weapons for coins + gems, and promotes
-   owned weapons through 5 levels — XP from kills (any weapon) and mining. */
+   The Forge (in the shop) crafts weapons for coins + gems, and performs
+   gate BREAKTHROUGHS — weapon levels themselves are free-flow from XP
+   (kills with the weapon equipped, mining for the pickaxe). */
 const GEMS = {
   emerald:{ name:'Emerald',  col:'#3ddc84' },
   topaz:{ name:'Topaz',       col:'#ffd54a' },
@@ -800,19 +801,33 @@ const CRAFT_RECIPES = {
   4:{ coins:700,  gems:{ ruby:4, topaz:3 } },
   5:{ coins:1100, gems:{ amethyst:5, ruby:4 } },
 };
-const PROMOTE_COSTS = {
-  2:{ coins:100 },
-  3:{ coins:250,  gems:{ emerald:2 } },
-  4:{ coins:500,  gems:{ sapphire:3, topaz:2 } },
-  5:{ coins:1000, gems:{ ruby:3, amethyst:2, diamond:1 } },
+/* ---- weapon progression (Handler's ruling): weapons level up FREE-FLOW
+   from XP — no cost, no button — up to Lv 50. Every 10 levels is a GATE
+   (10/20/30/40): at a gate the XP bar clamps full and the weapon waits
+   for a paid BREAKTHROUGH at the Forge (coins + ore gems). Damage
+   scaling tapers: +15%/level through Lv 10, +8%/level after. ---- */
+const WLV_MAX = 50;
+const GATE_LEVELS = [10, 20, 30, 40];
+const BREAKTHROUGH_COSTS = {
+  10:{ coins:1500,  gems:{ emerald:3, sapphire:3 } },
+  20:{ coins:4000,  gems:{ ruby:4, amethyst:3 } },
+  30:{ coins:10000, gems:{ diamond:3, ruby:5 } },
+  40:{ coins:25000, gems:{ diamond:6, amethyst:6 } },
 };
-function xpNeed(lv){ return 60 * lv; }   // weapon XP to fill the bar at lv 1..4 (lv 5 = MAX)
+function isGate(lv){ return GATE_LEVELS.includes(lv); }
+function xpNeed(lv){ return 60 * lv; }   // weapon XP to fill the bar at any level
 function wxpOf(i){ if (!me.wxp[i]) me.wxp[i] = { lv:1, xp:0 }; return me.wxp[i]; }
 function gainWxp(i, n){
-  const w = wxpOf(i); if (w.lv >= 5) return;
-  const before = w.xp;
-  w.xp = Math.min(w.xp + n, xpNeed(w.lv));   // clamps AT the threshold: upgrade-ready, never auto-promotes
-  if (w.xp !== before) buildRack();
+  const w = wxpOf(i); if (w.lv >= WLV_MAX) return;
+  w.xp += n;
+  let leveled = false;
+  while (w.lv < WLV_MAX && !isGate(w.lv) && w.xp >= xpNeed(w.lv)){
+    w.xp -= xpNeed(w.lv); w.lv++; leveled = true;
+    addFloat(me.x, me.y - .14, WEAPONS[i].name.toUpperCase() + ' LV ' + w.lv + '!', WEAPONS[i].color, { big:true });
+  }
+  if (isGate(w.lv)) w.xp = Math.min(w.xp, xpNeed(w.lv));   // at a gate: bar full, NO overflow — it waits for the breakthrough
+  if (leveled){ sfx.pop(); saveGame(); }
+  buildRack();
 }
 
 /* ============================================================ weapon skill trees
@@ -1476,7 +1491,7 @@ function myDamage(){
   if (wHas(4,'w42')) base += 6;   // Greatsword tree: Heavy Blade
   if (wHas(5,'w51')) base += 8;   // Warhammer tree: Heavy Head
   if (wHas(6,'w61')) base += 3;   // Pickaxe tree: Strong Arms
-  base *= 1 + .15 * (wxpOf(me.weapon).lv - 1);   // weapon level: +15% damage per level (every weapon, pickaxe included)
+  base *= 1 + .15 * (Math.min(wxpOf(me.weapon).lv, 10) - 1) + .08 * Math.max(0, wxpOf(me.weapon).lv - 10);   // weapon-level damage taper: +15%/lv through Lv10, +8%/lv after (Lv10 x2.35, Lv20 x3.15, Lv50 x5.55)
   return (combo>=15 && performance.now()<comboUntil) ? base*1.15 : base;   // ON FIRE combo bonus
 }
 function myReach(){
@@ -1783,8 +1798,9 @@ function buildShopRows(){
   buildWeaponRows(wrap);
 }
 /* ---- the FORGE: weapons are CRAFTED for coins + gems (mined from ore
-   rocks), and owned weapons PROMOTE through 5 levels once their XP bar
-   is full — again for coins + gems. Carried coins only, like the shop. ---- */
+   rocks). Levelling is free-flow from XP; the Forge's other job is the
+   BREAKTHROUGH at gate levels 10/20/30/40 — coins + gems, carried coins
+   only, like the shop. ---- */
 function canAfford(cost){ return !!cost && me.coins >= cost.coins && Object.entries(cost.gems||{}).every(([g,n]) => (me.gems[g]||0) >= n); }
 function payCost(cost){ me.coins -= cost.coins; for (const [g,n] of Object.entries(cost.gems||{})) me.gems[g] -= n; }
 function costHTML(cost){
@@ -1802,14 +1818,14 @@ function craftWeapon(i){
   sfx.buy(); buildShopRows(); buildRack(); refreshHUD(); saveGame();
   toast(WEAPONS[i].name.toUpperCase()+' CRAFTED! Press '+(i+1)+' to wield it');
 }
-function promoteWeapon(i){
+function breakthroughWeapon(i){
   const wp = wxpOf(i);
-  if (!me.owned.has(i) || wp.lv >= 5 || wp.xp < xpNeed(wp.lv)) return;
-  const cost = PROMOTE_COSTS[wp.lv + 1];
+  if (!me.owned.has(i) || !isGate(wp.lv) || wp.xp < xpNeed(wp.lv)) return;
+  const cost = BREAKTHROUGH_COSTS[wp.lv];
   if (!canAfford(cost)) return;
-  payCost(cost); wp.lv++; wp.xp = 0;
+  payCost(cost); wp.lv++; wp.xp = 0;   // through the gate — XP flows again from 0
   sfx.buy(); buildShopRows(); buildRack(); refreshHUD(); saveGame();
-  toast(WEAPONS[i].name.toUpperCase()+' IS NOW LV '+wp.lv+'!');
+  toast('BREAKTHROUGH! '+WEAPONS[i].name.toUpperCase()+' LV '+wp.lv);
 }
 function buildWeaponRows(wrap){
   const head = document.createElement('div');
@@ -1819,20 +1835,20 @@ function buildWeaponRows(wrap){
     const row = document.createElement('div'); row.className = 'shopRow';
     const owned = me.owned.has(i), wp = wxpOf(i);
     let state = '', btn = null;
-    if (i===0 || i===6) state = '<div class="own">STARTER</div>';   // dagger & pickaxe: free from the start
-    else if (!owned){
+    if (!owned){
       const cost = CRAFT_RECIPES[i];
       state = `<span class="costline">${costHTML(cost)}</span>`;
       btn = document.createElement('button'); btn.textContent = 'CRAFT'; btn.disabled = !canAfford(cost);
       btn.onclick = ()=>craftWeapon(i);
     }
-    else if (wp.lv >= 5) state = '<div class="own">MAX LEVEL</div>';
-    else if (wp.xp >= xpNeed(wp.lv)){
-      const cost = PROMOTE_COSTS[wp.lv + 1];
+    else if (wp.lv >= WLV_MAX) state = '<div class="own">LV 50 — MAX LEVEL</div>';
+    else if (isGate(wp.lv) && wp.xp >= xpNeed(wp.lv)){
+      const cost = BREAKTHROUGH_COSTS[wp.lv];
       state = `<span class="costline">${costHTML(cost)}</span>`;
-      btn = document.createElement('button'); btn.textContent = 'UPGRADE'; btn.disabled = !canAfford(cost);
-      btn.onclick = ()=>promoteWeapon(i);
+      btn = document.createElement('button'); btn.textContent = 'BREAKTHROUGH'; btn.disabled = !canAfford(cost);
+      btn.onclick = ()=>breakthroughWeapon(i);
     }
+    else if (isGate(wp.lv)) state = `<div class="own">XP ${wp.xp}/${xpNeed(wp.lv)} — GATE LV ${wp.lv}: fill the bar to break through</div>`;
     else state = `<div class="own">XP ${wp.xp}/${xpNeed(wp.lv)}</div>`;
     row.innerHTML = `<img src="assets/weapons/${w.id}.png" alt="" style="width:64px;height:20px;object-fit:contain;flex:none"><div class="info"><b>${w.name}${owned ? ' · Lv '+wp.lv : ''}</b><span>${w.dmg} dmg · ${w.desc}</span></div>${state}`;
     if (btn) row.appendChild(btn);
@@ -2228,10 +2244,10 @@ function buildRack(){
     let extra;
     if (locked) extra = `<div class="wl">FORGE</div>`;
     else {
-      const wp = wxpOf(i), need = wp.lv < 5 ? xpNeed(wp.lv) : 0;
-      const pct = wp.lv >= 5 ? 100 : clamp(wp.xp/need*100, 0, 100);
-      const ready = wp.lv < 5 && wp.xp >= need;
-      extra = `<div class="key">${i+1}</div><div class="wlv">Lv ${wp.lv}</div><div class="wxpbar${ready?' ready':''}"><div style="width:${pct}%"></div></div>`;
+      const wp = wxpOf(i), need = wp.lv < WLV_MAX ? xpNeed(wp.lv) : 0;
+      const pct = wp.lv >= WLV_MAX ? 100 : clamp(wp.xp/need*100, 0, 100);
+      const ready = isGate(wp.lv) && wp.xp >= need;   // gate bar full: pulses (see .wxpbar.ready) until the Forge breakthrough
+      extra = `<div class="key">${i+1}</div><div class="wlv">Lv ${wp.lv}${ready?'!':''}</div><div class="wxpbar${ready?' ready':''}"><div style="width:${pct}%"></div></div>`;
     }
     d.innerHTML = weaponSVG(w,locked)+`<div class="wn${w.name.length>8?' long':''}">${w.name}</div>`+extra;
     d.title = w.name+' — '+w.dmg+' dmg, '+w.desc+(locked?' (craft it at the FORGE in the shop)':'');
