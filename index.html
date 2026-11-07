@@ -57,10 +57,21 @@
   #boardBadge .row { display:flex; gap:6px; white-space:nowrap; }
   #boardBadge .row.me { color:#d2691e; }
 
-  /* weapon rack */
-  #rack { position:fixed; z-index:20; bottom:14px; left:50%; transform:translateX(-50%); display:flex; gap:10px; }
+  /* weapon rack dock: SKILLS/SPHERE stack + toggle tab + rack move as ONE
+     unit anchored to the bottom edge, so the buttons always ride directly
+     above the rack's top edge and can never overlap cards, in either
+     collapse state. JS keeps --dockH = the dock's live height so the
+     minimap and side columns can clear it at any width. */
+  #rackDock { position:fixed; z-index:20; left:0; right:0; bottom:0; display:flex; flex-direction:column; align-items:center; padding-bottom:14px; pointer-events:none; }
+  #rackBtns { align-self:flex-end; margin:0 14px 8px 0; display:flex; flex-direction:column; gap:8px; align-items:flex-end; pointer-events:none; }
+  #rackBtns > * { pointer-events:auto; }
+  #rackTabRow { display:flex; justify-content:center; margin-bottom:4px; pointer-events:none; }
+  #rackTab { pointer-events:auto; font-size:10px; padding:8px 14px; }
+  #rackTabChev { margin-left:8px; }
+  #rack { display:flex; gap:10px; justify-content:center; pointer-events:none; overflow:hidden; transition:max-height .18s ease; }
+  #rackDock.collapsed #rack .wcard:not(.sel) { display:none; }
   .wcard {
-    width:82px; padding:8px 4px 6px; text-align:center; cursor:pointer; position:relative;
+    width:82px; padding:8px 4px 6px; text-align:center; cursor:pointer; position:relative; flex:none; pointer-events:auto;
     background:#fff6df; border:3px solid #3a2b23; border-radius:0;
     box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(0,0,0,.30); transition:transform .08s;
   }
@@ -78,7 +89,7 @@
   @keyframes wxpPulse { from { filter:brightness(.8); } to { filter:brightness(1.4); } }
 
   #forgeBtn {
-    position:fixed; z-index:21; bottom:14px; right:14px; cursor:pointer;
+    cursor:pointer;
     background:#ff8a2e; border:3px solid #3a2b23; border-radius:0; color:#fff;
     font-family:"Press Start 2P",monospace; font-size:11px; padding:12px 14px;
     box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
@@ -94,7 +105,7 @@
 
   /* forge popup */
   #forge {
-    position:fixed; z-index:30; bottom:110px; right:14px; width:290px;
+    position:fixed; z-index:30; bottom:calc(var(--dockH, 229px) + 10px); right:14px; width:290px;
     background:#fff6df; border:3px solid #3a2b23; border-radius:0; padding:16px;
     box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 5px 5px 0 rgba(0,0,0,.30);
     animation:pop .18s cubic-bezier(.2,2.2,.4,1);
@@ -146,7 +157,7 @@
   #comboBadge.pop2 { animation:comboPop .22s cubic-bezier(.2,2.2,.4,1); }
   @keyframes comboPop { 40% { transform:scale(1.28) rotate(-2deg); } }
   #hint {
-    position:fixed; z-index:23; bottom:118px; left:50%; transform:translateX(-50%);
+    position:fixed; z-index:23; bottom:calc(var(--dockH, 229px) + 10px); left:50%; transform:translateX(-50%);
     background:#fff; color:#3a2b23; border:3px solid #3a2b23; border-radius:0;
     padding:9px 16px; font-family:"Press Start 2P",monospace; font-size:10px; line-height:1.7; white-space:nowrap; pointer-events:none;
     box-shadow:4px 4px 0 rgba(0,0,0,.30); animation:hintBob 1s ease-in-out infinite;
@@ -215,24 +226,35 @@
     #hpText { font-size:14px; }
     #mpTrack { width:84px; height:9px; }
     #mpText { font-size:14px; }
-    #items { left:8px; bottom:158px; gap:8px; }
+    #items { left:8px; bottom:calc(var(--dockH, 196px) + 88px); gap:8px; }
     .ibtn { width:44px; height:44px; }
-    #interactPrompt { bottom:158px; font-size:9px; padding:9px 14px; }
+    #interactPrompt { bottom:calc(var(--dockH, 196px) + 10px); font-size:9px; padding:9px 14px; }
     #bossBar { width:min(72vw,520px); }
     #bountyBadge b { font-size:6px; letter-spacing:0; }
     #bountyText { font-size:16px; line-height:1.2; }
     #bountyProg { font-size:14px; margin-top:1px; }
-    #minimap { width:74px; height:74px; left:8px; bottom:76px; border-width:3px; border-radius:0; pointer-events:none; }
+    #minimap { width:74px; height:74px; left:8px; bottom:calc(var(--dockH, 196px) + 10px); border-width:3px; border-radius:0; pointer-events:none; }
     #pauseBtn { left:auto; right:8px; top:94px; bottom:auto; width:36px; height:36px; font-size:10px; border-width:3px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
-    #rack { bottom:max(8px, env(safe-area-inset-bottom)); gap:5px; width:100vw; }
-    #forgeBtn { bottom:78px; right:8px; font-size:8px; padding:9px 10px; border-width:3px; border-radius:0; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
-    #actives { bottom:178px; right:8px; gap:8px; }
+    #rackDock { padding-bottom:max(8px, env(safe-area-inset-bottom)); }
+    #rackBtns { margin:0 8px 6px 0; gap:6px; }
+    #rackTab { font-size:8px; padding:7px 10px; }
+    #rack { gap:4px; width:100%; padding:0 4px; box-sizing:border-box; }
+    .wcard { width:46px; padding:5px 2px 4px; }
+    .wcard svg { width:30px; height:30px; }
+    .wcard img { width:30px !important; height:30px !important; }
+    .wcard .wn { font-size:6px; letter-spacing:-1px; }
+    .wcard .wn.long { transform:scaleX(.6); }
+    .wcard .wlv { font-size:11px; }
+    .wcard .wl { font-size:12px; padding:1px 5px; top:-8px; right:-6px; }
+    .wcard .key { font-size:7px; padding:1px 4px; top:-8px; left:-6px; }
+    #forgeBtn { font-size:8px; padding:9px 10px; border-width:3px; border-radius:0; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
+    #actives { bottom:calc(var(--dockH, 196px) + 8px); right:8px; gap:8px; }
     #wSkillBtn { width:96px; font-size:7px; }
-    #treeBtn { bottom:124px; right:8px; font-size:8px; padding:9px 10px; border-width:3px; border-radius:0; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
+    #treeBtn { font-size:8px; padding:9px 10px; border-width:3px; border-radius:0; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
     .abtn { width:48px; height:48px; font-size:7px; border-width:3px; }
-    #comboBadge { right:auto; left:8px; bottom:326px; font-size:9px; padding:7px 10px; border-width:3px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
-    #hint { bottom:160px; font-size:8px; max-width:72vw; white-space:normal; text-align:center; padding:7px 10px; }
-    #toast { top:auto; bottom:208px; font-size:9px; padding:8px 14px; border-width:3px; }
+    #comboBadge { right:auto; left:8px; bottom:calc(var(--dockH, 196px) + 142px); font-size:9px; padding:7px 10px; border-width:3px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
+    #hint { bottom:calc(var(--dockH, 196px) + 12px); font-size:8px; max-width:72vw; white-space:normal; text-align:center; padding:7px 10px; }
+    #toast { top:auto; bottom:calc(var(--dockH, 196px) + 60px); font-size:9px; padding:8px 14px; border-width:3px; }
     #zoneBanner { font-size:10px; padding:6px 14px; max-width:94vw; }
   }
 
@@ -257,7 +279,7 @@
     animation:pop .18s cubic-bezier(.2,2.2,.4,1);
   }
   #interactPrompt {
-    position:fixed; z-index:23; bottom:118px; left:50%; transform:translateX(-50%);
+    position:fixed; z-index:23; bottom:calc(var(--dockH, 229px) + 10px); left:50%; transform:translateX(-50%);
     font-family:"Press Start 2P",monospace; font-size:11px; cursor:pointer;
     background:#ffd94d; color:#3a2b23; border:3px solid #3a2b23; border-radius:0;
     padding:11px 20px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
@@ -347,7 +369,7 @@
   }
 
   /* ---------- active skill buttons ---------- */
-  #actives { position:fixed; right:14px; bottom:140px; z-index:21; display:flex; flex-direction:column; gap:10px; }
+  #actives { position:fixed; right:14px; bottom:calc(var(--dockH, 229px) + 10px); z-index:21; display:flex; flex-direction:column; gap:10px; }
   .abtn {
     position:relative; width:58px; height:58px; border-radius:0; cursor:pointer; overflow:hidden;
     border:3px solid #3a2b23; background:#fff6df; color:#3a2b23;
@@ -360,7 +382,7 @@
 
   /* ---------- weapon skill button + skill tree ---------- */
   #treeBtn {
-    position:fixed; z-index:21; bottom:76px; right:14px; cursor:pointer;
+    cursor:pointer;
     background:#8e6bc8; border:3px solid #3a2b23; border-radius:0; color:#fff;
     font-family:"Press Start 2P",monospace; font-size:11px; padding:12px 14px;
     box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
@@ -481,7 +503,14 @@
     <div id="bountyProg"></div>
   </div>
 
-  <div id="rack"></div>
+  <div id="rackDock">
+    <div id="rackBtns">
+      <button id="treeBtn" class="px-btn">SKILLS</button>
+      <button id="forgeBtn" class="px-btn">SPHERE</button>
+    </div>
+    <div id="rackTabRow"><button id="rackTab" class="px-btn"><span id="rackTabName">Sword</span><span id="rackTabChev">▲</span></button></div>
+    <div id="rack"></div>
+  </div>
   <canvas id="minimap" width="124" height="124"></canvas>
   <div id="items">
     <button class="ibtn empty" id="itemPotion" title="Potion (Z) — heal 60 HP"><svg viewBox="0 0 40 40"><rect x="16.5" y="7" width="7" height="26" rx="2.5" fill="#e5484d"/><rect x="7" y="16.5" width="26" height="7" rx="2.5" fill="#e5484d"/></svg><span class="cnt">0</span></button>
@@ -492,8 +521,6 @@
   <div id="bossBar" class="hidden"><b>SLIME EMPEROR</b><div id="bossTrack"><div id="bossFill"></div></div></div>
   <div id="actives"><button id="wSkillBtn"><span id="wsName">SKILL LOCKED</span><span class="k" id="wsSub">V · SKILLS tree (K)</span><div class="cdov" id="wsCdov" style="height:0%"></div></button></div>
   <button id="shareBtn" class="px-btn">INVITE LINK</button>
-  <button id="forgeBtn" class="px-btn">SPHERE</button>
-  <button id="treeBtn" class="px-btn">SKILLS</button>
   <div id="comboBadge" class="hidden">x3 COMBO</div>
   <button id="pauseBtn" title="Pause">| |</button>
 
@@ -2044,6 +2071,32 @@ function refreshPeers(){
   $('#peerBadge').classList.toggle('on', n>0);
   refreshHUD();
 }
+/* ---------- collapsible rack ---------- */
+let rackCollapsed = window.innerWidth <= 640;   // phones start collapsed; loadGame may override from the save
+function syncDockH(){
+  const dock = $('#rackDock'); if (!dock || !dock.offsetHeight) return;
+  document.documentElement.style.setProperty('--dockH', dock.offsetHeight + 'px');
+}
+function syncRackUI(){
+  const dock = $('#rackDock'); if (!dock) return;
+  dock.classList.toggle('collapsed', rackCollapsed);
+  const w = WEAPONS[me.weapon];
+  if (w) $('#rackTabName').textContent = w.name;
+  $('#rackTabChev').textContent = rackCollapsed ? '▲' : '▼';
+  const rack = $('#rack');
+  if (rackCollapsed){
+    const sel = rack.querySelector('.wcard.sel');
+    rack.style.maxHeight = (sel ? sel.offsetHeight : 76) + 'px';
+  } else {
+    rack.style.maxHeight = rack.scrollHeight + 'px';
+  }
+  syncDockH();
+}
+function toggleRack(){
+  rackCollapsed = !rackCollapsed;
+  syncRackUI(); saveGame();
+  beep(rackCollapsed ? 500 : 700, .05, 'triangle', .06);
+}
 function buildRack(){
   const rack=$('#rack'); rack.innerHTML='';
   WEAPONS.forEach((w,i)=>{
@@ -2058,16 +2111,18 @@ function buildRack(){
       const ready = wp.lv < 5 && wp.xp >= need;
       extra = `<div class="key">${i+1}</div><div class="wlv">Lv ${wp.lv}</div><div class="wxpbar${ready?' ready':''}"><div style="width:${pct}%"></div></div>`;
     }
-    d.innerHTML = weaponSVG(w,locked)+`<div class="wn">${w.name}</div>`+extra;
+    d.innerHTML = weaponSVG(w,locked)+`<div class="wn${w.name.length>8?' long':''}">${w.name}</div>`+extra;
     d.title = w.name+' — '+w.dmg+' dmg, '+w.desc+(locked?' (craft it at the FORGE in the shop)':'');
     d.onclick=()=>equip(i);
     rack.appendChild(d);
   });
+  syncRackUI();
 }
 function equip(i){
   const w=WEAPONS[i];
   if (!me.owned.has(i)){ toast('Craft the '+w.name+' at the FORGE — in the SHOP'); return; }
-  me.weapon=i; me.lastHitAt.clear(); buildRack(); beep(600,.06,'triangle',.08); refreshHUD();
+  if (window.innerWidth <= 640) rackCollapsed = true;   // phone: picking a card folds the rack away (applies via buildRack → syncRackUI)
+  me.weapon=i; me.lastHitAt.clear(); buildRack(); beep(600,.06,'triangle',.08); refreshHUD(); saveGame();
   bubble(w.name.toUpperCase()+'!', me.x, me.y, 900);
 }
 function toggleForge(){
@@ -2076,6 +2131,9 @@ function toggleForge(){
   buildSphere(); refreshHUD(); updateHint();
 }
 $('#forgeBtn').onclick = toggleForge;
+$('#rackTab').onclick = toggleRack;
+if (window.ResizeObserver) new ResizeObserver(()=>syncDockH()).observe($('#rackDock'));
+addEventListener('resize', ()=>{ syncRackUI(); });
 
 /* ============================================================ SPHERE GRID (FFX-style)
    Three branches from a centre node. Walk a path: a node unlocks when the
@@ -2326,7 +2384,7 @@ function saveGame(){
       level:me.level, xp:me.xp, coins:me.coins, kills:me.kills, sp:me.sp,
       unlocked:[...unlocked], weapon:me.weapon, name:me.name, muted, hintsSeen,
       banked:me.banked, items:me.items, purse:me.purse, owned:[...me.owned],
-      gems:me.gems, wxp:me.wxp,
+      gems:me.gems, wxp:me.wxp, rackCollapsed,
       bounty: bounty ? { type:bounty.type, key:bounty.key, label:bounty.label, need:bounty.need, have:bounty.have, reward:bounty.reward } : null
     }));
   }catch(e){}
@@ -2362,6 +2420,7 @@ function loadGame(){
   me.purse = !!d.purse;
   if (d.name){ me.name = cleanName(d.name); $('#nameIn').value = me.name; }
   if (d.hintsSeen) hintsSeen = { slash:!!d.hintsSeen.slash, spin:!!d.hintsSeen.spin, sphere:!!d.hintsSeen.sphere };
+  if (typeof d.rackCollapsed === 'boolean') rackCollapsed = d.rackCollapsed;
   if (d.bounty && d.bounty.key && (d.bounty.type==='color' || d.bounty.type==='kind')){
     bounty = { type:d.bounty.type, key:d.bounty.key, label:String(d.bounty.label||'').slice(0,16) || 'SLIME',
                need:Math.max(1, d.bounty.need|0 || 8), have:Math.max(0, d.bounty.have|0), reward:Math.max(0, d.bounty.reward|0 || 40) };
