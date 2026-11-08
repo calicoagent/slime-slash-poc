@@ -221,6 +221,24 @@
   .pbtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
   .pbtn.main { background:#57d93d; color:#fff; text-shadow:2px 2px 0 rgba(0,0,0,.25); }
   .pcontrols { color:#97754a; font-size:17px; line-height:1.35; }
+  /* chunky key-cap chip (game grammar): the E / TAP caps on the interact
+     prompt and on panel primary buttons */
+  .keycap {
+    display:inline-block; font-family:"Press Start 2P",monospace; font-size:.82em; line-height:1;
+    background:#3a2b23; color:#ffd94d; border:2px solid #3a2b23; border-radius:0;
+    padding:3px 6px 4px; margin-right:8px; vertical-align:2px;
+    box-shadow:inset -2px -2px 0 rgba(255,255,255,.22), inset 2px 2px 0 rgba(0,0,0,.35), 2px 2px 0 rgba(0,0,0,.30);
+  }
+  /* primary panel buttons carry a small E cap (purely visual — the panel
+     focus system below is what E actually confirms) */
+  .echip::after {
+    content:'E'; display:inline-block; font-family:"Press Start 2P",monospace; font-size:8px; line-height:1;
+    background:#3a2b23; color:#ffd94d; padding:3px 5px 4px; margin-left:9px; vertical-align:2px;
+    box-shadow:inset -2px -2px 0 rgba(255,255,255,.22), inset 2px 2px 0 rgba(0,0,0,.35), 2px 2px 0 rgba(0,0,0,.30);
+  }
+  /* keyboard focus ring for building panels: gold, chunky, unmissable —
+     NOT the browser default outline */
+  .kbfocus { outline:3px solid #ffb52e !important; outline-offset:2px; transform:scale(1.05); position:relative; z-index:2; }
   @media (max-width:640px) {
     /* PHONE HUD: the play field comes first. Every HUD piece shrinks, hugs
        the edges, and lets touches pass through — only real buttons eat taps. */
@@ -725,7 +743,7 @@
     <button class="pbtn main" id="resumeBtn">RESUME</button>
     <button class="pbtn" id="soundBtn">SOUND: ON</button>
     <button class="pbtn" id="restartBtn">RESET SAVE</button>
-    <div class="pcontrols">Drag to slash · Click / Tap or SPACE = Weapon Skill · Keys 1-7 = weapons · F / K = Sphere Grid · V = weapon skill · Q / E / R / T = skills · Z / X / C = items · B = bank / shop / inn · Esc = pause</div>
+    <div class="pcontrols">Drag to slash · Click / Tap or SPACE = Weapon Skill · Keys 1-7 = weapons · F / K = Sphere Grid · V = weapon skill · Q / E / R / T = skills · Z / X / C = items · E = interact · panels: ↑↓ choose, E confirm · Esc = pause</div>
     <div id="pauseVer" class="verTag"></div>
   </div>
 </div>
@@ -736,7 +754,7 @@
     <div class="bankLine">Carried: <b id="bankCarried">0</b> coins</div>
     <div class="bankLine">Banked: <b id="bankBanked">0</b> coins</div>
     <div class="pcontrols">Banked coins are NEVER lost when you die. Death takes half of what you carry (only a quarter with a Coin Purse).</div>
-    <button class="pbtn main" id="depBtn">DEPOSIT ALL</button>
+    <button class="pbtn main echip" id="depBtn">DEPOSIT ALL</button>
     <button class="pbtn" id="wdBtn">WITHDRAW ALL</button>
     <div class="bankLine" style="text-align:center">SPHERE POINTS: <b id="bankSp">0</b></div>
     <button class="pbtn" id="buySpBtn">BUY 1 SP — 300c</button>
@@ -815,7 +833,7 @@
       <div class="bankLine" id="menuPeers">Solo — invite friends!</div>
       <button class="pbtn" id="menuSoundBtn">SOUND: ON</button>
       <div class="menuHead">HOW TO PLAY</div>
-      <div class="pcontrols">Move mouse / drag finger to swing your sword through slimes. Tap or click to use your WEAPON SKILL (once its Sphere path node is unlocked). Sphere Points come from level-ups, bounties, Kings (+1), Emperors (+3) and the Bank exchange (price rises with every purchase) — spend them on the SPHERE GRID: stats, passives, active skills AND every weapon's skill path (the paths CROSS at X nodes), GEMS for soul-gem sockets.<br>Keys 1-7 = weapons · M = menu · F / K = Sphere tab · G = Gems tab · V = weapon skill · Q / E / R / T = skills · Z / X / C = items · B = bank / shop / inn (in town) · Esc = close / pause<br>There is only ONE world — send the link to friends and they drop straight into it with you.</div>
+      <div class="pcontrols">Move mouse / drag finger to swing your sword through slimes. Tap or click to use your WEAPON SKILL (once its Sphere path node is unlocked). Sphere Points come from level-ups, bounties, Kings (+1), Emperors (+3) and the Bank exchange (price rises with every purchase) — spend them on the SPHERE GRID: stats, passives, active skills AND every weapon's skill path (the paths CROSS at X nodes), GEMS for soul-gem sockets.<br>Keys 1-7 = weapons · M = menu · F / K = Sphere tab · G = Gems tab · V = weapon skill · Q / E / R / T = skills · Z / X / C = items · E = interact (in town) · open panel: ↑↓ choose, E confirm · Esc = close / pause<br>There is only ONE world — send the link to friends and they drop straight into it with you.</div>
       <button class="pbtn" id="menuResetBtn">RESET SAVE</button>
     </div>
     <button class="pbtn" id="menuCloseBtn">CLOSE</button>
@@ -832,7 +850,7 @@
   <button id="playBtn" class="px-btn">PLAY</button>
   <button id="howtoBtn" class="px-btn">HOW TO PLAY <span id="howtoChev">▼</span></button>
   <button id="titleReset" class="hidden">RESET SAVE</button>
-  <div id="howto" class="hidden">Move mouse / drag finger to swing your sword through slimes.<br>Tap or click to use your WEAPON SKILL (unlock it on the Sphere grid). Sphere Points come from level-ups, bounties, Kings (+1), Emperors (+3) and the Bank exchange (price rises per purchase) — spend them on the SPHERE GRID for stats, passives, active skills and every weapon's skill path.<br>There is only ONE world — send the link to friends and they drop straight into it with you. No rooms, no codes, no sign-up.<br>B — BANK / SHOP / INN (in town)</div>
+  <div id="howto" class="hidden">Move mouse / drag finger to swing your sword through slimes.<br>Tap or click to use your WEAPON SKILL (unlock it on the Sphere grid). Sphere Points come from level-ups, bounties, Kings (+1), Emperors (+3) and the Bank exchange (price rises per purchase) — spend them on the SPHERE GRID for stats, passives, active skills and every weapon's skill path.<br>There is only ONE world — send the link to friends and they drop straight into it with you. No rooms, no codes, no sign-up.<br>E — interact: BANK / SHOP / INN (in town)</div>
   <div id="titleVer" class="verTag"></div>
 </div>
 
@@ -1155,6 +1173,9 @@ const freshSession = () => ({
   // where the player is
   myZone: -1,                // current zone ring (banner fires on change; -1 = unset)
   nearBuilding: null,        // 'bank' | 'shop' | 'hospital' | null — drives the interact prompt
+  dlgAdvance: null,          // dialogue/card advance hook (RPG layer sets this); E routes to it FIRST when set
+  panelFocus: null,          // building-panel keyboard focus { panel, el } — E confirms el, arrows/Tab move it
+  lastPtrType: 'mouse',      // last pointer type seen ('mouse' | 'touch' | 'pen') — drives the prompt's E vs TAP cap
   seenBosses: new Set(),     // boss ids already announced by the banner
   // input / pointer
   pointerDown: false, lastClient: null, lastMoveT: 0,
@@ -2382,8 +2403,55 @@ function death(){
 }
 
 /* ============================================================ bank & shop */
-function openBank(){ $('#bankPanel').classList.remove('hidden'); updateBankPanel(); }
-function openShop(){ $('#shopPanel').classList.remove('hidden'); buildShopRows(); }
+/* ============================================================ E = INTERACT
+   ONE dispatcher for the E key (Handler: on desktop the mouse IS the
+   sword, so clicking prompts and panel buttons is unusable — E interacts
+   in the world AND confirms inside panels). Priority: dialogue/card hook
+   (ses.dlgAdvance, set by the RPG layer) -> the open building panel's
+   FOCUSED button -> the building interact prompt -> Meteor Chop (E's
+   original active, unchanged when no context applies). */
+function buildingPanelOpen(){
+  for (const sel of ['#bankPanel', '#shopPanel', '#hospitalPanel']){
+    const p = $(sel);
+    if (p && !p.classList.contains('hidden')) return p;
+  }
+  return null;
+}
+function openBuilding(b){
+  if (b==='bank') openBank(); else if (b==='shop') openShop(); else if (b==='hospital') openHospital();
+}
+function panelButtons(panel){
+  return [...panel.querySelectorAll('button')].filter(b => !b.disabled && b.style.display !== 'none' && b.getClientRects().length > 0);
+}
+function setPanelFocus(panel, btn){
+  if (ses.panelFocus && ses.panelFocus.el) ses.panelFocus.el.classList.remove('kbfocus');
+  ses.panelFocus = btn ? { panel, el: btn } : null;
+  if (btn) btn.classList.add('kbfocus');
+}
+function clearPanelFocus(){ setPanelFocus(null, null); }
+function startPanelFocus(panel, primary){
+  const list = panelButtons(panel);
+  setPanelFocus(panel, (primary && list.includes(primary)) ? primary : (list[0] || null));
+}
+function movePanelFocus(dir){
+  const panel = buildingPanelOpen(); if (!panel) return;
+  const list = panelButtons(panel); if (!list.length) return;
+  const cur = ses.panelFocus ? list.indexOf(ses.panelFocus.el) : -1;
+  setPanelFocus(panel, list[(cur + dir + list.length) % list.length]);
+}
+function interactPressed(){
+  if (typeof ses.dlgAdvance === 'function'){ ses.dlgAdvance(); return true; }
+  const panel = buildingPanelOpen();
+  if (panel){
+    const f = ses.panelFocus;
+    if (f && f.panel === panel && panel.contains(f.el) && !f.el.disabled) f.el.click();
+    return true;   // a panel is up: E belongs to the panel, never to Meteor Chop
+  }
+  if (ses.nearBuilding){ openBuilding(ses.nearBuilding); return true; }
+  return false;
+}
+function openBank(){ $('#bankPanel').classList.remove('hidden'); updateBankPanel(); startPanelFocus($('#bankPanel'), $('#depBtn')); }
+function openShop(){ $('#shopPanel').classList.remove('hidden'); buildShopRows(); startPanelFocus($('#shopPanel'), document.querySelector('#shopRows button')); }
 /* Bank SP exchange — ESCALATING price (Handler: SP comes from farming the
    Emperor, 'or increasingly more expensive'): the Nth lifetime purchase
    costs round(300 * 1.5^N). spBuys persists in the save. Kings grant +1 SP
@@ -2429,6 +2497,7 @@ function buildShopRows(){
     row.innerHTML = `<div class="info"><b>${it.name} — ${it.price}c</b><span>${it.desc}</span></div><div class="own"></div>`;
     const ownEl = row.querySelector('.own');
     const btn = document.createElement('button');
+    if (it === SHOP_ITEMS[0]) btn.classList.add('echip');   // first item button = the shop's primary (default panel focus) — carries the E cap
     btn.onclick = ()=>buyItem(it.id);
     row.appendChild(btn);
     wrap.appendChild(row);
@@ -2517,7 +2586,7 @@ function buyItem(id){
   updateShopPanel(); refreshHUD(); saveGame();
 }
 /* ============================================================ THE INN: sleep to full, or sleep & save your respawn */
-function openHospital(){ $('#hospitalPanel').classList.remove('hidden'); buildHospitalRows(); }
+function openHospital(){ $('#hospitalPanel').classList.remove('hidden'); buildHospitalRows(); startPanelFocus($('#hospitalPanel'), document.querySelector('#hospRows button')); }
 function fullHealPrice(){ return Math.max(15, Math.ceil((me.maxHp - me.hp) * .8)); }
 function sleepSavePrice(){ return (me.hp < me.maxHp ? fullHealPrice() : 0) + 25; }   // heal (if hurt) + 25c flat for the respawn
 function updateHospitalRows(){
@@ -2543,6 +2612,7 @@ function buildHospitalRows(){
     row.innerHTML = `<div class="info"><b></b><span>${r.desc}</span></div>`;
     const nameEl = row.querySelector('.info b');
     const btn = document.createElement('button');
+    if (r.id === 'sleep') btn.classList.add('echip');   // SLEEP = the inn's primary (default panel focus) — carries the E cap
     btn.textContent = r.btn;
     btn.onclick = ()=>buyInn(r.id);
     row.appendChild(btn);
@@ -2586,22 +2656,30 @@ function updateInteract(){
   if (ds < nd){ nd = ds; nb = 'shop'; }
   if (dh < nd){ nd = dh; nb = 'hospital'; }
   /* TOWN RULE (gauntlet F4): while the sword is INSIDE TOWN_R, the nearest
-     building is always 'in range' — prompt shows, B / prompt tap opens it,
+     building is always 'in range' — prompt shows, E / prompt tap opens it,
      however far across the plaza it is. Range used to be measured from the
      sword's exact position against the .34 radius everywhere, so prompts
-     flickered in/out around town and B often opened nothing. Outside town
+     flickered in/out around town and the key often opened nothing. Outside town
      the .34 radius rule applies unchanged. */
   const inTown = dist2(me.x, me.y, WORLD/2, WORLD/2) < TOWN_R*TOWN_R;
   ses.nearBuilding = (inTown || nd < .34) ? nb : null;
   const panelOpen = !$('#bankPanel').classList.contains('hidden') || !$('#shopPanel').classList.contains('hidden') || !$('#hospitalPanel').classList.contains('hidden');
   // change-only DOM writes: this runs EVERY frame, and re-setting the
   // same textContent replaces the text node (layout work) every time
-  const wantPr = (ses.nearBuilding && !panelOpen) ? (ses.nearBuilding==='bank' ? 'OPEN BANK' : ses.nearBuilding==='shop' ? 'OPEN SHOP' : 'OPEN INN') : null;
+  const prName = (ses.nearBuilding && !panelOpen) ? (ses.nearBuilding==='bank' ? 'BANK' : ses.nearBuilding==='shop' ? 'SHOP' : 'INN') : null;
+  // the prompt carries a key-cap chip: E on desktop (last input not touch),
+  // TAP on touch — the chip is part of the change-only key so flipping
+  // input type re-renders the label
+  const wantPr = prName ? (ses.lastPtrType==='touch' ? 'TAP' : 'E') + '|' + prName : null;
   if (wantPr !== updateInteract._pr){
     updateInteract._pr = wantPr;
-    if (wantPr){ pr.textContent = wantPr; pr.classList.remove('hidden'); }
+    if (wantPr){ pr.innerHTML = '<span class="keycap">' + (ses.lastPtrType==='touch' ? 'TAP' : 'E') + '</span>OPEN ' + prName; pr.classList.remove('hidden'); }
     else pr.classList.add('hidden');
   }
+  // keyboard panel focus dies with its panel — panels close from many
+  // places (Esc, CLOSE buttons, walking away) and all of them just add
+  // .hidden, so the stale-focus cleanup lives here where state is watched
+  if (ses.panelFocus && ses.panelFocus.panel.classList.contains('hidden')) clearPanelFocus();
   // walk away (> .42 units — outside the .34 interact radius) and the panel
   // closes itself; inside town you are never 'away', so panels stay open
   if (!inTown){
@@ -2754,6 +2832,7 @@ function pinPtr(x, y, t){   // teleport the sword (tap snap / respawn / dash lan
   pushPtrSample(x, y, t);
 }
 addEventListener('pointermove', e=>{
+  if (e.pointerType) ses.lastPtrType = e.pointerType;
   if (ses.uiPointer) return;
   const now = performance.now();
   // Coalesced events: the browser batches sub-frame pointer points into one
@@ -2834,6 +2913,7 @@ function updatePointer(now){
 }
 addEventListener('pointerdown', e=>{
   ses.uiPointer = e.target !== cv;   // UI presses are for buttons/panels — flag them so pointermove ignores the drag
+  if (e.pointerType) ses.lastPtrType = e.pointerType;   // drives the interact prompt's E vs TAP cap
   if (!ses.started) return;
   if (e.target.closest && e.target.closest('#hud') && !e.target.closest('#game')) { /* UI taps handled by buttons */ }
   if (e.target===cv){
@@ -2857,6 +2937,15 @@ addEventListener('pointerup', e=>{
   if (performance.now() - info.t < 260 && info.travel < 14) castWeaponSkill();
 });
 addEventListener('pointercancel', ()=>{ ses.downInfo = null; ses.uiPointer = false; });
+// hovering a building-panel button moves the keyboard focus ring to it, so
+// mouse and keyboard never disagree about which button E will confirm
+addEventListener('pointerover', e=>{
+  if (e.pointerType) ses.lastPtrType = e.pointerType;
+  const panel = buildingPanelOpen();
+  if (!panel || !e.target.closest) return;
+  const btn = e.target.closest('button');
+  if (btn && panel.contains(btn) && !btn.disabled && (!ses.panelFocus || ses.panelFocus.el !== btn)) setPanelFocus(panel, btn);
+});
 addEventListener('touchmove', e=>{ e.preventDefault(); }, {passive:false});
 addEventListener('keydown', e=>{
   if (!ses.started) return;
@@ -2865,6 +2954,13 @@ addEventListener('keydown', e=>{
   if (e.key==='Escape' && !$('#bankPanel').classList.contains('hidden')){ $('#bankPanel').classList.add('hidden'); return; }   // Esc closes the bank / shop like the inn and menu (it used to open PAUSE over them)
   if (e.key==='Escape' && !$('#shopPanel').classList.contains('hidden')){ $('#shopPanel').classList.add('hidden'); return; }
   if (e.key==='Escape' || e.key==='p' || e.key==='P'){ togglePause(); return; }
+  // building-panel keyboard navigation: arrows / Tab move the focus ring
+  // (E confirms it — see interactPressed). preventDefault stops page scroll.
+  if (buildingPanelOpen() && (e.key==='Tab' || e.key==='ArrowDown' || e.key==='ArrowUp')){
+    e.preventDefault();
+    movePanelFocus((e.key==='ArrowUp' || e.shiftKey) ? -1 : 1);
+    return;
+  }
   const n = parseInt(e.key);
   if (n>=1 && n<=WEAPONS.length) equip(n-1);
   if (e.key===' ') { e.preventDefault(); castWeaponSkill(); }
@@ -2872,10 +2968,9 @@ addEventListener('keydown', e=>{
   if (e.key==='g'||e.key==='G') toggleGems();
   const lk = e.key.toLowerCase();
   if (lk==='q') castActive('wave');
-  if (lk==='e') castActive('meteor');
+  if (lk==='e'){ if (!interactPressed()) castActive('meteor'); }   // E = interact/confirm first; Meteor Chop only when no context applies
   if (lk==='r') castActive('frenzy');
   if (lk==='t') castActive('goldrush');
-  if (lk==='b'){ if (ses.nearBuilding==='bank') openBank(); else if (ses.nearBuilding==='shop') openShop(); else if (ses.nearBuilding==='hospital') openHospital(); }
   if (lk==='v') castWeaponSkill();
   if (lk==='k') toggleForge();   // K opens the SPHERE tab — weapon skills live on the grid now
   if (lk==='m') toggleMenu();
@@ -3867,7 +3962,7 @@ $('#restartBtn').onclick = ()=>{
 };
 $('#interactPrompt').addEventListener('pointerdown', e=>{
   e.stopPropagation();   // fire on pointerDOWN so sword movement can't steal the click
-  if (ses.nearBuilding==='bank') openBank(); else if (ses.nearBuilding==='shop') openShop(); else if (ses.nearBuilding==='hospital') openHospital();
+  openBuilding(ses.nearBuilding);   // same action the E key performs via interactPressed
 });
 $('#depBtn').onclick = ()=>{ act.patchProgress(p => ({ banked: p.banked + p.coins, coins: 0 })); sfx.buy(); updateBankPanel(); refreshHUD(); saveGame(); };   // a deposit must be on disk before the next death or tab kill
 $('#wdBtn').onclick = ()=>{ act.patchProgress(p => ({ coins: p.coins + p.banked, banked: 0 })); sfx.coin(); updateBankPanel(); refreshHUD(); saveGame(); };
