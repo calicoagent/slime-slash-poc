@@ -133,29 +133,74 @@ def vex():
 
 
 def hermit():
+    """Round 4 redraw: the first pass read as a grey penguin oval — one
+    white egg of a face over one grey egg of a body, the staff floating
+    beside him. Now he is unmistakably a BADGER and unmistakably OLD:
+    a hunched grey head sunk into his shoulders, the two dark face
+    stripes running ear -> eye -> muzzle over a tapered white blaze,
+    a MOSS SHAWL draped in scalloped rows over a dark robe, and the
+    staff planted at his side with his paw wrapped around it."""
     im, d = canvas()
     GY, GYD, GYL = (141, 146, 145), (96, 102, 101), (170, 174, 170)
     WHT = (238, 233, 220); STR = (51, 48, 44)
-    d.line([(106, 58), (97, 170)], fill=(110, 74, 38), width=5)                  # staff (behind body)
-    d.line([(106, 58), (103, 96)], fill=(84, 58, 30), width=2)
-    E(d, 104, 50, 13, 10, (101, 168, 90)); E(d, 112, 56, 10, 8, (66, 140, 60))   # leaf sprout on the staff
-    E(d, 45, 166, 18, 8, (70, 74, 72)); E(d, 83, 166, 18, 8, (70, 74, 72))       # feet
-    d.ellipse([23, 76, 105, 168], fill=GY)                                       # stout body
-    d.ellipse([62, 80, 105, 164], fill=GYD)                                      # shade side
-    d.ellipse([25, 78, 100, 166], fill=GY)
-    d.ellipse([39, 106, 89, 164], fill=GYL)                                      # belly
-    d.polygon([(23, 96), (105, 96), (96, 74), (32, 74)], fill=(84, 94, 88))      # cloak shoulders
-    E(d, 28, 112, 12, 22, GY); E(d, 100, 112, 12, 22, GY)                        # arms
-    E(d, 33, 24, 14, 12, GY); E(d, 95, 24, 14, 12, GY)                           # ears
-    E(d, 33, 22, 8, 7, STR); E(d, 95, 22, 8, 7, STR)
-    d.ellipse([31, 16, 97, 88], fill=WHT)                                        # white face
-    d.polygon([(48, 18), (57, 18), (55, 52), (46, 78), (40, 78), (42, 48)], fill=STR)   # badger stripes
-    d.polygon([(71, 18), (80, 18), (86, 48), (88, 78), (82, 78), (73, 52)], fill=STR)
-    eye(d, 49, 56, 7, 9); eye(d, 79, 56, 7, 9)                                   # eyes ride the stripes (glint sells them)
-    E(d, 64, 74, 24, 13, (226, 219, 203))                                        # muzzle
-    E(d, 64, 68, 11, 8, (138, 106, 98))                                          # nose
-    d.line([(58, 79), (70, 79)], fill=(120, 112, 100), width=2)                  # mouth
-    E(d, 99, 118, 10, 13, GYL)                                                   # paw resting by the staff
+    RB, RBD = (92, 84, 72), (64, 58, 50)                       # robe browns
+    MOSSD, MOSS, MOSSL = (43, 96, 48), (79, 143, 68), (116, 175, 98)
+    WOOD, WOODD = (110, 74, 38), (84, 58, 30)
+    # staff first (behind everything but the paw that grips it): planted
+    # at his left side, top below the ear, foot in the ground
+    d.line([(105, 34), (102, 171)], fill=WOOD, width=5)
+    d.line([(106, 34), (104, 171)], fill=WOODD, width=2)
+    E(d, 105, 30, 9, 7, MOSSL); E(d, 111, 36, 7, 6, MOSS)      # one small leaf pair at the crown
+    E(d, 44, 168, 18, 8, (70, 74, 72)); E(d, 80, 168, 18, 8, (70, 74, 72))   # feet
+    # robe: a hunched mass — shoulders slope (left high, right low toward
+    # the staff), flaring to a heavy hem
+    d.polygon([(38, 88), (88, 96), (100, 168), (26, 168)], fill=RB)
+    d.polygon([(72, 93), (88, 96), (100, 168), (86, 168)], fill=RBD)         # shaded right fall
+    d.ellipse([30, 76, 74, 108], fill=RB)                                    # the hump of his back over the left shoulder
+    # shawl BACK collar: moss rising behind the head
+    d.ellipse([26, 62, 102, 112], fill=MOSSD)
+    # ears tucked INTO the head silhouette (dark-cored, they peek, not float)
+    E(d, 35, 32, 15, 13, GY); E(d, 93, 32, 15, 13, GY)
+    E(d, 35, 31, 8, 7, STR); E(d, 93, 31, 8, 7, STR)
+    # the head, sunk low into the shawl and tipped a touch toward the staff
+    d.ellipse([29, 23, 99, 99], fill=GY)
+    d.ellipse([64, 29, 99, 95], fill=GYD)                                    # shaded right cheek mass
+    d.ellipse([31, 25, 95, 97], fill=GY)
+    # the white blaze: wide at the brow, tapering to the muzzle
+    d.polygon([(47, 29), (81, 29), (76, 67), (70, 93), (58, 93), (52, 67)], fill=WHT)
+    E(d, 64, 35, 30, 16, WHT)
+    # THE STRIPES: broad at the crown, running through the eyes, ending
+    # at the muzzle's sides — the badger's signature, not decoration
+    d.polygon([(38, 27), (50, 27), (53, 61), (52, 89), (43, 89), (40, 59)], fill=STR)
+    d.polygon([(78, 27), (90, 27), (88, 59), (85, 89), (76, 89), (75, 61)], fill=STR)
+    # eyes ride ON the stripes: a barely-lighter socket, a dark bead,
+    # one strong glint — beads, not spectacles
+    for cx in (47, 81):
+        E(d, cx, 61, 10, 12, (74, 70, 64))
+        eye(d, cx, 61, 6, 8)
+    E(d, 64, 85, 24, 13, (226, 219, 203))                                    # muzzle
+    E(d, 64, 79, 11, 8, (104, 74, 64))                                       # nose
+    d.line([(59, 89), (69, 89)], fill=(120, 112, 100), width=2)              # mouth
+    for i in range(5):                                                       # chin scruff
+        d.line([(56 + i * 4, 93), (57 + i * 4, 97)], fill=GYL, width=2)
+    # the MOSS SHAWL front drape: FLAT scalloped leaf rows over the robe,
+    # hanging in a V to mid-body, folds shaded between the scales
+    for row in range(4):
+        y = 100 + row * 10
+        n = 6 - (row // 2)
+        for i in range(n):
+            x = 34 + i * (62 / max(1, n - 1)) if n > 1 else 64
+            if (x - 64) ** 2 / 40 ** 2 + (y - 118) ** 2 / 30 ** 2 > 1.05: continue
+            c = (MOSSL, MOSS, MOSSD)[(i + row) % 3]
+            E(d, x, y + (row % 2) * 3, 18, 9, c)
+            if (i + row) % 4 == 0: E(d, x - 3, y + (row % 2) * 3 - 2, 5, 3, (170, 205, 150))
+    d.polygon([(50, 128), (78, 128), (64, 146)], fill=MOSSD)                 # the drape's point
+    E(d, 64, 132, 13, 10, MOSS)
+    # arms from under the shawl; the left paw wraps the staff
+    E(d, 30, 118, 12, 24, RB); E(d, 30, 132, 9, 9, GYL)                      # right paw, hanging
+    E(d, 97, 116, 12, 22, RBD)
+    E(d, 101, 112, 11, 14, GYL)                                              # the grip, over the staff
+    d.line([(97, 108), (97, 118)], fill=(120, 112, 100), width=2)            # finger split
     finish(im, 'hermit')
 
 

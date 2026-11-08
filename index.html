@@ -1394,10 +1394,11 @@ const WORLD = 32.0;
    overworld. The three isles grew and pulled apart (real sea between
    them), and two small ISLETS joined the chart as pure geography:
    TREASURE (zone 3, king-haunted, ore-bearing) and HERMIT (zone 1,
-   a sanctuary — nothing spawns there). Both are SEA-LOCKED this pass:
-   landRegion prices them above every access level, so the player can
-   never stand on — or be projected onto — either one; a later story
-   beat teaches the crossing. Only world GEOMETRY scaled again: every
+   a sanctuary — nothing spawns there). Both opened later by EARNED
+   sandbar crossings (see SANDBAR_T / SANDBAR_H below): Treasure at
+   access level 3 once the Root Herald falls, Hermit at level 4 once
+   the Cycle completes; New Cycle+ drowns both again. Only world
+   GEOMETRY scaled again: every
    gameplay constant — entity radii, reach, interact ranges, speeds,
    TOWN_R and the town group's internal layout (a compact village on a
    big isle) — is exactly what it was.
@@ -1433,6 +1434,23 @@ const BARRIERS = [
   { key:'A', seg:BRIDGE_A, x:BRIDGE_A.x2, y:BRIDGE_A.y2, isle:1, line:'The Rot holds this crossing. Earn the Meadow Sigil.' },
   { key:'B', seg:BRIDGE_B, x:BRIDGE_B.x2, y:BRIDGE_B.y2, isle:2, line:'The Rot holds this crossing. Earn the Grove Sigil.' },
 ];
+/* ISLET CROSSINGS (FF1 bar, round 4): the two islets were charted but
+   unreachable forever — accessLevel capped at 2 while their land sits
+   at levels 3/4. They open the FF1 way: EARNED crossings, revealed by
+   the story. When the Root Herald falls (heraldDone) the calmed
+   Rot-tide leaves a SANDBAR of pale shallows from Grove's north shore
+   to TREASURE ISLET (the nearest shore — 1.3u of open water; the Wilds
+   shore is 12u away across the whole sea). When the Cycle completes
+   (postgame), a second sandbar rises from Verdant's north shore to
+   HERMIT ISLET. Both are bridge strips in the land machinery (same
+   width, same segDist), gated by story state, and New Cycle+ drowns
+   them again because it resets heraldDone/complete with the chain. */
+const SANDBAR_T = bridgeSeg(ISLES[1], ISLES[3]);   // Grove shore -> Treasure Islet
+const SANDBAR_H = bridgeSeg(ISLES[0], ISLES[4]);   // Verdant shore -> Hermit Islet
+function sandbarOpen(which){
+  const st = prog().story; if (!st) return false;
+  return which === 'T' ? (st.heraldDone || st.complete) : !!st.complete;
+}
 function isleAt(x, y){ for (let i=0;i<ISLES.length;i++){ const I = ISLES[i]; if (Math.hypot(x-I.cx, y-I.cy) <= I.r) return i; } return -1; }
 function nearestIsle(x, y){ let bi = 0, bd = 1e9; for (let i=0;i<ISLES.length;i++){ const I = ISLES[i]; const d = Math.hypot(x-I.cx, y-I.cy) - I.r; if (d < bd){ bd = d; bi = i; } } return bi; }
 function segDist(px, py, s){
@@ -1442,9 +1460,9 @@ function segDist(px, py, s){
   return { d: Math.hypot(px - qx, py - qy), t, qx, qy };
 }
 /* Land classification: an isle disc carries its own gate level in `lvl`
-   (its index: 0/1/2 for the story isles — the islets sit at 3/4, above
-   every access level, so they are SEA-LOCKED: land for painting and for
-   the wildlife that lives there, never standable by the player) and its
+   (its index: 0/1/2 for the story isles — the islets sit at 3/4,
+   reachable only once the matching sandbar crossing stands: level 3
+   after the Herald, level 4 after the Cycle) and its
    strength tier in `zone` (an isle's zone need not equal its index —
    the Hermit is a zone-1 sanctuary at index 4). Bridge A carries Isle
    1's level (0), bridge B carries Isle 2's (1) — the gate itself is the
@@ -1455,6 +1473,8 @@ function landRegion(x, y){
   if (i >= 0) return { lvl:i, isle:i, zone:ISLES[i].zone };
   if (segDist(x, y, BRIDGE_A).d <= BRIDGE_W/2) return { lvl:0, bridge:'A', zone:0 };
   if (segDist(x, y, BRIDGE_B).d <= BRIDGE_W/2) return { lvl:1, bridge:'B', zone:1 };
+  if (sandbarOpen('T') && segDist(x, y, SANDBAR_T).d <= BRIDGE_W/2) return { lvl:3, bridge:'T', zone:3 };
+  if (sandbarOpen('H') && segDist(x, y, SANDBAR_H).d <= BRIDGE_W/2) return { lvl:4, bridge:'H', zone:1 };
   return null;
 }
 function onLand(x, y){ return landRegion(x, y) !== null; }
@@ -1474,7 +1494,12 @@ function bridgeOpen(n){   // n = the isle the bridge leads TO (2 or 3)
   return n === 2 ? (st.sigils >= 1 || questPast('meadow'))
                  : (st.sigils >= 2 || questPast('grove'));
 }
-function accessLevel(){ return bridgeOpen(3) ? 2 : bridgeOpen(2) ? 1 : 0; }
+function accessLevel(){
+  const st = prog().story;
+  if (st && st.complete) return 4;        // postgame: the Hermit sandbar stands
+  if (st && st.heraldDone) return 3;      // the Herald's fall calms the tide to Treasure
+  return bridgeOpen(3) ? 2 : bridgeOpen(2) ? 1 : 0;
+}
 function canStand(x, y){ const r = landRegion(x, y); return !!r && r.lvl <= accessLevel(); }
 /* Nearest standable point to (x,y) — for teleports/dash landings/stale
    saves that wake up in the sea. Falls back to the town spawn. */
@@ -1486,7 +1511,7 @@ function projectToLand(x, y){
     const px = I.cx + (x - I.cx)/d*rr, py = I.cy + (y - I.cy)/d*rr;
     if (canStand(px, py)){ const dd = (px-x)*(px-x) + (py-y)*(py-y); if (dd < bd){ bd = dd; best = { x:px, y:py }; } }
   }
-  for (const s of [BRIDGE_A, BRIDGE_B]){
+  for (const s of [BRIDGE_A, BRIDGE_B, SANDBAR_T, SANDBAR_H]){
     const sd = segDist(x, y, s);
     if (canStand(sd.qx, sd.qy)){ const dd = (sd.qx-x)*(sd.qx-x) + (sd.qy-y)*(sd.qy-y); if (dd < bd){ bd = dd; best = { x:sd.qx, y:sd.qy }; } }
   }
@@ -1622,6 +1647,8 @@ const freshSession = () => ({
   endingPlayed: false,       // the ending sequence has played for this completion (reset when a new cycle begins)
   petalAt: 0,                // post-ending bloom: next drifting-petal emit time
   dialogue: null,            // open NPC dialogue { npc, lines, i, lineAt, choiceAfter, choosing, choiceSel } — session only
+  npcPin: null,              // dialogue pin (round 4): a wandering NPC frozen mid-talk { id, x, y } — after the talk it carries { from } and blends home over ~0.9s instead of snapping back to its clock path
+  bossHurtAt: 0,             // last time the LOCAL blade damaged the Emperor (boss-bar gate, round 4) — session only
   npcTalkCounts: {},         // per-NPC count of conversations started (rotating line sets) — session only
   dlgAdvance: null,          // dialogue/card advance hook (RPG layer sets this); E routes to it FIRST when set
   chapterCard: null,         // open chapter card { lines, i } — advanced through ses.dlgAdvance
@@ -1807,17 +1834,17 @@ const SHRINE_POS = {
   root:   { x: ISLES[2].cx - 3.90, y: ISLES[2].cy + 2.90 },   // FF1 arc: the ROOT SHRINE — Wilds' far (south-west) shore, opposite the Wilds Shrine; NOT a Sigil shrine (its guardian drops the way open, not a Sigil)
 };
 /* Guardian configs: base HP scales in spawnGuardian by
-   (1 + .20 x max(0, topLevel-8)) x (1 + .5 x story.cycles) — the same
+   (1 + .25 x max(0, topLevel-8)) x (1 + .5 x story.cycles) — the same
    topLevel the Emperor reads. vis = rendered size factor (drawSlime);
    chase = steering speed multiplier in the host sim; pattern picks the
    orb repertoire: warden rings, regent fans + dart summons, colossus
    alternating fat rings and fans (and a splitter's death, into mids),
    herald aimed bursts + rings with splitter summons (pattern 'herald'). */
 const GUARDIANS = {
-  meadow: { name:'VERDANT WARDEN',    hp:900,  r:.088, color:'#7ee787', vis:1.15, chase:.8,  fireMs:3000, pattern:'ring',     aura:'rgba(46,125,50,' },
-  grove:  { name:'THORN REGENT',      hp:1600, r:.100, color:'#7ee787', vis:1.30, chase:1.6, fireMs:2600, pattern:'fan',      aura:'rgba(21,127,116,', summonMs:12000, summonKind:'dart', summonN:2, summonText:'THE REGENT CALLS!' },
-  wilds:  { name:'ROTBLOOM COLOSSUS', hp:2400, r:.115, color:'#c39bff', vis:1.25, chase:.7,  fireMs:2800, pattern:'colossus', aura:'rgba(120,60,180,' },
-  root:   { name:'ROOT HERALD',       hp:3000, r:.105, color:'#b478d9', vis:1.35, chase:1.2, fireMs:2400, pattern:'herald',   aura:'rgba(122,63,166,', summonMs:14000, summonKind:'splitter', summonN:2, summonText:'THE HERALD CALLS THE ROT!' },
+  meadow: { name:'VERDANT WARDEN',    hp:1500, r:.088, color:'#7ee787', vis:1.15, chase:.8,  fireMs:3000, pattern:'ring',     aura:'rgba(46,125,50,' },
+  grove:  { name:'THORN REGENT',      hp:2400, r:.100, color:'#7ee787', vis:1.30, chase:1.6, fireMs:2600, pattern:'fan',      aura:'rgba(21,127,116,', summonMs:12000, summonKind:'dart', summonN:2, summonText:'THE REGENT CALLS!' },
+  wilds:  { name:'ROTBLOOM COLOSSUS', hp:3200, r:.115, color:'#c39bff', vis:1.25, chase:.7,  fireMs:2800, pattern:'colossus', aura:'rgba(120,60,180,' },
+  root:   { name:'ROOT HERALD',       hp:3600, r:.105, color:'#b478d9', vis:1.35, chase:1.2, fireMs:2400, pattern:'herald',   aura:'rgba(122,63,166,', summonMs:14000, summonKind:'splitter', summonN:2, summonText:'THE HERALD CALLS THE ROT!' },
 };
 const freshStory = () => ({
   quest:'prologue', step:0, objHave:0,       // current chain quest + objective index + counted progress
@@ -2104,8 +2131,7 @@ const NPC_DEFS = [
   { id:'vex',     name:'SCOUT VEX', x:RW_FIRE_POS.x + .10, y:RW_FIRE_POS.y + .06, h:.240, head:.224, robe:'#c97a30', skin:'#f2ead8', hair:'#4a3421',
     wander:[ { x:RW_FIRE_POS.x + .10, y:RW_FIRE_POS.y + .06 }, { x:ROTWATCH.x - .52, y:ROTWATCH.y + .34 }, { x:RW_CRATE_POS.x + .06, y:RW_CRATE_POS.y + .22 } ], segMs:11000 },
 ];
-function npcPositionAt(def, now){
-  if (!def.wander) return { x:def.x, y:def.y };
+function npcWanderPos(def, now){
   const pts = def.wander, seg = def.segMs || 9000, total = seg * pts.length;
   const cycle = ((now % total) + total) % total;
   const i = Math.floor(cycle / seg);
@@ -2113,6 +2139,29 @@ function npcPositionAt(def, now){
   f = f * f * (3 - 2 * f);   // smoothstep: ease out of one waypoint, into the next (dwells at each end)
   const a = pts[i], b = pts[(i + 1) % pts.length];
   return { x:a.x + (b.x - a.x) * f, y:a.y + (b.y - a.y) * f };
+}
+function npcPositionAt(def, now){
+  if (!def.wander) return { x:def.x, y:def.y };
+  /* DIALOGUE PIN (round 4): a wanderer mid-conversation used to keep
+     strolling on its clock path; at >0.6u from the blade the talk
+     silently voided and its progress was discarded — the Scout's
+     report beat soft-stalled under perfectly normal play, and the
+     Child's turn-in had the same trap. Now, while ses.dialogue is open
+     with a wanderer, that NPC is PINNED where the talk began (frozen,
+     facing its guest — the folk are front-facing portraits, so still
+     IS facing you). When the talk ends the pin blends home over ~0.9s
+     instead of teleporting back to the clock path. */
+  const pin = ses.npcPin;
+  if (pin && pin.id === def.id){
+    if (pin.from == null) return { x:pin.x, y:pin.y };
+    const f = clamp((now - pin.from) / 900, 0, 1);
+    if (f >= 1){ if (ses.npcPin === pin) ses.npcPin = null; }
+    else {
+      const live = npcWanderPos(def, now), e = f * f * (3 - 2 * f);
+      return { x:pin.x + (live.x - pin.x) * e, y:pin.y + (live.y - pin.y) * e };
+    }
+  }
+  return npcWanderPos(def, now);
 }
 function npcDef(id){ return NPC_DEFS.find(d => d.id === id) || null; }
 
@@ -3110,6 +3159,7 @@ function doHit(s, dmg, opts={}){
     if (nowT - ses.lastTingAt > 60){ ses.lastTingAt = nowT; sfx.ting(); }
   }
   s.squish=1; s.flash=1; s.flinchUntil=performance.now()+220;   // ISW flinch: red flash + shudder for 220ms
+  if (s.kind==='boss') ses.bossHurtAt = performance.now();   // the local blade marked the Emperor (boss-bar gate, round 4)
   // ISW sampled hits replace the synth beep on the damage path: crit sample
   // on crits, hit sample otherwise; metal keeps its ting + a soft punch.
   if (s.kind==='metal') hitPool.play(.3);
@@ -3468,6 +3518,12 @@ function startNewCycle(){
   const s = prog().story;
   if (!s || !s.complete) return false;
   act.setStory({ quest:'meadow', step:0, objHave:0, sigils:0, complete:false, cycles:s.cycles + 1, heraldDone:false });   // the Herald re-locks with the chain, like every guardian
+  /* SANDBAR SAFETY (round 4): the islet crossings drown with the chain.
+     The choice is made at the Elder's side in town, so the blade should
+     never be out there — but if it somehow is (a peer-era position, a
+     stale frame), the returning tide washes it to the nearest standable
+     shore instead of stranding it on locked land. */
+  if (!canStand(me.x, me.y)){ const p = projectToLand(me.x, me.y); me.x = p.x; me.y = p.y; pinPtr(me.x, me.y, performance.now()); }
   saveGame(); refreshHUD(); updateQuestTracker();
   const q = questById('meadow');
   if (q) showChapterCard(q.chapter, q.title, q.intro);
@@ -3861,6 +3917,8 @@ function startDialogue(npcId){
   if (!set.lines || !set.lines.length) return false;
   if (set.rotate) ses.npcTalkCounts[npcId] = (ses.npcTalkCounts[npcId] || 0) + 1;
   ses.dialogue = { npc:npcId, lines:[...set.lines], i:0, lineAt:performance.now(), choiceAfter:!!set.choice, choosing:false, choiceSel:1 };
+  // pin a wandering speaker where the talk began (see npcPositionAt)
+  if (def.wander){ const p = npcPositionAt(def, performance.now()); ses.npcPin = { id:npcId, x:p.x, y:p.y, from:null }; }
   $('#npcName').textContent = def.name;
   $('#npcText').textContent = '';
   $('#dlgChoices').classList.add('hidden');
@@ -3878,6 +3936,8 @@ function renderDialogueChoices(){
   $('#dlgChoice1').classList.toggle('kbfocus', d.choosing && d.choiceSel === 1);
 }
 function closeDialogueUI(){
+  // release the speaker: the pin starts blending home (npcPositionAt)
+  if (ses.npcPin && ses.npcPin.from == null) ses.npcPin.from = performance.now();
   ses.dialogue = null;
   $('#npcBubble').classList.add('hidden');
   $('#npcBubble').classList.remove('below');
@@ -3944,7 +4004,7 @@ function updateDialogue(now){
   const d = ses.dialogue; if (!d) return;
   const def = npcDef(d.npc); if (!def){ closeDialogueUI(); return; }
   const p = npcPositionAt(def, now);
-  if (dist2(me.x, me.y, p.x, p.y) > .6 * .6){ closeDialogueUI(); return; }   // walked away mid-talk: close, no completion hooks
+  if (dist2(me.x, me.y, p.x, p.y) > .9 * .9){ closeDialogueUI(); return; }   // the PLAYER walked away mid-talk (>0.9u — the speaker is pinned, so only the player's own feet can end a talk now): close, no completion hooks
   const b = $('#npcBubble');
   const x = NX(p.x), y = NY(p.y) - def.head * UNIT() - npcBobPx(def, now) - 4;
   /* keep the bubble ON screen: clamp x inside the viewport, and if the
@@ -4089,7 +4149,7 @@ function rootShrineAwake(){
   return st.complete || st.heraldDone || st.sigils >= 3 || questPast('scout');
 }
 /* HOST: raise the guardian bound to a shrine — ONE at a time, world-wide.
-   HP scale: base x (1 + .20 x max(0, topLevel-8)) x (1 + .5 x cycles),
+   HP scale: base x (1 + .25 x max(0, topLevel-8)) x (1 + .5 x cycles),
    topLevel read exactly like the Emperor's (strongest blade present). */
 function spawnGuardian(shrine){
   if (!world.isHost || guardianAlive()) return null;
@@ -4112,7 +4172,7 @@ function spawnGuardian(shrine){
   s.bornAt = performance.now();
   let topLevel = prog().level;
   for (const p of world.peers.values()) if (p.level && p.level > topLevel) topLevel = p.level;
-  const scale = (1 + .20 * Math.max(0, topLevel - 8)) * (1 + .5 * (prog().story ? prog().story.cycles : 0));
+  const scale = (1 + .25 * Math.max(0, topLevel - 8)) * (1 + .5 * (prog().story ? prog().story.cycles : 0));
   s.guardian = shrine; s.elite = false;               // spawnSlime's elite roll must never touch a guardian
   s.color = cfg.color; s.r = cfg.r;
   s.max = s.hp = Math.round(cfg.hp * scale);
@@ -4311,10 +4371,10 @@ function interactPressed(){
   }
   if (ses.nearTravel){ openTravelPanel(ses.nearTravel); return true; }
   if (ses.nearShrine){ summonGuardian(ses.nearShrine); return true; }
-  if (ses.nearSprout){ collectSprout(ses.nearSprout); return true; }
   if (ses.nearBarrier){ pokeBarrier(ses.nearBarrier); return true; }
   if (ses.nearNpc){ startDialogue(ses.nearNpc); return true; }
   if (ses.nearBuilding){ openBuilding(ses.nearBuilding); return true; }
+  if (ses.nearSprout){ collectSprout(ses.nearSprout); return true; }   // last (round 4): a pickup never eats an interact's E
   return false;
 }
 /* Panel open/close UI ticks (Batch A): building panels open and close
@@ -4557,6 +4617,22 @@ function updateInteract(){
     const p = npcPositionAt(def, nowNpc), d = Math.sqrt(dist2(me.x, me.y, p.x, p.y));
     if (d < npcDist){ npcDist = d; npcId = def.id; }
   }
+  /* ELDER SHADOWING (round 4, same family as the dialogue pin): the
+     wandering Child strolls the same plaza the Elder keeps — when the
+     story points AT an NPC (a talk/return objective), a passer-by who
+     happens to stand a hair nearer must not steal the prompt and send
+     E into the wrong conversation. The objective's NPC, when in talk
+     range, IS the prompt. */
+  {
+    const o = currentObjective();
+    if (o && (o.type === 'talk' || o.type === 'return') && o.to){
+      const def = npcDef(o.to);
+      if (def){
+        const p = npcPositionAt(def, nowNpc), d = Math.sqrt(dist2(me.x, me.y, p.x, p.y));
+        if (d <= .6){ npcId = def.id; npcDist = d; }
+      }
+    }
+  }
   /* Stage 4 world interactables compete for the same prompt, on the same
      rule as NPCs: in range + strictly nearer than the building wins.
      SHRINE: only while the current quest objective targets it and no
@@ -4598,15 +4674,30 @@ function updateInteract(){
   if (npcDist <= .6 && npcDist < winDist){ winKind = 'npc'; winId = npcId; winDist = npcDist; }
   if (shrineId && shrineDist < winDist){ winKind = 'shrine'; winId = shrineId; winDist = shrineDist; }
   if (travelId && travelDist < winDist){ winKind = 'travel'; winId = travelId; winDist = travelDist; }
-  if (sproutId && sproutDist < winDist){ winKind = 'sprout'; winId = sproutId; winDist = sproutDist; }
   if (barrierId && barrierDist < winDist){ winKind = 'barrier'; winId = barrierId; winDist = barrierDist; }
   const winBeatsBuilding = winKind && (!building || winDist < nd);
+  /* PROMPT PRIORITY (round 4): dialogue first (prompts are suppressed
+     while one is open) > shrine / building / NPC / barrier interacts >
+     SPROUT pickup. A sproutling at the blade's feet used to win on
+     distance and eat the first E meant for a shrine summon or the
+     travel door at Grove/Wilds. The sprout is now the LAST resort: it
+     takes the prompt only when no interact-tier candidate holds it.
+     Against a building it must still win the old way (strictly nearer,
+     and the door beyond true interact range): a settlement's zone
+     clause would otherwise shadow the pond sproutling forever — a door
+     in real range (.34u) outranks it, a far door across the plaza
+     does not. */
+  let sproutWins = false;
+  if (sproutId && !winBeatsBuilding){
+    if (!winKind && !building) sproutWins = true;
+    else if (building && nd >= .34 && sproutDist < nd) sproutWins = true;
+  }
   const targetNpc = (winBeatsBuilding && winKind === 'npc') ? winId : null;
   ses.nearNpc = targetNpc;
   ses.nearShrine = (winBeatsBuilding && winKind === 'shrine') ? winId : null;
   ses.nearTravel = (winBeatsBuilding && winKind === 'travel') ? winId : null;
-  ses.nearSprout = (winBeatsBuilding && winKind === 'sprout') ? winId : null;
   ses.nearBarrier = (winBeatsBuilding && winKind === 'barrier') ? winId : null;
+  ses.nearSprout = sproutWins ? sproutId : null;
   ses.nearBuilding = (targetNpc || ses.nearShrine || ses.nearTravel || ses.nearSprout || ses.nearBarrier) ? null : building;
   // change-only DOM writes: this runs EVERY frame, and re-setting the
   // same textContent replaces the text node (layout work) every time
@@ -4626,7 +4717,7 @@ function updateInteract(){
   if (wantPr !== updateInteract._pr){
     updateInteract._pr = wantPr;
     if (targetNpc && npcDefNear){ pr.innerHTML = '<span class="keycap">' + cap + '</span>' + npcDefNear.name; pr.classList.remove('hidden'); }
-    else if (ses.nearShrine){ pr.innerHTML = '<span class="keycap">' + cap + '</span>VERDANT SHRINE'; pr.classList.remove('hidden'); }
+    else if (ses.nearShrine){ pr.innerHTML = '<span class="keycap">' + cap + '</span>' + SHRINE_NAMES[ses.nearShrine]; pr.classList.remove('hidden'); }
     else if (ses.nearTravel){ pr.innerHTML = '<span class="keycap">' + cap + '</span>TRAVEL'; pr.classList.remove('hidden'); }
     else if (ses.nearSprout){ pr.innerHTML = '<span class="keycap">' + cap + '</span>LOST SPROUTLING'; pr.classList.remove('hidden'); }
     else if (ses.nearBarrier){ pr.innerHTML = '<span class="keycap">' + cap + '</span>ROT BARRIER'; pr.classList.remove('hidden'); }
@@ -5060,13 +5151,17 @@ function refreshHUD(){
   // player MP (local only, mirrors the HP rows)
   setStyle($('#mpFill'), 'width', pct(me.mp, me.maxMp));
   setText($('#mpText'), '' + Math.floor(me.mp));   // overlaid ON the bar — number only, no 'MP' prefix
-  // Boss bar — visible while a boss-class fight lives anywhere in the
-  // world. A shrine GUARDIAN takes the bar over the Emperor while it
-  // stands (it is the fight the story is about); the name plate follows
-  // whoever holds the bar — CHAOS EMPEROR in the finale.
+  // Boss bar. A shrine GUARDIAN takes the bar over the Emperor while
+  // it stands (it is the fight the story is about); the name plate
+  // follows whoever holds the bar — CHAOS EMPEROR in the finale.
+  // BOSS BAR GATE (round 4): the Emperor's bar used to show from
+  // ANYWHERE on the map — an HP strip for a fight you are not in. It
+  // now obeys the awakening rule: he is within 3.5u of the blade, or
+  // the blade itself has damaged him within the last 10s.
   const bossS = bossAt(performance.now());
   const grdS = guardianAlive();
-  const barS = grdS || bossS;
+  const bossShown = bossS && (dist2(me.x, me.y, bossS.x, bossS.y) <= 3.5 * 3.5 || (ses.bossHurtAt > 0 && performance.now() - ses.bossHurtAt < 10000));   // bossHurtAt 0 = never: without the >0 guard, a fresh page's young performance.now() clock would read "hurt 4s ago" for the session's first 10s
+  const barS = grdS || (bossShown ? bossS : null);
   if (barS){
     $('#bossBar').classList.remove('hidden');
     setText($('#bossBar b'), grdS ? GUARDIANS[grdS.guardian].name : (bossIsChaos() ? 'CHAOS EMPEROR' : 'SLIME EMPEROR'));
@@ -5936,11 +6031,25 @@ function drawMinimap(){
     g.strokeStyle = '#b08954'; g.lineWidth = Math.max(2, BRIDGE_W*S2*.8);
     g.beginPath(); g.moveTo(s.x1*S2, s.y1*S2); g.lineTo(s.x2*S2, s.y2*S2); g.stroke();
   }
+  // the earned sandbar crossings, while they stand (pale shallows)
+  for (const [seg, which] of [[SANDBAR_T, 'T'], [SANDBAR_H, 'H']]){
+    if (!sandbarOpen(which)) continue;
+    g.strokeStyle = '#e8d49a'; g.lineWidth = Math.max(2, BRIDGE_W*S2*.8);
+    g.beginPath(); g.moveTo(seg.x1*S2, seg.y1*S2); g.lineTo(seg.x2*S2, seg.y2*S2); g.stroke();
+  }
   for (const I of ISLES){
     g.fillStyle = '#e8d49a';
     g.beginPath(); g.arc(I.cx*S2, I.cy*S2, I.r*S2, 0, 7); g.fill();
     g.fillStyle = '#79c25f';
     g.beginPath(); g.arc(I.cx*S2, I.cy*S2, (I.r - SHORE)*S2, 0, 7); g.fill();
+  }
+  /* THE ISLETS (round 4): at 32u the two islets shrink to ~5px blobs
+     that read as slime dots — ring them in deep shore ink so they hold
+     as LAND on the chart. */
+  for (const I of [ISLES[3], ISLES[4]]){
+    g.strokeStyle = 'rgba(38,32,40,.55)'; g.lineWidth = 1.4;
+    g.beginPath(); g.arc(I.cx*S2, I.cy*S2, I.r*S2 + .8, 0, 7); g.stroke();
+    g.fillStyle = '#fff3b0'; g.beginPath(); g.arc(I.cx*S2, I.cy*S2, 1.3, 0, 7); g.fill();
   }
   for (const b of BARRIERS){
     if (bridgeOpen(b.isle + 1)) continue;
@@ -5968,13 +6077,19 @@ function drawMinimap(){
   g.beginPath(); g.arc(ROTWATCH.x*S2, ROTWATCH.y*S2, .60*S2, 0, 7); g.fill();
   g.fillStyle = '#ff8a3c'; g.beginPath(); g.arc(RW_FIRE_POS.x*S2, RW_FIRE_POS.y*S2, 2.6, 0, 7); g.fill();
   // current story target: whatever the quest points at wears a gold
-  // diamond (Batch B: every objective type, via objectiveTarget())
+  // diamond (Batch B: every objective type, via objectiveTarget()).
+  // Round 4: at 32u the old 5.5px diamond drowned — it is bigger now
+  // and breathes inside a soft pulse ring so the eye catches it.
   {
     const t = objectiveTarget();
     if (t){
-      const dx = t.x*S2, dy = t.y*S2, dr = 5.5;
+      const dx = t.x*S2, dy = t.y*S2, dr = 7;
+      const pu = (performance.now() % 1400) / 1400;
+      g.strokeStyle = 'rgba(255,217,77,' + (.55 * (1 - pu)).toFixed(3) + ')'; g.lineWidth = 1.6;
+      g.beginPath(); g.arc(dx, dy, 4 + pu * 8, 0, 7); g.stroke();
       g.fillStyle = '#ffd94d'; g.strokeStyle = '#5b3a1e'; g.lineWidth = 1.5;
       g.beginPath(); g.moveTo(dx, dy-dr); g.lineTo(dx+dr, dy); g.lineTo(dx, dy+dr); g.lineTo(dx-dr, dy); g.closePath(); g.fill(); g.stroke();
+      g.fillStyle = '#fff8e7'; g.beginPath(); g.arc(dx, dy, 1.8, 0, 7); g.fill();
     }
   }
   for (const s of world.slimes.values()){
@@ -6016,7 +6131,11 @@ function buildWorldMapBase(S){
     if (I.r >= 2){   // a main isle's name rides inside its grass heart
       g.font = '11px "Press Start 2P", monospace';
       g.fillStyle = '#2e5b27';
-      g.fillText(I.name, I.cx*S2, (I.cy + I.r*.68)*S2);
+      /* GROVE rides HIGH (round 4): at the usual south anchor its name
+         collided with THORNWICK's label across the village clearing —
+         the name now sits in the isle's empty north-east grass. */
+      if (I.id === 'grove') g.fillText(I.name, (I.cx + 1.15)*S2, (I.cy - I.r*.55)*S2);
+      else g.fillText(I.name, I.cx*S2, (I.cy + I.r*.68)*S2);
     } else {   // an islet is too small to hold its name — label the sea just south of it
       g.font = '7px "Press Start 2P", monospace';
       g.fillStyle = '#dff3e2';
@@ -6057,6 +6176,12 @@ function drawWorldMap(now){
   const S = c.width, S2 = S / WORLD, g = c.getContext('2d');
   if (!worldMapBase) worldMapBase = buildWorldMapBase(S);
   g.drawImage(worldMapBase, 0, 0);
+  // the earned sandbar crossings, while they stand (dynamic — story state)
+  for (const [seg, which] of [[SANDBAR_T, 'T'], [SANDBAR_H, 'H']]){
+    if (!sandbarOpen(which)) continue;
+    g.strokeStyle = '#e8d49a'; g.lineWidth = Math.max(3, BRIDGE_W*S2*.8);
+    g.beginPath(); g.moveTo(seg.x1*S2, seg.y1*S2); g.lineTo(seg.x2*S2, seg.y2*S2); g.stroke();
+  }
   // locked crossings: the rot tick on the far rim (dynamic — story state)
   for (const b of BARRIERS){
     if (bridgeOpen(b.isle + 1)) continue;
@@ -6792,6 +6917,8 @@ const POIS = [
   { id:'shrooms',  name:'MUSHROOM RING',   x:20.91, y:13.18, isle:1 },
   { id:'stones',   name:'STANDING STONES', x:19.58, y:20.64, isle:2 },
   { id:'deadwood', name:'THE DEADWOOD',    x:26.97, y:27.91, isle:2 },
+  { id:'grave',    name:"THE FIRST BLADE'S GRAVE", x:ISLES[4].cx, y:ISLES[4].cy, isle:4,
+    epitaph:'HE CUT THE CYCLE FIRST. THE TREE REMEMBERS HIM KINDLY.' },   // round 4: the Hermit Islet's payoff — a grave for the Blade of the Cycle before
 ];
 const DECOR = (()=>{
   const rng = mulberry32(20261107);
@@ -6912,6 +7039,11 @@ const DECOR = (()=>{
   { const P = poi('wayside');
     items.push({ t:'stone', poi:P.id, x:P.x, y:P.y, s:.62, tilt:.05 });
     items.push({ t:'log', poi:P.id, x:P.x - .24, y:P.y + .03, s:1.15, a:.10 });
+  }
+  { // THE FIRST BLADE'S GRAVE (round 4) — one combined prop at the Hermit
+    // Islet's heart: a modest stone and the sword that was planted with it
+    const P = poi('grave');
+    items.push({ t:'grave', poi:P.id, x:P.x, y:P.y, s:1 });
   }
   return items;
 })();
@@ -7178,6 +7310,61 @@ function drawStone(d){
   ctx.strokeStyle = 'rgba(38,32,40,.30)'; ctx.lineWidth = Math.max(1, w*.05);      // a crack
   ctx.beginPath(); ctx.moveTo(-w*.08, -h*.82); ctx.lineTo(w*.05, -h*.55); ctx.lineTo(-w*.03, -h*.34); ctx.stroke();
   ctx.restore();
+}
+/* THE FIRST BLADE'S GRAVE (round 4): a modest weathered stone, a low
+   earth mound, and the sword that was planted point-down beside it —
+   crossguard and pommel above the grass, blade long since given to
+   the ground. Stone tones are drawStone's; the steel is the metal
+   slime's silver family. Nothing grand: the Tree remembers him kindly,
+   not loudly. */
+function drawGrave(d){
+  const u = UNIT(), x = NX(d.x), y = NY(d.y) + .03 * u;
+  // the mound: a low worn rise the stone and sword stand in
+  ctx.fillStyle = 'rgba(38,32,40,.16)';
+  ctx.beginPath(); ctx.ellipse(x, y + .004*u, .17*u, .045*u, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#8a6b45';
+  ctx.beginPath(); ctx.ellipse(x, y, .155*u, .038*u, 0, Math.PI, 7); ctx.fill();
+  ctx.fillStyle = '#7a5c38';
+  ctx.beginPath(); ctx.ellipse(x - .05*u, y - .006*u, .07*u, .018*u, 0, Math.PI, 7); ctx.fill();
+  // the stone: a short rounded slab, leaning a degree with age
+  const sw = .105*u, sh = .165*u, sx = x - .045*u;
+  ctx.save(); ctx.translate(sx, y); ctx.rotate(-.045);
+  ctx.fillStyle = '#9aa0a3';
+  ctx.beginPath();
+  ctx.moveTo(-sw/2, 0); ctx.lineTo(-sw/2, -sh*.72);
+  ctx.quadraticCurveTo(-sw/2, -sh, 0, -sh);
+  ctx.quadraticCurveTo(sw/2, -sh, sw/2, -sh*.72);
+  ctx.lineTo(sw/2, 0); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#868d91';   // shaded right face
+  ctx.beginPath();
+  ctx.moveTo(0, -sh); ctx.quadraticCurveTo(sw/2, -sh, sw/2, -sh*.72);
+  ctx.lineTo(sw/2, 0); ctx.lineTo(0, 0); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#c2c8cb'; ctx.fillRect(-sw*.36, -sh*.97, sw*.72, Math.max(2, sh*.045));   // worn crown
+  ctx.strokeStyle = 'rgba(38,32,40,.35)'; ctx.lineWidth = Math.max(1, sw*.05);              // the carved mark: one cut, still legible
+  ctx.beginPath(); ctx.moveTo(0, -sh*.80); ctx.lineTo(0, -sh*.38); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-sw*.20, -sh*.62); ctx.lineTo(sw*.20, -sh*.62); ctx.stroke();
+  ctx.fillStyle = 'rgba(101,168,90,.5)';   // moss creeping up the base
+  ctx.fillRect(-sw/2, -sh*.10, sw*.30, sh*.10); ctx.fillRect(sw*.06, -sh*.07, sw*.22, sh*.07);
+  ctx.restore();
+  // the sword: planted point-down at the stone's right hand — grip,
+  // gold guard and pommel above ground, a hand of blade showing
+  const gx = x + .055*u, gy = y - .002*u;
+  ctx.save(); ctx.translate(gx, gy); ctx.rotate(.10);
+  ctx.fillStyle = '#c3ced4'; ctx.fillRect(-.006*u, -.045*u, .012*u, .045*u);                    // the visible blade
+  ctx.fillStyle = '#9db2c8'; ctx.fillRect(0, -.045*u, .006*u, .045*u);                          // its shaded half
+  ctx.fillStyle = '#c9a06a'; ctx.fillRect(-.026*u, -.058*u, .052*u, .011*u);                    // crossguard
+  ctx.fillStyle = '#5b3a1e'; ctx.fillRect(-.0075*u, -.088*u, .015*u, .030*u);                   // grip
+  ctx.fillStyle = '#c9a06a'; ctx.beginPath(); ctx.arc(0, -.096*u, .010*u, 0, 7); ctx.fill();    // pommel
+  ctx.restore();
+  // two grass tufts keep it company
+  ctx.strokeStyle = '#43a047'; ctx.lineWidth = Math.max(1.5, .004*u); ctx.lineCap = 'round';
+  for (const [tx, lean] of [[-.13, -.3], [.12, .25]]){
+    ctx.beginPath();
+    ctx.moveTo(x + tx*u, y); ctx.lineTo(x + (tx - .012)*u, y - .026*u);
+    ctx.moveTo(x + tx*u, y); ctx.lineTo(x + tx*u + lean*.02*u, y - .032*u);
+    ctx.moveTo(x + tx*u, y); ctx.lineTo(x + (tx + .014)*u, y - .024*u);
+    ctx.stroke();
+  }
 }
 function tentBox(d){
   const baseY = d.y + .04;
@@ -7524,7 +7711,11 @@ function drawAmbientAir(t){
 function updatePoiNotices(){
   for (const p of POIS){
     if (ses.seenPois.has(p.id)) continue;
-    if (dist2(me.x, me.y, p.x, p.y) < .8 * .8){ ses.seenPois.add(p.id); addFloat(p.x, p.y - .3, p.name, '#ffe9a8'); }
+    if (dist2(me.x, me.y, p.x, p.y) < .8 * .8){
+      ses.seenPois.add(p.id);
+      addFloat(p.x, p.y - .3, p.name, '#ffe9a8');
+      if (p.epitaph) setTimeout(()=>addFloat(p.x, p.y - .16, p.epitaph, '#dff3e2'), 1500);   // the grave speaks second, once the name has landed
+    }
   }
 }
 function drawField(t){
@@ -7567,6 +7758,30 @@ function drawField(t){
     for (let d = .05*u; d < len; d += .11*u) ctx.fillRect(d, -wdt/2, 2, wdt);   // plank seams
     ctx.fillStyle = '#7a4d16';
     ctx.fillRect(0, -wdt/2 - 2, len, 5); ctx.fillRect(0, wdt/2 - 3, len, 5);   // twin rails
+    ctx.restore();
+  }
+  /* ===== SANDBARS (round 4): the earned islet crossings — pale sand
+     shallows lying just at the waterline when the tide is calmed, drawn
+     under the isles like the bridges so the discs cap their landings.
+     Dry sand core with a wet edge and a breathing foam fringe; nothing
+     at all when the crossing is drowned. ===== */
+  for (const [seg, which] of [[SANDBAR_T, 'T'], [SANDBAR_H, 'H']]){
+    if (!sandbarOpen(which)) continue;
+    const ax = seg.x1 - seg.ux*.10, ay = seg.y1 - seg.uy*.10, bx = seg.x2 + seg.ux*.10, by = seg.y2 + seg.uy*.10;
+    const x1 = NX(ax), y1 = NY(ay), x2 = NX(bx), y2 = NY(by);
+    const ang = Math.atan2(y2-y1, x2-x1), len = Math.hypot(x2-x1, y2-y1), wdt = BRIDGE_W*u;
+    ctx.save(); ctx.translate(x1, y1); ctx.rotate(ang);
+    ctx.fillStyle = 'rgba(214,192,134,.55)'; ctx.fillRect(0, -wdt*.72, len, wdt*1.44);   // wet apron bleeding into the sea
+    ctx.fillStyle = '#e8d49a'; ctx.fillRect(0, -wdt/2, len, wdt);                        // the dry walkable core
+    const ssb = Math.max(2, Math.round(u*.004));
+    ctx.fillStyle = '#d8c48a';                                   // seeded speckle, same hash recipe as the plaza
+    for (let d = .04*u; d < len; d += .07*u){
+      const off = (hash01(d*3.71 + seg.x1) - .5) * wdt * .72;
+      ctx.fillRect(d, off - ssb/2, ssb, ssb);
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,' + (.22 + .12*Math.sin(t/900 + seg.x1)).toFixed(3) + ')';
+    ctx.lineWidth = Math.max(1.5, .012*u);
+    ctx.beginPath(); ctx.moveTo(0, -wdt/2); ctx.lineTo(len, -wdt/2); ctx.moveTo(0, wdt/2); ctx.lineTo(len, wdt/2); ctx.stroke();   // foam fringe
     ctx.restore();
   }
   /* ===== THE ISLES: sand disc (shore tile if loaded), grass heart
@@ -7693,6 +7908,40 @@ function drawField(t){
   };
   groundDisc(SAFE_ZONES[1], '#e6d5a0', '#d8c48a', '#f4e7ba');   // Thornwick: pale trampled sand
   groundDisc(SAFE_ZONES[2], '#cdbb8d', '#bfae7c', '#ddcda2');   // Rotwatch: dirtier camp earth
+  /* SETTLEMENT PATHS (round 4, light): worn dirt strips where feet
+     actually go — the town's gate->plaza->inn walk, Thornwick's
+     hut-to-hut links, Rotwatch's tent->fire->crate trample. A dark
+     worn band with a lighter centre line and seeded speckle, in the
+     groundDisc palette family; pure ground paint, no state. */
+  const groundPath = (pts, wdt, band, wear)=>{
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.strokeStyle = band; ctx.lineWidth = wdt * u;
+    ctx.beginPath();
+    pts.forEach((p, i)=>{ const px = NX(p.x), py = NY(p.y); if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py); });
+    ctx.stroke();
+    ctx.strokeStyle = wear; ctx.lineWidth = wdt * u * .45;
+    ctx.beginPath();
+    pts.forEach((p, i)=>{ const px = NX(p.x), py = NY(p.y); if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py); });
+    ctx.stroke();
+    const ssb = Math.max(2, Math.round(u*.0035));
+    ctx.fillStyle = band;
+    for (let i = 0; i < pts.length - 1; i++){
+      const a = pts[i], b = pts[i + 1], segLen = Math.hypot(b.x - a.x, b.y - a.y);
+      const n = Math.floor(segLen / .07);
+      for (let j = 0; j < n; j++){
+        const f = (j + .5) / n, wx = a.x + (b.x - a.x) * f, wy = a.y + (b.y - a.y) * f;
+        if (wx < ses.cam.x - .1 || wx > ses.cam.x + vw + .1 || wy < ses.cam.y - .1 || wy > ses.cam.y + vh + .1) continue;
+        const hf = hash01(wx * 91.7 + wy * 57.3 + i * 13.1);
+        if (hf > .8) continue;
+        const off = (hf - .4) * wdt * .6;
+        ctx.fillRect(NX(wx) + off * u - ssb / 2, NY(wy) + (hf * 7.13 - Math.floor(hf * 7.13) - .5) * wdt * .5 * u - ssb / 2, ssb, ssb);
+      }
+    }
+  };
+  groundPath([{ x:TOWN.x + TOWN_R + .30, y:TOWN.y - .04 }, { x:TOWN.x + .48, y:TOWN.y - .01 }, { x:TOWN.x, y:TOWN.y }, { x:TOWN.x + .02, y:TOWN.y + .36 }, { x:HOSPITAL_POS.x, y:HOSPITAL_POS.y - .12 }], .17, '#d9c186', '#e6d29c');   // town: gate -> plaza -> inn
+  groundPath([{ x:V_INN_POS.x, y:V_INN_POS.y + .14 }, { x:VILLAGE.x - .10, y:VILLAGE.y + .06 }, { x:V_SHOP_POS.x, y:V_SHOP_POS.y + .14 }], .14, '#d3ba7d', '#e0c88f');   // Thornwick: inn <-> shop through the green
+  groundPath([{ x:VILLAGE.x + .02, y:VILLAGE.y + .10 }, { x:V_BANK_POS.x, y:V_BANK_POS.y - .12 }], .14, '#d3ba7d', '#e0c88f');   // Thornwick: green -> bank post
+  groundPath([{ x:RW_TENT_POS.x, y:RW_TENT_POS.y + .10 }, { x:RW_FIRE_POS.x, y:RW_FIRE_POS.y + .05 }, { x:RW_CRATE_POS.x, y:RW_CRATE_POS.y + .10 }], .15, '#b3a075', '#c2b088');   // Rotwatch: tent -> fire -> crate
   // grass tufts over the flowers, swaying in the same wind (never on the plaza)
   drawTufts(t);
   // ponds only -- flat ground decals (trees/rocks live in the y-sorted entity pass)
@@ -8389,6 +8638,7 @@ function drawEntities(t){
     else if (d.t === 'signpost'){ ents.push({ baseY:d.y + .02, kind:'signpost', d }); }
     else if (d.t === 'mushroom'){ ents.push({ baseY:d.y + .02, kind:'mushroom', d }); }
     else if (d.t === 'campfire'){ ents.push({ baseY:d.y + .02, kind:'campfire', d }); }
+    else if (d.t === 'grave'){ ents.push({ baseY:d.y + .03, kind:'grave', d }); }
   }
   for (const b of BUILDING_DEFS){
     ents.push({ baseY:b.pos.y + .10, kind:'bld', b });
@@ -8492,6 +8742,7 @@ function drawEntities(t){
     else if (e.kind === 'signpost') drawSignpost(e.d);
     else if (e.kind === 'mushroom') drawMushroom(e.d);
     else if (e.kind === 'campfire') drawCampfire(e.d, t);
+    else if (e.kind === 'grave') drawGrave(e.d);
     else if (e.kind === 'crate') drawCrate(e.d);
     else if (e.kind === 'bld') drawBuildings(e.b.key);
     else if (e.kind === 'npc') drawNPC(e, t);
