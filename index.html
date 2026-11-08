@@ -2946,7 +2946,7 @@ function equip(i){
   const w=WEAPONS[i];
   if (!prog().owned.has(i)){ notify('Craft the ' + w.name + ' at the FORGE — in the SHOP'); return; }
   if (window.innerWidth <= 640) act.patchProgress({ rackCollapsed: true });   // phone: picking a card folds the rack away (applies via buildRack → syncRackUI)
-  act.patchProgress({ weapon: i }); me.lastHitAt.clear(); buildRack(); beep(600,.06,'triangle',.08); refreshHUD(); saveGame();
+  act.patchProgress({ weapon: i }); recalc(); me.lastHitAt.clear(); buildRack(); beep(600,.06,'triangle',.08); refreshHUD(); saveGame();
   bubble(w.name.toUpperCase()+'!', me.x, me.y, 900);
 }
 /* ============================================================ RPG MENU
@@ -3585,12 +3585,9 @@ function saveGame(){ act.persistProgress(); }
 function loadGame(){
   const d = act.loadProgress();
   if (!d) return;
-  /* Stats + maxHp are derived for weapon 1 — the default — not the saved
-     weapon: the pre-store loadGame ran recalc() BEFORE it restored the
-     saved weapon, so a loaded character's soul-gem stats (vitality ->
-     maxHp included) came from weapon 1's sockets until the next recalc.
-     Kept exactly; see REFACTOR_NOTES.md. */
-  recalc(1);
+  /* Stats + maxHp are derived from the restored saved weapon, so its
+     socketed soul gems (vitality -> maxHp included) are active at load. */
+  recalc();
   me.hp = me.maxHp;   // HP is not persisted — a loaded character starts full at the scaled max
   const p = prog();
   if (d.name) $('#nameIn').value = p.name;
