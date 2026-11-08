@@ -1175,6 +1175,102 @@ addEventListener('resize',resize); resize();
 /* The world is WORLD x WORLD units — much bigger than one screen.
    1 unit ≈ one screenful. The camera (cam = top-left, world coords) follows your sword. */
 const WORLD = 6.0;
+/* ============================================================ ARCHIPELAGO
+   Handler's order (2026-11-08): 'We live on an island. There are 3 islands
+   total. Islands are story gated.' The old single radial world (town at
+   the centre, zone rings) is now THREE ISLES in the same 6x6 sea, joined
+   by two wooden bridges, each bridge ROT-BARRIERED until the story opens
+   it. Land = the three discs + the bridge strips; everything else is
+   water — the player cannot enter it (shore-slide clamp in updatePointer)
+   and slimes are bound to their home isle (host sim clamp).
+   TOWN_R is 1.02, not the old 1.30: the town group spans <= .86u from its
+   centre (bank/shop corners), NPC wander <= .55u, so 1.02 still covers
+   the whole town with margin — and it frees Isle 1 a real meadow ring
+   (slimes live at >= TOWN_R+.12 = 1.14, land runs to 1.38) instead of the
+   old disc swallowing the entire isle. */
+const ISLES = [
+  { id:'verdant', cx:1.55, cy:3.05, r:1.38, zone:0 },   // VERDANT ISLE — start; town + Meadow shrine
+  { id:'grove',   cx:4.35, cy:1.70, r:1.22, zone:1 },   // GROVE ISLE — grove strength (x1.8 HP / x1.7 loot)
+  { id:'wilds',   cx:4.45, cy:4.55, r:1.42, zone:2 },   // WILDS ISLE — wilds strength (x3.2 / x2.8); the Emperor's home
+];
+const TOWN = { x: ISLES[0].cx, y: ISLES[0].cy };        // the town group moved as one to Isle 1's centre
+const SHORE = .12;                                      // sand rim width inside each isle's rim
+const BRIDGE_W = .34;                                   // walkable width of a bridge strip
+const ISLE_SPAWN_W = [.5, .3, .2];                      // host population split across the isles
+const ISLE_NODE_W = [.2, .35, .45];                     // ore nodes: Isle 1 fewest, Isle 3 most
+/* A bridge strip runs rim-to-rim along the line between two isle centres.
+   Its ROT BARRIER stands at the FAR rim (x2,y2): you may walk the whole
+   causeway, but the far isle's disc itself is what the gate locks. */
+function bridgeSeg(a, b){
+  const dx = b.cx - a.cx, dy = b.cy - a.cy, d = Math.hypot(dx, dy) || 1e-4, ux = dx/d, uy = dy/d;
+  return { x1:a.cx + ux*a.r, y1:a.cy + uy*a.r, x2:b.cx - ux*b.r, y2:b.cy - uy*b.r, ux, uy, len:d - a.r - b.r };
+}
+const BRIDGE_A = bridgeSeg(ISLES[0], ISLES[1]);   // Verdant -> Grove
+const BRIDGE_B = bridgeSeg(ISLES[1], ISLES[2]);   // Grove -> Wilds
+const BARRIERS = [
+  { key:'A', seg:BRIDGE_A, x:BRIDGE_A.x2, y:BRIDGE_A.y2, isle:1, line:'The Rot holds this crossing. Earn the Meadow Sigil.' },
+  { key:'B', seg:BRIDGE_B, x:BRIDGE_B.x2, y:BRIDGE_B.y2, isle:2, line:'The Rot holds this crossing. Earn the Grove Sigil.' },
+];
+function isleAt(x, y){ for (let i=0;i<3;i++){ const I = ISLES[i]; if (Math.hypot(x-I.cx, y-I.cy) <= I.r) return i; } return -1; }
+function nearestIsle(x, y){ let bi = 0, bd = 1e9; for (let i=0;i<3;i++){ const I = ISLES[i]; const d = Math.hypot(x-I.cx, y-I.cy) - I.r; if (d < bd){ bd = d; bi = i; } } return bi; }
+function segDist(px, py, s){
+  const dx = s.x2 - s.x1, dy = s.y2 - s.y1, L2 = dx*dx + dy*dy;
+  let t = L2 ? ((px - s.x1)*dx + (py - s.y1)*dy)/L2 : 0; t = Math.max(0, Math.min(1, t));
+  const qx = s.x1 + dx*t, qy = s.y1 + dy*t;
+  return { d: Math.hypot(px - qx, py - qy), t, qx, qy };
+}
+/* Land classification: an isle disc carries its own gate level (0/1/2);
+   bridge A carries Isle 1's level (0), bridge B carries Isle 2's (1) —
+   the gate itself is the FAR isle's disc edge, exactly where its barrier
+   stands. null = open water. */
+function landRegion(x, y){
+  const i = isleAt(x, y);
+  if (i >= 0) return { lvl:i, isle:i };
+  if (segDist(x, y, BRIDGE_A).d <= BRIDGE_W/2) return { lvl:0, bridge:'A' };
+  if (segDist(x, y, BRIDGE_B).d <= BRIDGE_W/2) return { lvl:1, bridge:'B' };
+  return null;
+}
+function onLand(x, y){ return landRegion(x, y) !== null; }
+/* ---- story gating: derived from progress.story ONLY — no new save
+   fields. Open when the Sigil is held OR the quest chain has moved past
+   that chapter (a mid-chapter save between Guardian kill and Elder
+   return behaves), and New Cycle+ re-locks for free because it resets
+   sigils to 0 and the quest back to 'meadow'. ---- */
+const QUEST_ORDER = ['prologue','meadow','grove','wilds','finale','postgame'];
+function questPast(id){
+  const st = prog().story; if (!st) return false;
+  if (st.complete) return true;
+  return QUEST_ORDER.indexOf(st.quest) > QUEST_ORDER.indexOf(id);
+}
+function bridgeOpen(n){   // n = the isle the bridge leads TO (2 or 3)
+  const st = prog().story; if (!st) return false;
+  return n === 2 ? (st.sigils >= 1 || questPast('meadow'))
+                 : (st.sigils >= 2 || questPast('grove'));
+}
+function accessLevel(){ return bridgeOpen(3) ? 2 : bridgeOpen(2) ? 1 : 0; }
+function canStand(x, y){ const r = landRegion(x, y); return !!r && r.lvl <= accessLevel(); }
+/* Nearest standable point to (x,y) — for teleports/dash landings/stale
+   saves that wake up in the sea. Falls back to the town spawn. */
+function projectToLand(x, y){
+  if (canStand(x, y)) return { x, y };
+  let best = null, bd = 1e18;
+  for (const I of ISLES){
+    const d = Math.hypot(x - I.cx, y - I.cy) || 1e-4, rr = Math.min(d, I.r - .05);
+    const px = I.cx + (x - I.cx)/d*rr, py = I.cy + (y - I.cy)/d*rr;
+    if (canStand(px, py)){ const dd = (px-x)*(px-x) + (py-y)*(py-y); if (dd < bd){ bd = dd; best = { x:px, y:py }; } }
+  }
+  for (const s of [BRIDGE_A, BRIDGE_B]){
+    const sd = segDist(x, y, s);
+    if (canStand(sd.qx, sd.qy)){ const dd = (sd.qx-x)*(sd.qx-x) + (sd.qy-y)*(sd.qy-y); if (dd < bd){ bd = dd; best = { x:sd.qx, y:sd.qy }; } }
+  }
+  return best || { x:TOWN.x, y:TOWN.y + .1 };
+}
+/* A point sampled inside an isle's disc (sqrt = uniform), kept off the
+   rim; `inner` caps the radius (town-keeping spawns use the rim ring). */
+function sampleIsle(I, inner){
+  const a = Math.random()*Math.PI*2, d = Math.sqrt(Math.random()) * Math.min(I.r - .08, inner || 1e9);
+  return { x: I.cx + Math.cos(a)*d, y: I.cy + Math.sin(a)*d };
+}
 const UNIT = () => Math.min(W,H);                   // px per world unit
 const NX = x => (x - ses.cam.x) * UNIT(), NY = y => (y - ses.cam.y) * UNIT();
 const SCALE = () => UNIT();
@@ -1250,7 +1346,7 @@ const freshWorld = () => ({
 const freshSession = () => ({
   player: {
     id: selfId, color:`hsl(${hashHue(selfId)} 80% 55%)`,
-    x: WORLD/2, y: WORLD/2 + .1, px:.5, py:.6, angle:-Math.PI/4, speed:0,   // spawn at world centre (loadGame moves it to a saved respawn)
+    x: TOWN.x, y: TOWN.y + .1, px:.5, py:.6, angle:-Math.PI/4, speed:0,   // spawn at the town centre on Isle 1 (loadGame moves it to a saved respawn)
     actCd:{ wave:0, meteor:0, frenzy:0, goldrush:0 }, frenzyUntil:0, goldRushUntil:0,
     // survival (HP is LOCAL only — never networked, never persisted: a loaded character starts full)
     hp:100, maxHp:100, invulnUntil:0, lastDmgAt:0, shieldUntil:0,
@@ -1267,7 +1363,7 @@ const freshSession = () => ({
   startedAt: 0,              // when PLAY was pressed (banner suppression window)
   paused: false,
   // camera: top-left of the view, world coords — follows the sword
-  cam: { x: WORLD/2 - .5, y: WORLD/2 - .5 },
+  cam: { x: TOWN.x - .5, y: TOWN.y - .5 },
   // combat feel
   combo: 0, comboUntil: 0,   // kill-chain combo (window stretched by Combo Charm)
   dmgFlashAt: 0,             // last time the player took damage (flat red flash decay stamp)
@@ -1285,6 +1381,8 @@ const freshSession = () => ({
   nearNpc: null,             // NPC id currently winning the interact prompt (session only)
   nearShrine: null,          // shrine key currently winning the interact prompt (stage 4; session only)
   nearSprout: null,          // sproutling id currently winning the interact prompt (stage 4; session only)
+  nearBarrier: null,         // rot barrier key ('A'|'B') currently winning the interact prompt (archipelago; session only)
+  crossedIsles: {},          // isles whose first-crossing float has fired this session (archipelago; session only)
   endingQueue: null,         // ending chapter cards waiting to play in sequence (stage 4)
   endingPlayed: false,       // the ending sequence has played for this completion (reset when a new cycle begins)
   petalAt: 0,                // post-ending bloom: next drifting-petal emit time
@@ -1427,17 +1525,16 @@ const SPROUT_QUEST = { id:'sprouts', chapter:'SIDE TALE', title:'Three Lost Spro
   summary:'The Child\'s three sproutlings came home, and the grove remembers kindness.',
   rewards:{ coins:120, relic:'sprout' } };
 /* ---- stage 4: shrines + guardians (static data; runtime lives in the
-   world slice, story progress in progress.story). Positions by distance
-   from the world centre (WORLD/2, WORLD/2): Meadow .95u east (on the
-   plaza's eastern rim — the Warden is BOUND to its shrine, exempt from
-   the town clamp, and its ground is contested: see damagePlayer),
-   Grove 1.7u north-west, Wilds 2.7u south-east. All three spots sit
-   clear of the buildings; DECOR keeps .27u+ off buildings and the
-   meadow spot is inside the decor exclusion ring around the centre. */
+   world slice, story progress in progress.story). ARCHIPELAGO: one
+   shrine per isle. Meadow 1.18u east of the town centre — just outside
+   TOWN_R, on Isle 1's east rim (the Warden is BOUND to its shrine,
+   exempt from the town clamp, and its ground is contested: see
+   damagePlayer). Grove on Isle 2's west side, Wilds on Isle 3's north
+   side. DECOR keeps .30u off each shrine. */
 const SHRINE_POS = {
-  meadow: { x: WORLD/2 + .95,   y: WORLD/2 },
-  grove:  { x: WORLD/2 - 1.202, y: WORLD/2 - 1.202 },
-  wilds:  { x: WORLD/2 + 2.068, y: WORLD/2 + 1.736 },   // 2.7u at 40° — the one SE bearing with real DECOR clearance (.43u; due-SE had a tree at .28u)
+  meadow: { x: TOWN.x + 1.18, y: TOWN.y },
+  grove:  { x: ISLES[1].cx - .62, y: ISLES[1].cy + .38 },
+  wilds:  { x: ISLES[2].cx + .55, y: ISLES[2].cy - .75 },
 };
 /* Guardian configs: base HP scales in spawnGuardian by
    (1 + .20 x max(0, topLevel-8)) x (1 + .5 x story.cycles) — the same
@@ -1635,10 +1732,10 @@ function bladeAt(now){
 }
 /* ---- survival pass state ---- */
 const CONTACT_DMG = { baby:4, dart:4, mid:6, gold:2, metal:5, splitter:7, big:9, tank:13, king:16, boss:26, guardian:16 };   // guardian: king tier
-const BANK_POS = { x: WORLD/2 - .67, y: WORLD/2 - .54 };
-const SHOP_POS = { x: WORLD/2 + .67, y: WORLD/2 - .54 };
-const HOSPITAL_POS = { x: WORLD/2, y: WORLD/2 + .70 };
-const TOWN_R = 1.30;   // safe-zone radius around the town centre — 1.30 ≈ .75*sqrt(3), so the plaza AREA is 3x the old disc; covers all three buildings + the plaza; NO enemies inside, NO damage inside
+const BANK_POS = { x: TOWN.x - .67, y: TOWN.y - .54 };
+const SHOP_POS = { x: TOWN.x + .67, y: TOWN.y - .54 };
+const HOSPITAL_POS = { x: TOWN.x, y: TOWN.y + .70 };
+const TOWN_R = 1.02;   // safe-zone radius around the town centre (Isle 1) — covers all three buildings (<= .86u out) + the plaza; NO enemies inside, NO damage inside. Was 1.30 in the radial world; shrunk for the archipelago so Isle 1 keeps a meadow ring (see ISLES note)
 const KING_BAR_RANGE = 1.0;   // a Slime King's floating HP bar renders only when the LOCAL player is within this many world units (Handler)
 
 /* ============================================================ NPCs (static data)
@@ -1648,15 +1745,15 @@ const KING_BAR_RANGE = 1.0;   // a Slime King's floating HP bar renders only whe
    computes the same spot from the same clock, zero sync, no state). x/y
    are GROUND anchors (the feet); h is the sprite height in world units. */
 const NPC_DEFS = [
-  { id:'elder', name:'ELDER MIRRA', x:WORLD/2,       y:WORLD/2 - .15,            h:.365, head:.340, robe:'#557d3c', skin:'#e8b08a', hair:'#cfd4d1' },
+  { id:'elder', name:'ELDER MIRRA', x:TOWN.x,       y:TOWN.y - .15,            h:.365, head:.340, robe:'#557d3c', skin:'#e8b08a', hair:'#cfd4d1' },
   { id:'forge', name:'FORGE',       x:SHOP_POS.x - .28, y:SHOP_POS.y + .16,     h:.365, head:.340, robe:'#8a5a2b', skin:'#8a5a3b', hair:'#263238' },
   { id:'pike',  name:'WARDEN PIKE', x:HOSPITAL_POS.x + .29, y:HOSPITAL_POS.y + .10, h:.365, head:.340, robe:'#6f7f8c', skin:'#d9a37e', hair:'#aeb6ba' },
-  { id:'child', name:'THE CHILD',   x:WORLD/2 - .42, y:WORLD/2 + .05,            h:.365, head:.204, robe:'#5d9440', skin:'#f0bd93', hair:'#6d4527' },
+  { id:'child', name:'THE CHILD',   x:TOWN.x - .42, y:TOWN.y + .05,            h:.365, head:.204, robe:'#5d9440', skin:'#f0bd93', hair:'#6d4527' },
 ];
 const CHILD_WAYPOINTS = [
-  { x:WORLD/2 - .42, y:WORLD/2 + .05 }, { x:WORLD/2 - .16, y:WORLD/2 + .36 },
-  { x:WORLD/2 + .28, y:WORLD/2 + .30 }, { x:WORLD/2 + .44, y:WORLD/2 - .10 },
-  { x:WORLD/2 + .12, y:WORLD/2 - .40 }, { x:WORLD/2 - .30, y:WORLD/2 - .34 },
+  { x:TOWN.x - .42, y:TOWN.y + .05 }, { x:TOWN.x - .16, y:TOWN.y + .36 },
+  { x:TOWN.x + .28, y:TOWN.y + .30 }, { x:TOWN.x + .44, y:TOWN.y - .10 },
+  { x:TOWN.x + .12, y:TOWN.y - .40 }, { x:TOWN.x - .30, y:TOWN.y - .34 },
 ];
 const CHILD_SEG_MS = 9000;   // one waypoint leg; the full loop is ~54s
 function npcPositionAt(def, now){
@@ -1696,15 +1793,19 @@ function hopPhase(s, now){
   return ((now + (s.seed||0)*9973) % k.hopCycle) / k.hopCycle;
 }
 const SLIME_COLORS = ['#7ee787','#6fd3ff','#ffb3d9','#ffe066','#c39bff','#8affd1','#ffab7a'];
-/* ---- zones: rings around the world centre — richer & deadlier outward ---- */
+/* ---- zones: the three ISLES (archipelago) — a position's zone is the
+   isle whose disc holds it; bridges/water fall back to the nearest isle
+   by shore distance. Strength/reward scaling per isle, as the old rings:
+   Verdant x1, Grove x1.8 HP / x1.7 loot, Wilds x3.2 / x2.8. ---- */
 const ZONES = [
-  { name:'THE MEADOW', hp:1,   mul:1,   blurb:'gentle hunting grounds' },
-  { name:'THE GROVE',  hp:1.8, mul:1.7, blurb:'stronger slimes, richer loot' },
-  { name:'THE WILDS',  hp:3.2, mul:2.8, blurb:'deadly, but the richest hunting' },
+  { name:'VERDANT ISLE', hp:1,   mul:1,   blurb:'gentle hunting grounds' },
+  { name:'GROVE ISLE',   hp:1.8, mul:1.7, blurb:'stronger slimes, richer loot' },
+  { name:'WILDS ISLE',   hp:3.2, mul:2.8, blurb:'deadly, but the richest hunting' },
 ];
 function zoneOf(x,y){
-  const d = Math.hypot(x - WORLD/2, y - WORLD/2);
-  return d < 1.1 ? 0 : d < 2.1 ? 1 : 2;
+  const r = landRegion(x, y);
+  if (r) return r.lvl;   // isle disc: its own zone; a bridge strip: the NEAR isle's zone (you have not crossed until the far disc)
+  return nearestIsle(x, y);
 }
 function pickKind(zone=0){
   let tot = 0;
@@ -1725,28 +1826,33 @@ function spawnSlime(opts={}){
   let sx, sy;
   if (opts.x !== undefined){ sx = opts.x; sy = opts.y; }
   else {
-    // TOWN SAFE ZONE: never spawn inside TOWN_R + .10 of the centre (in
-    // EITHER branch) — re-roll, and if every roll lands in town, shove
-    // the final point radially out past the boundary.
-    const inTown = (x,y) => dist2(x,y,WORLD/2,WORLD/2) < (TOWN_R+.10)*(TOWN_R+.10);
+    /* ARCHIPELAGO SPAWNS: every wild spawn lands ON LAND and outside the
+       town disc (in EITHER branch). ~60% near a random player — which
+       weights spawns to the islands players are actually on — the rest on
+       an isle picked by the population split (ISLE_SPAWN_W 50/30/20). */
+    const inTown = (x,y) => dist2(x,y,TOWN.x,TOWN.y) < (TOWN_R+.10)*(TOWN_R+.10);
+    let anchor = null;
     for (let tries=0; tries<6; tries++){
       if (opts.nearPlayer !== false && Math.random() < .6){
-        // ~60% of spawns land near a player (within ~0.9 units) so the action
-        // finds the players instead of the field emptying out; rest spawn anywhere.
         const spots = [{x:me.x, y:me.y}];
         for (const p of world.peers.values()) spots.push({ x:(p.tx!==undefined?p.tx:p.x), y:(p.ty!==undefined?p.ty:p.y) });
         const c = spots[Math.floor(Math.random()*spots.length)];
+        anchor = c;
         const a = rand(0,Math.PI*2), d = rand(.15,.9);
-        sx = clamp(c.x + Math.cos(a)*d, .06, WORLD-.06);
-        sy = clamp(c.y + Math.sin(a)*d, .1, WORLD-.06);
+        sx = c.x + Math.cos(a)*d; sy = c.y + Math.sin(a)*d;
       } else {
-        sx = rand(.06,WORLD-.06); sy = rand(.1,WORLD-.06);
+        let wi = Math.random(), ii = 0;
+        while (ii < 2 && wi > ISLE_SPAWN_W[ii]){ wi -= ISLE_SPAWN_W[ii]; ii++; }
+        const p = sampleIsle(ISLES[ii]); sx = p.x; sy = p.y; anchor = ISLES[ii];
       }
-      if (!inTown(sx,sy)) break;
+      if (isleAt(sx,sy) >= 0 && !inTown(sx,sy)) break;   // inside an isle's disc — never on a bridge strip or in the sea
       if (tries===5){
-        const dx = sx-WORLD/2, dy = sy-WORLD/2, dd = Math.hypot(dx,dy) || 1e-4;
-        sx = clamp(WORLD/2 + dx/dd*(TOWN_R+.15), .06, WORLD-.06);
-        sy = clamp(WORLD/2 + dy/dd*(TOWN_R+.15), .1, WORLD-.06);
+        // FALLBACK: the anchor isle's rim ring, on the anchor's bearing
+        const ai = isleAt(anchor.x, anchor.y), I = ISLES[ai >= 0 ? ai : nearestIsle(anchor.x, anchor.y)];
+        const dx = anchor.x - I.cx, dy = anchor.y - I.cy, dd = Math.hypot(dx,dy) || 1e-4;
+        let rr = I.r - .12;
+        if (I.zone === 0) rr = Math.max(rr, TOWN_R + .16);   // Isle 1's ring must also clear the town disc
+        sx = I.cx + dx/dd*rr; sy = I.cy + dy/dd*rr;
       }
     }
   }
@@ -1757,7 +1863,7 @@ function spawnSlime(opts={}){
   const s = { id, kind:k.kind, hp, max:hp, r:k.r,
     x:sx, y:sy, vx:0, vy:0, dir:rand(0,Math.PI*2), turnAt:performance.now()+rand(800,2600),
     color: k.kind==='gold' ? '#ffe066' : k.kind==='metal' ? '#cfd8dc' : SLIME_COLORS[Math.floor(Math.random()*SLIME_COLORS.length)],
-    seed:seedForId(id), squish:0, flash:0, mul: k.kind==='boss' ? 1.5 : zone.mul, elite:false };
+    seed:seedForId(id), squish:0, flash:0, mul: k.kind==='boss' ? 1.5 : zone.mul, elite:false, isle: zi };   // isle: the home island this slime is bound to (host sim clamps it there)
   if (k.kind==='metal') world.lastMetalAt = performance.now();   // THE guarantee clock: a metal entering the world is the only thing that resets it
   // ELITES: rare, tougher, much richer (never kings, the Emperor, or metal slimes)
   if (k.kind !== 'king' && k.kind !== 'boss' && k.kind !== 'metal' && Math.random() < .08){
@@ -1862,8 +1968,8 @@ function hostTick(now,dt){
        whatever a slime was doing (hunting, fleeing, kiting), it turns and
        hops radially OUT. The positional half — the hard clamp that makes
        this a guarantee rather than an intention — runs after the hop. */
-    const townD = Math.hypot(s.x-WORLD/2, s.y-WORLD/2);
-    if (s.kind !== 'guardian' && townD < TOWN_R + .17) s.dir = Math.atan2(s.y-WORLD/2, s.x-WORLD/2);
+    const townD = Math.hypot(s.x-TOWN.x, s.y-TOWN.y);
+    if (s.kind !== 'guardian' && townD < TOWN_R + .17) s.dir = Math.atan2(s.y-TOWN.y, s.x-TOWN.x);
     /* HOP LOCOMOTION: slimes never glide. Steering above only chooses s.dir;
        translation happens ONLY inside the hop cycle's air window, at
        hopDist per hop (steering multiplier applied). Grounded = planted. */
@@ -1880,10 +1986,24 @@ function hostTick(now,dt){
        "corrected" deep intruders only to TOWN_R - .12 — INSIDE the safe
        zone — so kings and the Emperor could sit in the plaza for hops at
        a time. This clamp leaves a .12u enemy-free moat past the plaza. */
-    const clampD = Math.hypot(s.x-WORLD/2, s.y-WORLD/2), MIN_TOWN_D = TOWN_R + .12;
+    const clampD = Math.hypot(s.x-TOWN.x, s.y-TOWN.y), MIN_TOWN_D = TOWN_R + .12;
     if (s.kind !== 'guardian' && clampD < MIN_TOWN_D){
       const push = MIN_TOWN_D / (clampD || 1e-4);
-      s.x = WORLD/2 + (s.x-WORLD/2)*push; s.y = WORLD/2 + (s.y-WORLD/2)*push;
+      s.x = TOWN.x + (s.x-TOWN.x)*push; s.y = TOWN.y + (s.y-TOWN.y)*push;
+    }
+    /* ISLAND CLAMP (archipelago) — runs LAST, after the town clamp: a
+       slime never ends the frame off its home isle's disc. On Isle 1 it
+       also settles the town clamp's overshoot (it projects to
+       TOWN_R+.12 = 1.14, inside the isle, so the two compose cleanly).
+       Guardians included: their leash circle can reach past the shore,
+       but the fight stays on land. */
+    {
+      const isl = ISLES[s.isle !== undefined ? s.isle : zoneOf(s.x, s.y)];
+      const idd = Math.hypot(s.x - isl.cx, s.y - isl.cy), maxD = isl.r - .02;
+      if (idd > maxD){
+        const p = maxD / idd;
+        s.x = isl.cx + (s.x - isl.cx)*p; s.y = isl.cy + (s.y - isl.cy)*p;
+      }
     }
     s.squish = Math.max(0, s.squish - dt/160); s.flash = Math.max(0, s.flash - dt/120);
   }
@@ -1933,19 +2053,21 @@ function hostTick(now,dt){
     world.metalNoneNearSince = now;
     for (const [id, s] of [...world.slimes]) if (s.kind==='metal') world.slimes.delete(id);   // every living metal is unreachable — clear it
     // position computed valid HERE: 0.6u from a random player in a random
-    // direction, >= TOWN_R + .15 from centre, inside world bounds; up to
-    // 8 tries, else the town-ring point at TOWN_R + .35 toward the player
+    // direction, ON LAND and >= TOWN_R + .15 from the town centre; up to
+    // 8 tries, else the rim ring of the player's own isle on their bearing
     const c = metalSpots[Math.floor(Math.random()*metalSpots.length)];
     let mx = null, my = null;
     for (let tries=0; tries<8 && mx===null; tries++){
       const a = rand(0,Math.PI*2);
       const x = c.x + Math.cos(a)*.6, y = c.y + Math.sin(a)*.6;
-      if (x>=.06 && x<=WORLD-.06 && y>=.1 && y<=WORLD-.06 && Math.hypot(x-WORLD/2, y-WORLD/2) >= TOWN_R + .15){ mx = x; my = y; }
+      if (onLand(x,y) && Math.hypot(x-TOWN.x, y-TOWN.y) >= TOWN_R + .15){ mx = x; my = y; }
     }
     if (mx===null){
-      const a = Math.atan2(c.y-WORLD/2, c.x-WORLD/2);
-      mx = clamp(WORLD/2 + Math.cos(a)*(TOWN_R+.35), .06, WORLD-.06);
-      my = clamp(WORLD/2 + Math.sin(a)*(TOWN_R+.35), .1, WORLD-.06);
+      const ci = isleAt(c.x, c.y), I = ISLES[ci >= 0 ? ci : nearestIsle(c.x, c.y)];
+      const a = Math.atan2(c.y - I.cy, c.x - I.cx);
+      let rr = I.r - .14;
+      if (I.zone === 0) rr = Math.max(rr, TOWN_R + .17);
+      mx = I.cx + Math.cos(a)*rr; my = I.cy + Math.sin(a)*rr;
     }
     // DIRECT construction into the map (mirror of spawnSlime's object
     // shape, incl. zone scaling) — no spawnSlime call on this path
@@ -1954,7 +2076,7 @@ function hostTick(now,dt){
     const mhp = Math.round(mk.hp * mzone.hp);
     world.slimes.set(mid, { id:mid, kind:'metal', hp:mhp, max:mhp, r:mk.r,
       x:mx, y:my, vx:0, vy:0, dir:rand(0,Math.PI*2), turnAt:now+rand(800,2600),
-      color:'#cfd8dc', seed:seedForId(mid), squish:0, flash:0, mul:mzone.mul, elite:false,
+      color:'#cfd8dc', seed:seedForId(mid), squish:0, flash:0, mul:mzone.mul, elite:false, isle:zoneOf(mx,my),
       guaranteed:true, bornAt:now });   // guaranteed: edge arrow + 1500ms spawn-in freeze key off these (host-local flavour; the world payload doesn't carry them)
     world.lastMetalAt = now;   // a metal entered the world
   }
@@ -1967,8 +2089,16 @@ function hostTick(now,dt){
   if (now >= world.bossSpawnAt){
     world.bossSpawnAt = now + 240000;   // fallback cadence (hostKill re-anchors this to the kill moment); the FIRST spawn stays at +75s
     if (!boss){
-      let bx=WORLD/2, by=.3;
-      for (let i=0;i<40;i++){ const x=rand(.15,WORLD-.15), y=rand(.15,WORLD-.15); if (Math.hypot(x-WORLD/2, y-WORLD/2) > 2.3){ bx=x; by=y; break; } }
+      /* The Emperor's home is WILDS ISLE (archipelago): he awakens on its
+         disc, away from the Wilds Shrine, and the island clamp keeps his
+         court there. (The old rule — anywhere > 2.3u from the centre —
+         died with the radial world.) */
+      const WI = ISLES[2], ws = SHRINE_POS.wilds;
+      let bx = WI.cx - .5, by = WI.cy + .5;
+      for (let i=0;i<40;i++){
+        const p = sampleIsle(WI, WI.r - .3);
+        if (Math.hypot(p.x - ws.x, p.y - ws.y) > .55){ bx = p.x; by = p.y; break; }
+      }
       boss = spawnSlime({ kind:'boss', x:bx, y:by });
       world.bossEnraged = false; world.bossFury = false; world.bossSummonAt = 0;   // a fresh Emperor starts calm and summons on his own clock
       /* EMPEROR SCALING: the flat 4000 melts under a geared high-level
@@ -2114,21 +2244,27 @@ function hostTick(now,dt){
     } else spawnNode();
   }
 }
-/* Roll a node type by spawn weight, then a position whose zone suits it
-   (max 12 tries): outside the town safe zone, inside the world margin,
-   clear of other nodes. */
+/* Roll a node type by spawn weight, then place it on an island whose
+   zone suits the type — islands weighted ISLE_NODE_W (Isle 1 fewest,
+   Isle 3 most), renormalised over the islands the type allows. Position
+   inside that isle's disc, outside the town safe zone, clear of other
+   nodes (max 12 tries). */
 function spawnNode(){
   let tot = 0; for (const w of NODE_WEIGHTS) tot += w;
   let r = Math.random()*tot, t = 0;
   for (let i=0;i<NODE_WEIGHTS.length;i++){ if ((r -= NODE_WEIGHTS[i]) <= 0){ t = i; break; } }
   const type = NODE_TYPES[t];
+  const cands = ISLES.filter(I => type.zones.includes(ZONE_NAMES[I.zone]));
+  if (!cands.length) return false;
+  let wtot = 0; for (const I of cands) wtot += ISLE_NODE_W[I.zone];
+  let wr = Math.random()*wtot, isle = cands[cands.length-1];
+  for (const I of cands){ if ((wr -= ISLE_NODE_W[I.zone]) <= 0){ isle = I; break; } }
   for (let tries=0; tries<12; tries++){
-    const x = rand(.15, WORLD-.15), y = rand(.15, WORLD-.15);
-    if (Math.hypot(x-WORLD/2, y-WORLD/2) < TOWN_R + .15) continue;   // never in town (buildings are covered by this too)
+    const p = sampleIsle(isle, isle.r - .15), x = p.x, y = p.y;
+    if (Math.hypot(x-TOWN.x, y-TOWN.y) < TOWN_R + .15) continue;   // never in town (buildings are covered by this too)
     let clash = false;
     for (const o of world.nodes.values()) if (dist2(x,y,o.x,o.y) < .28*.28){ clash = true; break; }
     if (clash) continue;
-    if (!type.zones.includes(ZONE_NAMES[zoneOf(x,y)])) continue;
     const id = (world.hostId||me.id).slice(0,4)+'-n'+(world.nodeSeq++);
     world.nodes.set(id, { id, x:+x.toFixed(3), y:+y.toFixed(3), t, r:.078, left:type.chunks, shakeT:0 });
     return true;
@@ -2205,7 +2341,7 @@ function applyWorld(p){
       if (kk) old.r = old.kind==='guardian' && GUARDIANS[old.guardian] ? GUARDIANS[old.guardian].r : kk.r * (elite?1.35:1);
     } else {
       const k = SLIME_KINDS.find(k=>k.kind===kind) || SLIME_KINDS[0];
-      const ns = {id,kind,hp,max,r:k.r*(elite?1.35:1),x,y,tx:x,ty:y,dir,color,seed:seedForId(id),squish:1,flash:0,mul,elite};
+      const ns = {id,kind,hp,max,r:k.r*(elite?1.35:1),x,y,tx:x,ty:y,dir,color,seed:seedForId(id),squish:1,flash:0,mul,elite,isle:zoneOf(x,y)};
       if (grdKey){ ns.guardian = grdKey; ns.r = GUARDIANS[grdKey] ? GUARDIANS[grdKey].r : ns.r; }
       world.slimes.set(id, ns);
     }
@@ -3201,7 +3337,7 @@ function damagePlayer(amount, now){
   if (!$('#bankPanel').classList.contains('hidden') || !$('#shopPanel').classList.contains('hidden') ||
       !$('#hospitalPanel').classList.contains('hidden') || !$('#menuPanel').classList.contains('hidden') ||
       !$('#chapterCard').classList.contains('hidden')) return;
-  if (dist2(me.x, me.y, WORLD/2, WORLD/2) < TOWN_R*TOWN_R){
+  if (dist2(me.x, me.y, TOWN.x, TOWN.y) < TOWN_R*TOWN_R){
     /* CONTESTED SHRINE GROUND (stage 4): the Meadow Shrine stands on the
        plaza's rim and its Warden is bound to it — while a guardian lives
        and you stand in its shadow (0.65u), the sanctuary does NOT cover
@@ -3225,7 +3361,7 @@ function death(){
   const lost = prog().purse ? Math.floor(prog().coins*.25) : Math.floor(prog().coins/2);   // Coin Purse softens the blow; banked coins are NEVER touched
   act.addCoins(-lost);
   me.hp = me.maxHp;
-  const sp = prog().spawnAt || { x: WORLD/2, y: WORLD/2 + .1 };   // inn-saved respawn, else town centre
+  const sp = prog().spawnAt || { x: TOWN.x, y: TOWN.y + .1 };   // inn-saved respawn, else town centre
   me.x = sp.x; me.y = sp.y; me.px = me.x; me.py = me.y;
   pinPtr(me.x, me.y, now);   // respawn teleport: restart the pointer stream here, or the frame evaluator would drag the sword back to wherever the mouse sits
   const vw = W/UNIT(), vh = H/UNIT();
@@ -3302,6 +3438,15 @@ function collectSprout(id){
   sfx.coin();
   storyEvent('sprout');
 }
+/* E on a locked ROT BARRIER: it answers with its refusal line as an
+   in-world float + a shiver of rot motes. Purely local — the gate itself
+   is derived from story state (bridgeOpen), never from this poke. */
+function pokeBarrier(key){
+  const b = BARRIERS.find(v => v.key === key); if (!b) return;
+  addFloat(b.x, b.y - .18, b.line, '#d9b3ff', { big:true });
+  spawnPopFx(b.x, b.y, '#7b4fa6', 14, .02);
+  beep(140, .12, 'sawtooth', .07, -60);   // a low rot growl — no dedicated deny sfx exists
+}
 /* ---- the ending: three chapter cards in sequence. playEnding queues
    them; a watcher in frame() feeds the next card whenever the previous
    one closes (an open card owns ses.dlgAdvance, so the queue can never
@@ -3370,6 +3515,7 @@ function interactPressed(){
   }
   if (ses.nearShrine){ summonGuardian(ses.nearShrine); return true; }
   if (ses.nearSprout){ collectSprout(ses.nearSprout); return true; }
+  if (ses.nearBarrier){ pokeBarrier(ses.nearBarrier); return true; }
   if (ses.nearNpc){ startDialogue(ses.nearNpc); return true; }
   if (ses.nearBuilding){ openBuilding(ses.nearBuilding); return true; }
   return false;
@@ -3572,7 +3718,7 @@ function buyInn(id){
 }
 function updateInteract(){
   const pr = $('#interactPrompt');
-  if (!ses.started){ pr.classList.add('hidden'); ses.nearBuilding = null; ses.nearNpc = null; ses.nearShrine = null; ses.nearSprout = null; updateInteract._pr = null; return; }
+  if (!ses.started){ pr.classList.add('hidden'); ses.nearBuilding = null; ses.nearNpc = null; ses.nearShrine = null; ses.nearSprout = null; ses.nearBarrier = null; updateInteract._pr = null; return; }
   const db = Math.sqrt(dist2(me.x,me.y,BANK_POS.x,BANK_POS.y));
   const ds = Math.sqrt(dist2(me.x,me.y,SHOP_POS.x,SHOP_POS.y));
   const dh = Math.sqrt(dist2(me.x,me.y,HOSPITAL_POS.x,HOSPITAL_POS.y));
@@ -3585,7 +3731,7 @@ function updateInteract(){
      sword's exact position against the .34 radius everywhere, so prompts
      flickered in/out around town and the key often opened nothing. Outside town
      the .34 radius rule applies unchanged. */
-  const inTown = dist2(me.x, me.y, WORLD/2, WORLD/2) < TOWN_R*TOWN_R;
+  const inTown = dist2(me.x, me.y, TOWN.x, TOWN.y) < TOWN_R*TOWN_R;
   const building = (inTown || nd < .34) ? nb : null;
   const panelOpen = !$('#bankPanel').classList.contains('hidden') || !$('#shopPanel').classList.contains('hidden') || !$('#hospitalPanel').classList.contains('hidden');
   /* NPCs compete for the same prompt: the nearest townsperson inside talk
@@ -3603,7 +3749,7 @@ function updateInteract(){
      SHRINE: only while the current quest objective targets it and no
      guardian stands. SPROUT: only while the side tale can still count
      it and this player has not gathered that one. */
-  let shrineId = null, shrineDist = Infinity, sproutId = null, sproutDist = Infinity;
+  let shrineId = null, shrineDist = Infinity, sproutId = null, sproutDist = Infinity, barrierId = null, barrierDist = Infinity;
   if (!ses.dialogue && !panelOpen){
     const objNow = currentObjective();
     if (objNow && objNow.type === 'guardian' && !guardianAlive()){
@@ -3619,17 +3765,26 @@ function updateInteract(){
         if (d <= .45 && d < sproutDist){ sproutId = sp.id; sproutDist = d; }
       }
     }
+    /* ROT BARRIERS (archipelago): a locked bridge's far-end barrier is an
+       interactable — E reads its refusal line. Open bridges have none. */
+    for (const b of BARRIERS){
+      if (bridgeOpen(b.isle + 1)) continue;
+      const d = Math.sqrt(dist2(me.x, me.y, b.x, b.y));
+      if (d <= .55 && d < barrierDist){ barrierId = b.key; barrierDist = d; }
+    }
   }
   let winKind = null, winId = null, winDist = Infinity;
   if (npcDist <= .6 && npcDist < winDist){ winKind = 'npc'; winId = npcId; winDist = npcDist; }
   if (shrineId && shrineDist < winDist){ winKind = 'shrine'; winId = shrineId; winDist = shrineDist; }
   if (sproutId && sproutDist < winDist){ winKind = 'sprout'; winId = sproutId; winDist = sproutDist; }
+  if (barrierId && barrierDist < winDist){ winKind = 'barrier'; winId = barrierId; winDist = barrierDist; }
   const winBeatsBuilding = winKind && (!building || winDist < nd);
   const targetNpc = (winBeatsBuilding && winKind === 'npc') ? winId : null;
   ses.nearNpc = targetNpc;
   ses.nearShrine = (winBeatsBuilding && winKind === 'shrine') ? winId : null;
   ses.nearSprout = (winBeatsBuilding && winKind === 'sprout') ? winId : null;
-  ses.nearBuilding = (targetNpc || ses.nearShrine || ses.nearSprout) ? null : building;
+  ses.nearBarrier = (winBeatsBuilding && winKind === 'barrier') ? winId : null;
+  ses.nearBuilding = (targetNpc || ses.nearShrine || ses.nearSprout || ses.nearBarrier) ? null : building;
   // change-only DOM writes: this runs EVERY frame, and re-setting the
   // same textContent replaces the text node (layout work) every time
   const prName = (ses.nearBuilding && !panelOpen && !ses.dialogue) ? (ses.nearBuilding==='bank' ? 'BANK' : ses.nearBuilding==='shop' ? 'SHOP' : 'INN') : null;
@@ -3641,12 +3796,14 @@ function updateInteract(){
   const wantPr = targetNpc ? cap + '|NPC|' + targetNpc
     : ses.nearShrine ? cap + '|SHRINE|' + ses.nearShrine
     : ses.nearSprout ? cap + '|SPROUT|' + ses.nearSprout
+    : ses.nearBarrier ? cap + '|BARRIER|' + ses.nearBarrier
     : (prName ? cap + '|' + prName : null);
   if (wantPr !== updateInteract._pr){
     updateInteract._pr = wantPr;
     if (targetNpc && npcDefNear){ pr.innerHTML = '<span class="keycap">' + cap + '</span>' + npcDefNear.name; pr.classList.remove('hidden'); }
     else if (ses.nearShrine){ pr.innerHTML = '<span class="keycap">' + cap + '</span>VERDANT SHRINE'; pr.classList.remove('hidden'); }
     else if (ses.nearSprout){ pr.innerHTML = '<span class="keycap">' + cap + '</span>LOST SPROUTLING'; pr.classList.remove('hidden'); }
+    else if (ses.nearBarrier){ pr.innerHTML = '<span class="keycap">' + cap + '</span>ROT BARRIER'; pr.classList.remove('hidden'); }
     else if (prName){ pr.innerHTML = '<span class="keycap">' + cap + '</span>OPEN ' + prName; pr.classList.remove('hidden'); }
     else pr.classList.add('hidden');
   }
@@ -3858,6 +4015,19 @@ function updatePointer(now){
   // prune everything older than the bracket (on a gap-snap keep the landing point, not the stale bracket)
   const drop = snap ? j+1 : j;
   if (drop > 0){ ses.ptrStart = (start + drop) % N; ses.ptrCount = count - drop; }
+  /* SHORE CLAMP (archipelago): the sword cannot enter water or a gated
+     isle. Axis-separated resolution = shore slide: try the full move,
+     then x-only, then y-only, so the blade skims along the beach (and
+     along a rot barrier) instead of sticking. If even the current spot
+     is somehow not standable (a stale save woke in the sea), project to
+     the nearest shore. Combat reads the same committed segment, so hit
+     tests/trail/speed all see the clamped path. */
+  if (!canStand(ex, ey)){
+    if (canStand(ex, me.y)) ey = me.y;
+    else if (canStand(me.x, ey)) ex = me.x;
+    else if (canStand(me.x, me.y)){ ex = me.x; ey = me.y; }
+    else { const p = projectToLand(ex, ey); ex = p.x; ey = p.y; }
+  }
   const prevX = me.x, prevY = me.y;
   me.px = prevX; me.py = prevY; me.x = ex; me.y = ey;
   if (snap) me.trailBreak = true;   // teleports don't streak the trail across the gap
@@ -4740,6 +4910,11 @@ function checkZone(){
   ses.myZone = z;
   const zn = ZONES[z];
   notify(zn.name, { type:'zone', sub: zn.blurb });
+  /* first time this session the blade sets foot on a newly opened isle */
+  if (z > 0 && !ses.crossedIsles[z] && bridgeOpen(z + 1)){
+    ses.crossedIsles[z] = true;
+    addFloat(me.x, me.y - .12, 'The crossing is open.', '#ffe9a8');
+  }
 }
 
 /* ---------- tutorial hints (one at a time, in sequence) ---------- */
@@ -4797,7 +4972,12 @@ function loadGame(){
   me.hp = me.maxHp;   // HP is not persisted — a loaded character starts full at the scaled max
   const p = prog();
   if (d.name) $('#nameIn').value = p.name;
-  if (p.spawnAt){ me.x = p.spawnAt.x; me.y = p.spawnAt.y; me.px = me.x; me.py = me.y; }   // first spawn uses the saved respawn too
+  if (p.spawnAt){
+    // a respawn saved before the archipelago (or anywhere now under
+    // water / behind a gate) wakes on the nearest shore, not in the sea
+    const sp2 = canStand(p.spawnAt.x, p.spawnAt.y) ? p.spawnAt : projectToLand(p.spawnAt.x, p.spawnAt.y);
+    me.x = sp2.x; me.y = sp2.y; me.px = me.x; me.py = me.y;   // first spawn uses the saved respawn too
+  }
   if (p.bounty) updateBountyUI();
   setMuted(p.muted);
 }
@@ -4812,10 +4992,28 @@ document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState
 function drawMinimap(){
   const c = $('#minimap'); if (!c || !ses.started) return;
   const g = c.getContext('2d'), S2 = c.width / WORLD;
-  g.fillStyle = '#79c25f'; g.fillRect(0,0,c.width,c.height);
-  // town safe zone: sandy disc at the map centre, under every dot
+  /* ARCHIPELAGO MAP: open sea, three isles (sand rim + grass heart), the
+     two causeways as planks, a rot tick on a locked bridge's far rim. */
+  g.fillStyle = '#14616e'; g.fillRect(0,0,c.width,c.height);
+  for (const s of [BRIDGE_A, BRIDGE_B]){
+    g.strokeStyle = '#b08954'; g.lineWidth = Math.max(2, BRIDGE_W*S2*.8);
+    g.beginPath(); g.moveTo(s.x1*S2, s.y1*S2); g.lineTo(s.x2*S2, s.y2*S2); g.stroke();
+  }
+  for (const I of ISLES){
+    g.fillStyle = '#e8d49a';
+    g.beginPath(); g.arc(I.cx*S2, I.cy*S2, I.r*S2, 0, 7); g.fill();
+    g.fillStyle = '#79c25f';
+    g.beginPath(); g.arc(I.cx*S2, I.cy*S2, (I.r - SHORE)*S2, 0, 7); g.fill();
+  }
+  for (const b of BARRIERS){
+    if (bridgeOpen(b.isle + 1)) continue;
+    g.strokeStyle = '#7b4fa6'; g.lineWidth = 2.5;
+    const px = -b.seg.uy*4, py = b.seg.ux*4;
+    g.beginPath(); g.moveTo(b.x*S2 - px, b.y*S2 - py); g.lineTo(b.x*S2 + px, b.y*S2 + py); g.stroke();
+  }
+  // town safe zone: sandy disc on Isle 1, under every dot
   g.fillStyle = '#ecd9a2';
-  g.beginPath(); g.arc(WORLD/2*S2, WORLD/2*S2, TOWN_R*S2, 0, 7); g.fill();
+  g.beginPath(); g.arc(TOWN.x*S2, TOWN.y*S2, TOWN_R*S2, 0, 7); g.fill();
   g.strokeStyle = 'rgba(255,255,255,.8)'; g.lineWidth = 1.5;
   g.strokeRect(ses.cam.x*S2, ses.cam.y*S2, (W/UNIT())*S2, (H/UNIT())*S2);
   // building markers: BANK gold, SHOP red, HOSPITAL white with a red centre dot
@@ -5035,7 +5233,7 @@ const COLOR2IMG = {
 };
 /* ---- pixel world art: grass tile, decor and building sprites ---- */
 const WORLD_IMGS = {};
-for (const n of ['tile-grass','decor-tree','decor-rock','decor-pond','decor-grass','bld-bank','bld-shop','bld-hospital']){
+for (const n of ['tile-grass','tile-water','tile-sand','decor-tree','decor-rock','decor-pond','decor-grass','bld-bank','bld-shop','bld-hospital']){
   const im=new Image(); im.src='assets/img/'+n+'.png'; WORLD_IMGS[n]=im;
 }
 const NPC_IMGS = {};
@@ -5324,7 +5522,7 @@ function drawVideoSlime(s,t,baseR){
   // soft ground shadow: shrinks and fades as the slime leaves the ground;
   // boosted on the pale town plaza, where .16 black washes out on the sand
   ctx.save();
-  ctx.globalAlpha = (Math.hypot(s.x-WORLD/2, s.y-WORLD/2) < TOWN_R ? .27 : .16) * (1 - g.liftN*.35);
+  ctx.globalAlpha = (Math.hypot(s.x-TOWN.x, s.y-TOWN.y) < TOWN_R ? .27 : .16) * (1 - g.liftN*.35);
   ctx.fillStyle = '#000';
   ctx.beginPath(); ctx.ellipse(g.gx, g.gy - baseR*.06, g.dw*.40*(1 - g.liftN*.22), baseR*.20, 0, 0, 7); ctx.fill();
   ctx.restore();
@@ -5341,20 +5539,38 @@ const FLOWERS = Array.from({length:1300},(_,i)=>({x:(Math.sin(i*127.1)*.5+.5)*WO
 function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
 const DECOR = (()=>{
   const rng = mulberry32(20261107);
-  const items = [], cx = WORLD/2, cy = WORLD/2 + .1;
-  const place = minC => {
+  const items = [];
+  /* ARCHIPELAGO: decor is placed PER ISLE, inside the disc, clear of the
+     town disc + buildings (Isle 1), each isle's shrine (.30u), and the
+     bridge landings. Counts match the old world's totals (7 ponds /
+     64 trees / 34 rocks), split by isle size; Isle 1 keeps 2 ponds (one
+     hosts the pond sproutling). */
+  const SHRINE_BY_ZONE = { 0:SHRINE_POS.meadow, 1:SHRINE_POS.grove, 2:SHRINE_POS.wilds };
+  const place = I => {
     for (let i=0;i<40;i++){
-      const x = .12 + rng()*(WORLD-.24), y = .14 + rng()*(WORLD-.24);
-      if (Math.hypot(x-cx, y-cy) > minC &&
-          Math.hypot(x-BANK_POS.x, y-BANK_POS.y) > .27 &&
-          Math.hypot(x-SHOP_POS.x, y-SHOP_POS.y) > .27 &&
-          Math.hypot(x-HOSPITAL_POS.x, y-HOSPITAL_POS.y) > .27) return { x, y };
+      const a = rng()*Math.PI*2, d = Math.sqrt(rng()) * (I.r - .20);
+      const x = I.cx + Math.cos(a)*d, y = I.cy + Math.sin(a)*d;
+      if (Math.hypot(x-TOWN.x, y-TOWN.y) < TOWN_R + .06) continue;
+      if (Math.hypot(x-BANK_POS.x, y-BANK_POS.y) < .27 ||
+          Math.hypot(x-SHOP_POS.x, y-SHOP_POS.y) < .27 ||
+          Math.hypot(x-HOSPITAL_POS.x, y-HOSPITAL_POS.y) < .27) continue;
+      const sh = SHRINE_BY_ZONE[I.zone];
+      if (Math.hypot(x-sh.x, y-sh.y) < .30) continue;
+      if (segDist(x, y, BRIDGE_A).d < .30 || segDist(x, y, BRIDGE_B).d < .30) continue;   // causeways stay walkable
+      return { x, y };
     }
-    return { x:.2, y:.2 };
+    return null;
   };
-  for (let i=0;i<7;i++){ const p = place(TOWN_R + .06); items.push({ t:'pond', x:p.x, y:p.y, r:.17 + rng()*.12 }); }
-  for (let i=0;i<64;i++){ const p = place(TOWN_R + .06); items.push({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }); }
-  for (let i=0;i<34;i++){ const p = place(TOWN_R + .06); items.push({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }); }
+  const scatter = (I, n, mk) => { for (let i=0;i<n;i++){ const p = place(I); if (p) items.push(mk(p)); } };
+  scatter(ISLES[0], 2, p => ({ t:'pond', x:p.x, y:p.y, r:.17 + rng()*.12 }));
+  scatter(ISLES[1], 2, p => ({ t:'pond', x:p.x, y:p.y, r:.17 + rng()*.12 }));
+  scatter(ISLES[2], 3, p => ({ t:'pond', x:p.x, y:p.y, r:.17 + rng()*.12 }));
+  scatter(ISLES[0], 22, p => ({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }));
+  scatter(ISLES[1], 19, p => ({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }));
+  scatter(ISLES[2], 23, p => ({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }));
+  scatter(ISLES[0], 12, p => ({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }));
+  scatter(ISLES[1], 10, p => ({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }));
+  scatter(ISLES[2], 12, p => ({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }));
   return items;
 })();
 /* The three LOST SPROUTLINGS (stage 4 side tale): fixed scenic spots
@@ -5366,8 +5582,8 @@ const DECOR = (()=>{
 const SPROUT_SPOTS = (()=>{
   const ponds = DECOR.filter(d => d.t === 'pond'), trees = DECOR.filter(d => d.t === 'tree'), rocks = DECOR.filter(d => d.t === 'rock');
   const nearest = (arr, x, y) => arr.reduce((best, d) => (!best || dist2(d.x, d.y, x, y) < dist2(best.x, best.y, x, y)) ? d : best, null);
-  const pond = nearest(ponds, WORLD/2, WORLD/2);
-  const pa = Math.atan2(WORLD/2 - pond.y, WORLD/2 - pond.x);   // the pond's shore, on the side facing town
+  const pond = nearest(ponds, TOWN.x, TOWN.y);
+  const pa = Math.atan2(TOWN.y - pond.y, TOWN.x - pond.x);   // the pond's shore, on the side facing town
   const tree = nearest(trees, SHRINE_POS.grove.x, SHRINE_POS.grove.y);
   const rock = nearest(rocks, SHRINE_POS.wilds.x, SHRINE_POS.wilds.y);
   return [
@@ -5386,7 +5602,10 @@ const TUFTS = (()=>{
   const items = [];
   let guard = 0;
   while (items.length < 420 && guard++ < 8000){
-    const x = .06 + rng()*(WORLD-.12), y = .06 + rng()*(WORLD-.12);
+    // archipelago: tufts grow on LAND only — sample inside a random isle
+    const I = ISLES[Math.floor(rng()*3)];
+    const a = rng()*Math.PI*2, d = Math.sqrt(rng()) * (I.r - .06);
+    const x = I.cx + Math.cos(a)*d, y = I.cy + Math.sin(a)*d;
     if (Math.hypot(x-BANK_POS.x, y-BANK_POS.y) < .30 ||
         Math.hypot(x-SHOP_POS.x, y-SHOP_POS.y) < .30 ||
         Math.hypot(x-HOSPITAL_POS.x, y-HOSPITAL_POS.y) < .30) continue;
@@ -5403,7 +5622,7 @@ function drawTufts(t){
   const u = UNIT(), vw = W/u, vh = H/u, asp = img.naturalHeight/img.naturalWidth;
   for (const g of TUFTS){
     if (g.x<ses.cam.x-.1 || g.x>ses.cam.x+vw+.1 || g.y<ses.cam.y-.1 || g.y>ses.cam.y+vh+.1) continue;   // view-culled
-    if (Math.hypot(g.x-WORLD/2, g.y-WORLD/2) < TOWN_R + .02) continue;   // no grass grows on the town plaza
+    if (Math.hypot(g.x-TOWN.x, g.y-TOWN.y) < TOWN_R + .02) continue;   // no grass grows on the town plaza
     const w = .055*u*g.s, h = w*asp;
     ctx.save();
     ctx.translate(NX(g.x), NY(g.y));
@@ -5560,62 +5779,126 @@ function drawNode(n, t){
 }
 function drawField(t){
   const u=UNIT(), vw=W/u, vh=H/u;
-  // ground: pixel grass tile repeated over the viewport on a 0.55u grid,
-  // aligned to world coordinates so it scrolls with the camera
-  const tile = WORLD_IMGS['tile-grass'];
-  if (imgOk(tile)){
+  /* ===== THE SEA (archipelago): everything that isn't an isle or a
+     bridge is open water — an ISW water tile if it loaded, else a deep
+     teal gradient; seeded glints twinkle on water only. ===== */
+  const wtile = WORLD_IMGS['tile-water'];
+  if (imgOk(wtile)){
     const ts = .55*u;
     const tx0 = Math.floor(ses.cam.x/.55), ty0 = Math.floor(ses.cam.y/.55);
     const tx1 = Math.floor((ses.cam.x+vw)/.55), ty1 = Math.floor((ses.cam.y+vh)/.55);
     for (let tx=tx0; tx<=tx1; tx++)
       for (let ty=ty0; ty<=ty1; ty++)
-        ctx.drawImage(tile, NX(tx*.55), NY(ty*.55), ts+1, ts+1);   // +1px kills seams
+        ctx.drawImage(wtile, NX(tx*.55), NY(ty*.55), ts+1, ts+1);   // +1px kills seams
   } else {
-    const g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#8fd06e'); g.addColorStop(1,'#69b84e');
+    const g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#17697a'); g.addColorStop(1,'#0f4c5c');
     ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
-    // mowed stripes, one world unit wide
-    ctx.fillStyle='rgba(255,255,255,.05)';
-    for (let wx=Math.floor(ses.cam.x); wx<ses.cam.x+vw+1; wx++) if (((wx%2)+2)%2===0) ctx.fillRect(NX(wx),0,u,H);
   }
-  // flowers (only those in view): tiny pixel squares, not circles
+  {
+    const wss = Math.max(2, Math.round(u*.004));
+    for (let i=0;i<260;i++){
+      const wx = hash01(i*1.93)*WORLD, wy = hash01(i*4.37)*WORLD;
+      if (wx < ses.cam.x-.05 || wx > ses.cam.x+vw+.05 || wy < ses.cam.y-.05 || wy > ses.cam.y+vh+.05) continue;
+      if (onLand(wx, wy)) continue;   // glints belong to the sea
+      const tw = .5 + .5*Math.sin(t/800 + i*2.3);
+      ctx.fillStyle = 'rgba(190,240,245,' + (.08 + .22*tw).toFixed(3) + ')';
+      ctx.fillRect(NX(wx)-wss, NY(wy)-wss/2, wss*2, wss);   // a glint dash, wider than tall
+    }
+  }
+  /* ===== BRIDGES: plank causeways, drawn before the isles so the discs
+     cap their landings. ===== */
+  for (const s of [BRIDGE_A, BRIDGE_B]){
+    const ax = s.x1 - s.ux*.07, ay = s.y1 - s.uy*.07, bx = s.x2 + s.ux*.07, by = s.y2 + s.uy*.07;
+    const x1 = NX(ax), y1 = NY(ay), x2 = NX(bx), y2 = NY(by);
+    const ang = Math.atan2(y2-y1, x2-x1), len = Math.hypot(x2-x1, y2-y1), wdt = BRIDGE_W*u;
+    ctx.save(); ctx.translate(x1, y1); ctx.rotate(ang);
+    ctx.fillStyle = '#a06a35'; ctx.fillRect(0, -wdt/2, len, wdt);
+    ctx.fillStyle = 'rgba(0,0,0,.13)';
+    for (let d = .05*u; d < len; d += .11*u) ctx.fillRect(d, -wdt/2, 2, wdt);   // plank seams
+    ctx.fillStyle = '#7a4d16';
+    ctx.fillRect(0, -wdt/2 - 2, len, 5); ctx.fillRect(0, wdt/2 - 3, len, 5);   // twin rails
+    ctx.restore();
+  }
+  /* ===== THE ISLES: sand disc (shore tile if loaded), grass heart
+     (the grass tile, clipped), a wet rim, and a breathing foam edge. */
+  const gtile = WORLD_IMGS['tile-grass'], stile = WORLD_IMGS['tile-sand'];
+  for (const I of ISLES){
+    if (I.cx + I.r < ses.cam.x || I.cx - I.r > ses.cam.x + vw || I.cy + I.r < ses.cam.y || I.cy - I.r > ses.cam.y + vh) continue;   // off-view isle
+    const cx = NX(I.cx), cy = NY(I.cy);
+    // soft shadow in the water just off the shore: grounds the isle
+    ctx.strokeStyle = 'rgba(4,50,60,.20)'; ctx.lineWidth = .055*u;
+    ctx.beginPath(); ctx.arc(cx, cy, (I.r + .028)*u, 0, 7); ctx.stroke();
+    // sand disc
+    if (imgOk(stile)){
+      ctx.save();
+      ctx.beginPath(); ctx.arc(cx, cy, I.r*u, 0, 7); ctx.clip();
+      const ts = .55*u;
+      for (let tx = Math.floor((I.cx - I.r)/.55); tx <= Math.floor((I.cx + I.r)/.55); tx++)
+        for (let ty = Math.floor((I.cy - I.r)/.55); ty <= Math.floor((I.cy + I.r)/.55); ty++)
+          ctx.drawImage(stile, NX(tx*.55), NY(ty*.55), ts+1, ts+1);
+      ctx.restore();
+    } else {
+      ctx.fillStyle = '#e8d49a';
+      ctx.beginPath(); ctx.arc(cx, cy, I.r*u, 0, 7); ctx.fill();
+    }
+    // wet rim where the sea worries the sand
+    ctx.strokeStyle = 'rgba(160,125,70,.35)'; ctx.lineWidth = .025*u;
+    ctx.beginPath(); ctx.arc(cx, cy, (I.r - .012)*u, 0, 7); ctx.stroke();
+    // grass heart
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, (I.r - SHORE)*u, 0, 7); ctx.clip();
+    if (imgOk(gtile)){
+      const ts = .55*u;
+      for (let tx = Math.floor((I.cx - I.r)/.55); tx <= Math.floor((I.cx + I.r)/.55); tx++)
+        for (let ty = Math.floor((I.cy - I.r)/.55); ty <= Math.floor((I.cy + I.r)/.55); ty++)
+          ctx.drawImage(gtile, NX(tx*.55), NY(ty*.55), ts+1, ts+1);
+    } else {
+      const g=ctx.createLinearGradient(0, cy - I.r*u, 0, cy + I.r*u); g.addColorStop(0,'#8fd06e'); g.addColorStop(1,'#69b84e');
+      ctx.fillStyle=g; ctx.fillRect(cx - I.r*u, cy - I.r*u, 2*I.r*u, 2*I.r*u);
+      ctx.fillStyle='rgba(255,255,255,.05)';
+      for (let wx = Math.ceil(I.cx - I.r); wx < I.cx + I.r; wx++) if (((wx%2)+2)%2===0) ctx.fillRect(NX(wx), cy - I.r*u, u, 2*I.r*u);
+    }
+    ctx.restore();
+    // foam edge, breathing on the swell
+    ctx.strokeStyle = 'rgba(255,255,255,' + (.28 + .13*Math.sin(t/900 + I.zone*2.1)).toFixed(3) + ')';
+    ctx.lineWidth = Math.max(2, .020*u);
+    ctx.beginPath(); ctx.arc(cx, cy, (I.r + .012)*u, 0, 7); ctx.stroke();
+  }
+  // flowers (only those in view, and only on land): tiny pixel squares
   for (const f of FLOWERS){
     if (f.x<ses.cam.x-.1 || f.x>ses.cam.x+vw+.1 || f.y<ses.cam.y-.1 || f.y>ses.cam.y+vh+.1) continue;
+    if (!onLand(f.x, f.y)) continue;   // no flowers bloom in the sea
     const fs = f.s*1.5, fx = NX(f.x) + windAt(f.x, f.y, t) * .003 * u, fy = NY(f.y);   // flower heads nod in the wind (half-strength offset, no stem to bend)
     ctx.fillStyle=f.c; ctx.fillRect(fx-fs/2, fy-fs/2, fs, fs);
     ctx.fillStyle='rgba(176,120,20,.9)'; ctx.fillRect(fx-.8, fy-.8, 1.6, 1.6);   // pollen centre pixel
   }
-  // zone rings: the WILDS side darkens out past r=2.1, the MEADOW glows warm inside r=1.1
-  ctx.fillStyle='rgba(40,80,40,.10)';
-  ctx.beginPath(); ctx.arc(NX(WORLD/2), NY(WORLD/2), 2.1*u, 0, 7); ctx.fill();
-  ctx.fillStyle='rgba(255,255,220,.07)';
-  ctx.beginPath(); ctx.arc(NX(WORLD/2), NY(WORLD/2), 1.1*u, 0, 7); ctx.fill();
   /* TOWN PLAZA: a sandy disc (r = TOWN_R) under the town — seeded pixel
      speckles (hash of the 0.06u grid cell, one jittered square per cell)
      and a boundary ring of two-tone stone blocks every ~0.085u, so the
-     safe zone reads at a glance. Drawn over the grass + zone tints. */
+     safe zone reads at a glance. Drawn over the grass. */
   {
-    const cx = NX(WORLD/2), cy = NY(WORLD/2), R = TOWN_R*u;
+    const cx = NX(TOWN.x), cy = NY(TOWN.y), R = TOWN_R*u;
     ctx.fillStyle = '#ecd9a2';
     ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.fill();
     // soft edge shadow just outside the disc: grounds the plaza on the grass
     ctx.strokeStyle = 'rgba(0,0,0,.10)'; ctx.lineWidth = Math.max(2, .016*u);
     ctx.beginPath(); ctx.arc(cx, cy, R + .009*u, 0, 7); ctx.stroke();
     const cell = .06, ss = Math.max(2, Math.round(u*.0035));   // speckle square ~2-4px
-    const gx0 = Math.max(0, Math.floor((WORLD/2 - TOWN_R)/cell)), gx1 = Math.min(WORLD/cell, Math.ceil((WORLD/2 + TOWN_R)/cell));
-    const gy0 = Math.max(0, Math.floor((WORLD/2 - TOWN_R)/cell)), gy1 = Math.min(WORLD/cell, Math.ceil((WORLD/2 + TOWN_R)/cell));
+    const gx0 = Math.max(0, Math.floor((TOWN.x - TOWN_R)/cell)), gx1 = Math.min(WORLD/cell, Math.ceil((TOWN.x + TOWN_R)/cell));
+    const gy0 = Math.max(0, Math.floor((TOWN.y - TOWN_R)/cell)), gy1 = Math.min(WORLD/cell, Math.ceil((TOWN.y + TOWN_R)/cell));
     for (let gx=gx0; gx<gx1; gx++) for (let gy=gy0; gy<gy1; gy++){
       const wx = (gx+.5)*cell, wy = (gy+.5)*cell;
       if (wx < ses.cam.x-.1 || wx > ses.cam.x+vw+.1 || wy < ses.cam.y-.1 || wy > ses.cam.y+vh+.1) continue;   // view cull
       const hs = Math.sin(gx*127.1 + gy*311.7)*43758.5453, hf = hs - Math.floor(hs);
       if (hf > .85) continue;   // most cells get a speckle, a few stay clean
       const jx = (hf*7.13 - Math.floor(hf*7.13) - .5)*cell*.7, jy = (hf*3.71 - Math.floor(hf*3.71) - .5)*cell*.7;
-      if (Math.hypot(wx+jx - WORLD/2, wy+jy - WORLD/2) > TOWN_R - .02) continue;   // keep speckles on the disc
+      if (Math.hypot(wx+jx - TOWN.x, wy+jy - TOWN.y) > TOWN_R - .02) continue;   // keep speckles on the disc
       ctx.fillStyle = hf < .42 ? '#ddc78c' : '#f6e7ba';
       ctx.fillRect(NX(wx+jx)-ss/2, NY(wy+jy)-ss/2, ss, ss);
     }
     const nb = Math.round(2*Math.PI*TOWN_R/.085), bs = .045*u;
     for (let i=0; i<nb; i++){
-      const a = i/nb*Math.PI*2, bx = WORLD/2 + Math.cos(a)*TOWN_R, by = WORLD/2 + Math.sin(a)*TOWN_R;
+      const a = i/nb*Math.PI*2, bx = TOWN.x + Math.cos(a)*TOWN_R, by = TOWN.y + Math.sin(a)*TOWN_R;
       if (bx < ses.cam.x-.1 || bx > ses.cam.x+vw+.1 || by < ses.cam.y-.1 || by > ses.cam.y+vh+.1) continue;
       ctx.fillStyle = i%2 ? '#a89f92' : '#c2bab0';
       ctx.fillRect(NX(bx)-bs/2, NY(by)-bs/2, bs, bs);
@@ -5625,44 +5908,20 @@ function drawField(t){
   drawTufts(t);
   // ponds only -- flat ground decals (trees/rocks live in the y-sorted entity pass)
   drawPonds(t);
-  /* THE BLOOM (stage 4): once the local player's Cycle is complete, the
-     meadow wears golden speckles for good — seeded twinkling squares
-     scattered inside r=2.2 of the centre, view-culled like the flowers. */
+  /* THE BLOOM (stage 4): once the local player's Cycle is complete,
+     Verdant Isle wears golden speckles for good — seeded twinkling
+     squares scattered over Isle 1's disc, view-culled like the flowers. */
   if (prog().story && prog().story.complete){
-    const bss = Math.max(2, Math.round(u*.004));
+    const bss = Math.max(2, Math.round(u*.004)), I0 = ISLES[0];
     for (let i=0;i<150;i++){
-      const ba = hash01(i*3.17)*Math.PI*2, br = Math.sqrt(hash01(i*7.71))*2.2;
-      const wx = WORLD/2 + Math.cos(ba)*br, wy = WORLD/2 + Math.sin(ba)*br;
+      const ba = hash01(i*3.17)*Math.PI*2, br = Math.sqrt(hash01(i*7.71)) * (I0.r - .05);
+      const wx = I0.cx + Math.cos(ba)*br, wy = I0.cy + Math.sin(ba)*br;
       if (wx < ses.cam.x-.05 || wx > ses.cam.x+vw+.05 || wy < ses.cam.y-.05 || wy > ses.cam.y+vh+.05) continue;
       ctx.fillStyle = 'rgba(255,205,80,' + (.5 * (.55 + .45*Math.sin(t/600 + i*1.7))).toFixed(3) + ')';
       ctx.fillRect(NX(wx)-bss/2, NY(wy)-bss/2, bss, bss);
     }
   }
-  // world border fence: chunky pixel posts + twin rails
-  {
-    const x0=NX(0), y0=NY(0), x1=NX(WORLD), y1=NY(WORLD), rail=6;
-    ctx.fillStyle='#a06a35';
-    ctx.fillRect(x0-rail/2, y0-rail/2, x1-x0+rail, rail);
-    ctx.fillRect(x0-rail/2, y1-rail/2, x1-x0+rail, rail);
-    ctx.fillRect(x0-rail/2, y0-rail/2, rail, y1-y0+rail);
-    ctx.fillRect(x1-rail/2, y0-rail/2, rail, y1-y0+rail);
-    ctx.fillStyle='#7a4d16';
-    const ps=Math.max(6, .03*u);
-    // posts are view-culled: the full border is ~270 fillRects a frame,
-    // but only the stretch inside the viewport can ever be seen
-    const topVis = y0 > -ps && y0 < H + ps, botVis = y1 > -ps && y1 < H + ps;
-    const leftVis = x0 > -ps && x0 < W + ps, rightVis = x1 > -ps && x1 < W + ps;
-    for (let wx=0; wx<=WORLD+.001; wx+=.09){
-      if (wx < ses.cam.x-.1 || wx > ses.cam.x+vw+.1) continue;
-      if (topVis) ctx.fillRect(NX(wx)-ps/2, y0-ps/2, ps, ps);
-      if (botVis) ctx.fillRect(NX(wx)-ps/2, y1-ps/2, ps, ps);
-    }
-    for (let wy=.09; wy<WORLD; wy+=.09){
-      if (wy < ses.cam.y-.1 || wy > ses.cam.y+vh+.1) continue;
-      if (leftVis) ctx.fillRect(x0-ps/2, NY(wy)-ps/2, ps, ps);
-      if (rightVis) ctx.fillRect(x1-ps/2, NY(wy)-ps/2, ps, ps);
-    }
-  }
+  /* The world-edge fence is GONE: the sea is the boundary now. */
 }
 /* Bank & shop buildings in the Meadow near spawn — chunky canvas landmarks
    (~.3 units wide) with ground pads, drawn after decor, before slimes. */
@@ -5822,6 +6081,41 @@ function drawNPC(e, t){
    WON shrine — its Sigil taken, in progress.story.shrinesDone — glows
    for good: a halo in the shrine's tint breathing behind the crystal,
    plus the slow sparkles the frame loop sheds for it. */
+/* ROT BARRIER (archipelago): a shimmering wall of dark vines across the
+   bridge strip at its far rim — strands run perpendicular to the
+   causeway, swaying with the wind field, threaded with rot-violet
+   motes. Drawn shapes only (no state): the shimmer is a pure function
+   of the clock, like everything else in the render pass. */
+function drawBarrier(b, t){
+  const u = UNIT();
+  const x = NX(b.x), y = NY(b.y);
+  const px = -b.seg.uy, py = b.seg.ux;   // unit perpendicular to the strip
+  ctx.fillStyle = 'rgba(0,0,0,.18)';
+  ctx.beginPath(); ctx.ellipse(x, y + .03*u, BRIDGE_W*.62*u, .05*u, 0, 0, 7); ctx.fill();
+  const strands = 7;
+  for (let i=0;i<strands;i++){
+    const off = (i/(strands-1) - .5) * BRIDGE_W;   // across the strip
+    const bx = x + px*off*u, by = y + py*off*u;
+    const sway = Math.sin(t/700 + i*1.37 + b.x*3) * .012*u;
+    const hgt = (.24 + .05*Math.sin(i*2.39)) * u;
+    ctx.strokeStyle = i % 2 ? '#3d2b52' : '#2e4034';
+    ctx.lineWidth = Math.max(2.5, .016*u);
+    ctx.beginPath();
+    ctx.moveTo(bx, by + .03*u);
+    ctx.quadraticCurveTo(bx + sway, by - hgt*.55, bx + sway*1.7, by - hgt);
+    ctx.stroke();
+    // a rot mote rides each strand's tip, pulsing
+    ctx.fillStyle = 'rgba(178,128,255,' + (.45 + .35*Math.sin(t/430 + i*2.1)).toFixed(3) + ')';
+    const ms = Math.max(2, .008*u);
+    ctx.fillRect(bx + sway*1.7 - ms/2, by - hgt - ms/2, ms, ms);
+  }
+  // thorn bar across the middle, so the wall reads as ONE barrier
+  ctx.strokeStyle = 'rgba(46,32,66,.85)'; ctx.lineWidth = Math.max(2, .010*u);
+  ctx.beginPath();
+  ctx.moveTo(x - px*BRIDGE_W*.52*u, y - py*BRIDGE_W*.52*u - .13*u);
+  ctx.lineTo(x + px*BRIDGE_W*.52*u, y + py*BRIDGE_W*.52*u - .13*u);
+  ctx.stroke();
+}
 function drawShrine(key, t){
   const u = UNIT(), pos = SHRINE_POS[key];
   const x = NX(pos.x), yBot = NY(pos.y) + .10*u;
@@ -6099,7 +6393,7 @@ function drawSlime(s,t){
   if (s.elite) drawEliteAura(x, y + rY, baseR, s.seed, t);   // aura under the body, at its ground contact
   // ground shadow (the vector fallback had none — the sprite path does);
   // same plaza boost as drawVideoSlime: pale sand needs a darker shadow
-  ctx.fillStyle = 'rgba(0,0,0,' + (Math.hypot(s.x-WORLD/2, s.y-WORLD/2) < TOWN_R ? .27 : .16) + ')';
+  ctx.fillStyle = 'rgba(0,0,0,' + (Math.hypot(s.x-TOWN.x, s.y-TOWN.y) < TOWN_R ? .27 : .16) + ')';
   ctx.beginPath(); ctx.ellipse(x, y + rY*.82, rX*.85, rY*.26, 0, 0, 7); ctx.fill();
   ctx.save(); ctx.translate(x,y);
   // body
@@ -6217,6 +6511,14 @@ function drawEntities(t){
     ents.push({ baseY:p.y + .10, kind:'shrine', key });
     occluders.push({ cx:p.x, hw:.21, top:p.y + .10 - .34, baseY:p.y + .10 });
   }
+  // ROT BARRIERS (archipelago): a locked bridge's vine wall joins the
+  // depth order at its base; an open bridge has no barrier to draw
+  for (const b of BARRIERS){
+    if (bridgeOpen(b.isle + 1)) continue;
+    if (b.x<ses.cam.x-.55 || b.x>ses.cam.x+vw+.55 || b.y<ses.cam.y-.55 || b.y>ses.cam.y+vh+.55) continue;   // view-culled
+    ents.push({ baseY:b.y + .04, kind:'barrier', b });
+    occluders.push({ cx:b.x, hw:BRIDGE_W/2, top:b.y - .30, baseY:b.y + .04 });
+  }
   // unfound sproutlings join too (found ones are gone for this player)
   {
     const st = prog().story;
@@ -6273,6 +6575,7 @@ function drawEntities(t){
     else if (e.kind === 'bld') drawBuildings(e.b.key);
     else if (e.kind === 'npc') drawNPC(e, t);
     else if (e.kind === 'shrine') drawShrine(e.key, t);
+    else if (e.kind === 'barrier') drawBarrier(e.b, t);
     else if (e.kind === 'sprout') drawSprout(e.sp, t);
     else if (e.kind === 'node') drawNode(e.n, t);
     else if (e.kind === 'orb') drawOrb(e.b, t);
