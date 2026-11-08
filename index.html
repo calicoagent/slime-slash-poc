@@ -1230,6 +1230,9 @@ const freshWorld = () => ({
   bossEnraged: false,        // host: ENRAGE latch (boss at <=30% HP) — fire interval x0.75, orb speeds x1.15, one-way
   bossFury: false,           // host: FINAL FURY latch (boss at <=10% HP) — fire interval x0.6 (stacks), orb speeds x1.3, one-way
   bossSummonAt: 0,           // host: next minion summon while the Emperor lives (every 20s)
+  guardianFireAt: 0,         // host: next guardian orb volley (stage 4 shrine guardians)
+  guardianSummonAt: 0,       // host: next Thorn Regent minion summon
+  guardianPatternIdx: 0,     // host: Rotbloom Colossus pattern alternation (ring -> fan -> ring)
   hitClaimsAt: new Map(),    // host-side hit rate limiting: 'player|target' -> last accepted claim time
   hitPruneAt: 0,             // host: last hitClaimsAt prune
   // host broadcast
@@ -1280,6 +1283,11 @@ const freshSession = () => ({
   myZone: -1,                // current zone ring (banner fires on change; -1 = unset)
   nearBuilding: null,        // 'bank' | 'shop' | 'hospital' | null — drives the interact prompt
   nearNpc: null,             // NPC id currently winning the interact prompt (session only)
+  nearShrine: null,          // shrine key currently winning the interact prompt (stage 4; session only)
+  nearSprout: null,          // sproutling id currently winning the interact prompt (stage 4; session only)
+  endingQueue: null,         // ending chapter cards waiting to play in sequence (stage 4)
+  endingPlayed: false,       // the ending sequence has played for this completion (reset when a new cycle begins)
+  petalAt: 0,                // post-ending bloom: next drifting-petal emit time
   dialogue: null,            // open NPC dialogue { npc, lines, i, lineAt, choiceAfter, choosing, choiceSel } — session only
   npcTalkCounts: {},         // per-NPC count of conversations started (rotating line sets) — session only
   dlgAdvance: null,          // dialogue/card advance hook (RPG layer sets this); E routes to it FIRST when set
@@ -1418,10 +1426,36 @@ const QUESTS = [
 const SPROUT_QUEST = { id:'sprouts', chapter:'SIDE TALE', title:'Three Lost Sproutlings',
   summary:'The Child\'s three sproutlings came home, and the grove remembers kindness.',
   rewards:{ coins:120, relic:'sprout' } };
+/* ---- stage 4: shrines + guardians (static data; runtime lives in the
+   world slice, story progress in progress.story). Positions by distance
+   from the world centre (WORLD/2, WORLD/2): Meadow .95u east (on the
+   plaza's eastern rim — the Warden is BOUND to its shrine, exempt from
+   the town clamp, and its ground is contested: see damagePlayer),
+   Grove 1.7u north-west, Wilds 2.7u south-east. All three spots sit
+   clear of the buildings; DECOR keeps .27u+ off buildings and the
+   meadow spot is inside the decor exclusion ring around the centre. */
+const SHRINE_POS = {
+  meadow: { x: WORLD/2 + .95,   y: WORLD/2 },
+  grove:  { x: WORLD/2 - 1.202, y: WORLD/2 - 1.202 },
+  wilds:  { x: WORLD/2 + 2.068, y: WORLD/2 + 1.736 },   // 2.7u at 40° — the one SE bearing with real DECOR clearance (.43u; due-SE had a tree at .28u)
+};
+/* Guardian configs: base HP scales in spawnGuardian by
+   (1 + .20 x max(0, topLevel-8)) x (1 + .5 x story.cycles) — the same
+   topLevel the Emperor reads. vis = rendered size factor (drawSlime);
+   chase = steering speed multiplier in the host sim; pattern picks the
+   orb repertoire: warden rings, regent fans + dart summons, colossus
+   alternating fat rings and fans (and a splitter's death, into mids). */
+const GUARDIANS = {
+  meadow: { name:'VERDANT WARDEN',    hp:900,  r:.088, color:'#7ee787', vis:1.15, chase:.8,  fireMs:3000, pattern:'ring',     aura:'rgba(46,125,50,' },
+  grove:  { name:'THORN REGENT',      hp:1600, r:.100, color:'#7ee787', vis:1.30, chase:1.6, fireMs:2600, pattern:'fan',      aura:'rgba(21,127,116,', summonMs:12000 },
+  wilds:  { name:'ROTBLOOM COLOSSUS', hp:2400, r:.115, color:'#c39bff', vis:1.25, chase:.7,  fireMs:2800, pattern:'colossus', aura:'rgba(120,60,180,' },
+};
 const freshStory = () => ({
   quest:'prologue', step:0, objHave:0,       // current chain quest + objective index + counted progress
   sigils:0, cycles:0, complete:false,        // Sigils held, New Cycle+ count, finale done
   sprouts:0, sproutsDone:false,              // side tale: sproutlings found (of 3) + returned
+  sproutsFound:[],                           // stage 4: WHICH sproutling spots are collected (ids into SPROUT_SPOTS)
+  shrinesDone:[],                            // stage 4: shrines whose Sigil is won — their crystals glow for good
   cardSeen:false,                            // prologue chapter card shown (fires once, ever)
   relicsOwned:[], relicsEquipped:[],         // RELICS ids; equipped capped at 2
 });
@@ -1557,6 +1591,8 @@ const store = createStore((set, get) => {
           step: clamp(s.step|0, 0, 8), objHave: Math.max(0, s.objHave|0),
           sigils: clamp(s.sigils|0, 0, 3), cycles: Math.max(0, s.cycles|0), complete: !!s.complete,
           sprouts: clamp(s.sprouts|0, 0, 3), sproutsDone: !!s.sproutsDone, cardSeen: !!s.cardSeen,
+          sproutsFound: Array.isArray(s.sproutsFound) ? [...new Set(s.sproutsFound.filter(id => ['pond','grove','wilds'].includes(id)))] : [],
+          shrinesDone: Array.isArray(s.shrinesDone) ? [...new Set(s.shrinesDone.filter(id => ['meadow','grove','wilds'].includes(id)))] : [],
           relicsOwned: ownedR,
           relicsEquipped: Array.isArray(s.relicsEquipped) ? s.relicsEquipped.filter(id => ownedR.includes(id)).slice(0, 2) : [],
         };
@@ -1598,7 +1634,7 @@ function bladeAt(now){
   return { ang: swordAngleAt(now), ext: 0 };
 }
 /* ---- survival pass state ---- */
-const CONTACT_DMG = { baby:4, dart:4, mid:6, gold:2, metal:5, splitter:7, big:9, tank:13, king:16, boss:26 };
+const CONTACT_DMG = { baby:4, dart:4, mid:6, gold:2, metal:5, splitter:7, big:9, tank:13, king:16, boss:26, guardian:16 };   // guardian: king tier
 const BANK_POS = { x: WORLD/2 - .67, y: WORLD/2 - .54 };
 const SHOP_POS = { x: WORLD/2 + .67, y: WORLD/2 - .54 };
 const HOSPITAL_POS = { x: WORLD/2, y: WORLD/2 + .70 };
@@ -1648,6 +1684,7 @@ const SLIME_KINDS = [
   { kind:'gold',  hp:10,  r:.022, coins:60, xp:30, speed:.026, weight:3,  hopCycle:540,  hopDist:.040 },
   { kind:'metal', hp:14,  r:.024, coins:150,xp:120,speed:.002, weight:3,  hopCycle:430,  hopDist:.044 },   // METAL SLIME — exactly 1 dmg per hit, flees, rich (still the fastest hop)
   { kind:'boss',  hp:4000,r:.14,  coins:1500,xp:1200,speed:.007, weight:0,  hopCycle:1350, hopDist:.045 },   // SLIME EMPEROR — timed host spawn only, never random
+  { kind:'guardian', hp:900, r:.085, coins:90, xp:120, speed:.006, weight:0, hopCycle:1000, hopDist:.034 },   // SHRINE GUARDIAN (stage 4) — shrine-summoned only; hp/r/rewards overridden per guardian in spawnGuardian (coins/xp are the KING's: mul 3 pays king x3)
 ];
 /* Hop phase is a pure function of (slime, now) so host and every client
    render the same crouch/air/land timing with NO extra sync. The seed is
@@ -1801,12 +1838,32 @@ function hostTick(now,dt){
       else if (d > .85){ s.dir = away + Math.PI; mult *= 1.8; }
       else { s.dir = away + Math.PI/2 * (s.seed > .5 ? 1 : -1); mult *= .8; }
     }
+    if (s.kind==='guardian'){
+      /* SHRINE GUARDIAN (stage 4): hunts the nearest player like a King,
+         but LEASHED to its shrine — stray past 1.05u of home and it turns
+         back. The Warden's shrine stands on the town plaza's rim, so
+         guardians are also exempt from the town steering + hard clamp
+         below (bound wardens, not feral slimes); damagePlayer carries
+         the matching contested-ground rule for the player. */
+      const home = SHRINE_POS[s.guardian] || { x:s.x, y:s.y };
+      if (Math.hypot(s.x-home.x, s.y-home.y) > 1.05){ s.dir = Math.atan2(home.y-s.y, home.x-s.x); mult *= 1.2; }
+      else {
+        let bx=me.x, by=me.y, bd=dist2(s.x,s.y,me.x,me.y);
+        for (const p of world.peers.values()){
+          const px=(p.tx!==undefined?p.tx:p.x), py=(p.ty!==undefined?p.ty:p.y);
+          const d=dist2(s.x,s.y,px,py);
+          if (d<bd){ bd=d; bx=px; by=py; }
+        }
+        s.dir = Math.atan2(by-s.y, bx-s.x);
+        mult *= (GUARDIANS[s.guardian] ? GUARDIANS[s.guardian].chase : 1);
+      }
+    }
     /* TOWN SAFE ZONE — steering half: inside TOWN_R + .17 of the centre,
        whatever a slime was doing (hunting, fleeing, kiting), it turns and
        hops radially OUT. The positional half — the hard clamp that makes
        this a guarantee rather than an intention — runs after the hop. */
     const townD = Math.hypot(s.x-WORLD/2, s.y-WORLD/2);
-    if (townD < TOWN_R + .17) s.dir = Math.atan2(s.y-WORLD/2, s.x-WORLD/2);
+    if (s.kind !== 'guardian' && townD < TOWN_R + .17) s.dir = Math.atan2(s.y-WORLD/2, s.x-WORLD/2);
     /* HOP LOCOMOTION: slimes never glide. Steering above only chooses s.dir;
        translation happens ONLY inside the hop cycle's air window, at
        hopDist per hop (steering multiplier applied). Grounded = planted. */
@@ -1824,7 +1881,7 @@ function hostTick(now,dt){
        zone — so kings and the Emperor could sit in the plaza for hops at
        a time. This clamp leaves a .12u enemy-free moat past the plaza. */
     const clampD = Math.hypot(s.x-WORLD/2, s.y-WORLD/2), MIN_TOWN_D = TOWN_R + .12;
-    if (clampD < MIN_TOWN_D){
+    if (s.kind !== 'guardian' && clampD < MIN_TOWN_D){
       const push = MIN_TOWN_D / (clampD || 1e-4);
       s.x = WORLD/2 + (s.x-WORLD/2)*push; s.y = WORLD/2 + (s.y-WORLD/2)*push;
     }
@@ -1924,6 +1981,11 @@ function hostTick(now,dt){
       boss.bOrb = Math.round(12 + Math.min(8, 0.4 * Math.max(0, topLevel - 12)));    // orb damage 12 -> 20 max
       boss.bCon = Math.round(26 + Math.min(10, 0.5 * Math.max(0, topLevel - 12)));   // contact damage 26 -> 36 max
       boss.guardUntil = 0; boss.guard66 = false; boss.guard33 = false;   // ROYAL GUARD latches start unset
+      /* CHAOS EMPEROR (stage 4 finale): when the HOST's own finale
+         objective is open, this spawn is the final form — HP x1.25 on
+         top of the level scale, fire intervals x0.8 (below). The name +
+         aura are local story state on every client (bossIsChaos). */
+      if (bossIsChaos()){ boss.chaos = true; boss.max = boss.hp = Math.round(boss.max * 1.25); }
     }
   }
   if (boss){
@@ -1959,7 +2021,7 @@ function hostTick(now,dt){
     }
     if (!world.bossFireAt) world.bossFireAt = now + 1200;
     if (now >= world.bossFireAt){
-      world.bossFireAt = now + 1250 * (world.bossEnraged ? .75 : 1) * (world.bossFury ? .6 : 1);   // enrage x0.75 (~0.94s), FINAL FURY x0.6 on top
+      world.bossFireAt = now + 1250 * (world.bossEnraged ? .75 : 1) * (world.bossFury ? .6 : 1) * (boss.chaos ? .8 : 1);   // enrage x0.75 (~0.94s), FINAL FURY x0.6 on top, CHAOS EMPEROR x0.8
       const p = ['ring','fan','burst','spiral','spread'][world.bossPatternIdx++ % 5];
       const sm = (world.bossEnraged ? 1.15 : 1) * (world.bossFury ? 1.3 : 1);   // orb-speed multipliers, carried on every pattern payload
       let payload;
@@ -1989,6 +2051,51 @@ function hostTick(now,dt){
       if (world.sendBoss && hasPeers()){ try { world.sendBoss(payload); } catch(e){} }   // broadcast is best-effort; a dead channel must not kill the volley
     }
   } else if (!boss) world.bossFireAt = 0;
+  /* ---- SHRINE GUARDIAN (stage 4): orb patterns on the Emperor's own
+     machinery — pattern events ride the 'boss' channel and every client
+     sims the orbs locally via bossEvent. Only ring/fan are used: their
+     payloads carry the firing position, while spread/burst/spiral are
+     re-anchored to bossAt() on each client (the Emperor's body). ---- */
+  {
+    const grds = [...world.slimes.values()].filter(s=>s.kind==='guardian');
+    if (grds.length > 1) for (let i=1;i<grds.length;i++) world.slimes.delete(grds[i].id);   // ONE guardian at a time — purge duplicates
+    const grd = grds[0];
+    if (grd){
+      const cfg = GUARDIANS[grd.guardian] || GUARDIANS.meadow;
+      if (!world.guardianFireAt) world.guardianFireAt = now + 1200;
+      if (now >= world.guardianFireAt){
+        world.guardianFireAt = now + cfg.fireMs;
+        let payload;
+        const fanPayload = () => {
+          let bx=me.x, by=me.y, bd=dist2(grd.x,grd.y,me.x,me.y);
+          for (const pp of world.peers.values()){
+            const px=(pp.tx!==undefined?pp.tx:pp.x), py=(pp.ty!==undefined?pp.ty:pp.y);
+            const d=dist2(grd.x,grd.y,px,py);
+            if (d<bd){ bd=d; bx=px; by=py; }
+          }
+          return { p:'fan', x:+grd.x.toFixed(3), y:+grd.y.toFixed(3), at:now, aim:+Math.atan2(by-grd.y, bx-grd.x).toFixed(3), sm:1 };
+        };
+        if (cfg.pattern === 'ring') payload = { p:'ring', x:+grd.x.toFixed(3), y:+grd.y.toFixed(3), at:now, n:10, spd:.30, sm:1 };
+        else if (cfg.pattern === 'fan') payload = fanPayload();
+        else payload = (world.guardianPatternIdx++ % 2 === 0)   // COLOSSUS: fat ring, then a fan, then a ring...
+          ? { p:'ring', x:+grd.x.toFixed(3), y:+grd.y.toFixed(3), at:now, n:14, spd:.30, sm:1 }
+          : fanPayload();
+        bossEvent(payload);   // local sim first, network second — the Emperor's rule
+        if (world.sendBoss && hasPeers()){ try { world.sendBoss(payload); } catch(e){} }
+      }
+      // THORN REGENT summons: 2 darts to its side every summonMs
+      if (cfg.summonMs){
+        if (!world.guardianSummonAt) world.guardianSummonAt = now + cfg.summonMs;
+        else if (now >= world.guardianSummonAt){
+          world.guardianSummonAt = now + cfg.summonMs;
+          for (let i=0;i<2;i++)
+            spawnSlime({ kind:'dart', x:clamp(grd.x+rand(-.22,.22), .06, WORLD-.06), y:clamp(grd.y+rand(-.22,.22), .1, WORLD-.06) });
+          addFloat(grd.x, grd.y-.2, 'THE REGENT CALLS!', '#8affd1', { big:true });
+          broadcastWorld();   // minions ride the normal slime sync
+        }
+      }
+    } else { world.guardianFireAt = 0; world.guardianSummonAt = 0; }
+  }
   /* hitClaimsAt hygiene: one key per (player, slime) and per (player,
      rock) ever claimed, ids never reused — it grew for the whole host
      reign. Only the last 60ms of a key matters (anti-spam window), so
@@ -2073,7 +2180,7 @@ function minedFx(d){
 }
 function worldPayload(){
   const boss = [...world.slimes.values()].find(s=>s.kind==='boss');
-  return { s:[...world.slimes.values()].map(s=>[s.id, +s.x.toFixed(3), +s.y.toFixed(3), Math.ceil(s.hp), s.max, s.kind, s.color, +s.dir.toFixed(2), Math.round((s.mul||1)*100)/100, s.elite?1:0]),
+  return { s:[...world.slimes.values()].map(s=>[s.id, +s.x.toFixed(3), +s.y.toFixed(3), Math.ceil(s.hp), s.max, s.kind, s.color, +s.dir.toFixed(2), Math.round((s.mul||1)*100)/100, s.elite?1:0, s.guardian||'']),
            n:[...world.nodes.values()].map(n=>[n.id, +n.x.toFixed(3), +n.y.toFixed(3), n.t, n.left]),
            sc: world.scores, h: world.hostId,
            /* Emperor scaling block: clients evaluate orb + contact damage
@@ -2088,14 +2195,19 @@ function applyWorld(p){
   for (const a of p.s){
     const [id,x,y,hp,max,kind,color,dir] = a; seen.add(id);
     const mul = a[8]!==undefined ? +a[8] : 1, elite = a[9]===1;   // appended fields (old payloads default safely)
+    const grdKey = a[10] || '';   // stage 4: a guardian's shrine key rides appended, like mul/elite
     const old = world.slimes.get(id);
     if (old){
       if (hp < old.hp){ old.squish=1; old.flash=1; old.flinchUntil=performance.now()+220; spawnHitFx(old.x,old.y,old.color,3); }
       old.tx=x; old.ty=y; old.hp=hp; old.dir=dir; old.mul=mul; old.elite=elite;
-      const kk = SLIME_KINDS.find(m=>m.kind===old.kind); if (kk) old.r = kk.r * (elite?1.35:1);
+      if (grdKey) old.guardian = grdKey;
+      const kk = SLIME_KINDS.find(m=>m.kind===old.kind);
+      if (kk) old.r = old.kind==='guardian' && GUARDIANS[old.guardian] ? GUARDIANS[old.guardian].r : kk.r * (elite?1.35:1);
     } else {
       const k = SLIME_KINDS.find(k=>k.kind===kind) || SLIME_KINDS[0];
-      world.slimes.set(id,{id,kind,hp,max,r:k.r*(elite?1.35:1),x,y,tx:x,ty:y,dir,color,seed:seedForId(id),squish:1,flash:0,mul,elite});
+      const ns = {id,kind,hp,max,r:k.r*(elite?1.35:1),x,y,tx:x,ty:y,dir,color,seed:seedForId(id),squish:1,flash:0,mul,elite};
+      if (grdKey){ ns.guardian = grdKey; ns.r = GUARDIANS[grdKey] ? GUARDIANS[grdKey].r : ns.r; }
+      world.slimes.set(id, ns);
     }
   }
   for (const id of [...world.slimes.keys()]) if (!seen.has(id) && !world.isHost) world.slimes.delete(id);
@@ -2496,11 +2608,16 @@ function hostKill(s, byId){
   world.scores[byId] = world.scores[byId] || { name: byId===me.id?prog().name:(world.peers.get(byId)?.name||'Knight'), kills:0 };
   world.scores[byId].kills++;
   const fx = { id:s.id, x:s.x, y:s.y, c:s.color, by:byId, coins, xp, kind:s.kind, elite:!!s.elite, r:s.r };
+  if (s.kind==='guardian' && s.guardian) fx.g = s.guardian;   // stage 4: the killer's client credits the shrine quest off this
   if (world.sendKillFx && hasPeers()) world.sendKillFx(fx);
   onKillFx(fx);
   if (s.kind==='splitter'){   // bursts into two babies where it died
     spawnSlime({ kind:'baby', x:clamp(s.x+rand(-.04,.04), .06, WORLD-.06), y:clamp(s.y+rand(-.04,.04), .1, WORLD-.06) });
     spawnSlime({ kind:'baby', x:clamp(s.x+rand(-.04,.04), .06, WORLD-.06), y:clamp(s.y+rand(-.04,.04), .1, WORLD-.06) });
+  }
+  if (s.kind==='guardian' && s.guardian==='wilds'){   // ROTBLOOM COLOSSUS: the splitter's death, at boss scale — three mids seed from the husk
+    for (let i=0;i<3;i++)
+      spawnSlime({ kind:'mid', x:clamp(s.x+rand(-.07,.07), .06, WORLD-.06), y:clamp(s.y+rand(-.07,.07), .1, WORLD-.06) });
   }
   spawnSlime(); queueWorld();
 }
@@ -2511,6 +2628,7 @@ function onKillFx(f){
   sfx.pop();
   if (f.elite) addFloat(f.x, f.y-.09, 'ELITE DOWN!', '#ffd94d', {big:true});
   if (f.kind==='metal') addFloat(f.x, f.y-.09, 'METAL SLIME DOWN!', '#eef3f7', {big:true});
+  if (f.kind==='guardian' && f.g && GUARDIANS[f.g]) addFloat(f.x, f.y-.09, GUARDIANS[f.g].name + ' DOWN!', '#ffd94d', {big:true});   // stage 4: in-world only — guardians never toast
   if (f.kind==='boss') notify('THE EMPEROR HAS FALLEN!', { type:'king' });
   if (f.by===me.id){
     const now = performance.now();
@@ -2532,6 +2650,18 @@ function onKillFx(f){
     else if (f.kind==='metal') grantGem(2, f.x, f.y);         // 1 gem, floor Rare
     else if (f.elite){ if (Math.random() < .30) grantGem(0, f.x, f.y); }
     else if (Math.random() < .05) grantGem(0, f.x, f.y);
+    /* STAGE 4 story credit — the KILLER's client only (this whole block
+       is by-me): a guardian's fall wakes its Sigil through the engine
+       and marks the shrine done (its crystal glows from then on); the
+       Emperor's fall with the finale objective open IS the finale. */
+    if (f.kind==='guardian' && f.g){
+      act.setStory(st => st.shrinesDone.includes(f.g) ? {} : { shrinesDone: [...st.shrinesDone, f.g] });
+      storyEvent('guardian', { shrine: f.g });
+    }
+    if (f.kind==='boss' && bossIsChaos()){
+      storyEvent('emperorFinale');
+      if (prog().story.complete && !ses.endingPlayed){ ses.endingPlayed = true; playEnding(); }
+    }
     gainXp(f.xp); sfx.coin();
     addFloat(f.x, f.y-.04, '+'+cg+' coins', '#ffd94d');
     if (f.kind==='king'){ bubble('KING SLAYER!', me.x, me.y); }
@@ -3071,7 +3201,14 @@ function damagePlayer(amount, now){
   if (!$('#bankPanel').classList.contains('hidden') || !$('#shopPanel').classList.contains('hidden') ||
       !$('#hospitalPanel').classList.contains('hidden') || !$('#menuPanel').classList.contains('hidden') ||
       !$('#chapterCard').classList.contains('hidden')) return;
-  if (dist2(me.x, me.y, WORLD/2, WORLD/2) < TOWN_R*TOWN_R) return;
+  if (dist2(me.x, me.y, WORLD/2, WORLD/2) < TOWN_R*TOWN_R){
+    /* CONTESTED SHRINE GROUND (stage 4): the Meadow Shrine stands on the
+       plaza's rim and its Warden is bound to it — while a guardian lives
+       and you stand in its shadow (0.65u), the sanctuary does NOT cover
+       you. Everywhere else in town stays absolutely safe, as always. */
+    const grd = guardianAlive();
+    if (!(grd && dist2(me.x, me.y, grd.x, grd.y) < .65*.65)) return;
+  }
   if (now < me.shieldUntil) return;        // Aegis Charm blocks ALL damage
   if (now <= me.invulnUntil) return;
   me.hp -= amount * (1 - (ses.stats.armor || 0));   // Warden's Pauldron relic: -10% damage taken
@@ -3101,6 +3238,90 @@ function death(){
   sfx.die();
   refreshHUD();
 }
+
+/* ============================================================ stage 4: shrines, guardians, finale, ending
+   The last content stage of the Verdance Cycle. Static data lives with
+   the story tables (SHRINE_POS / GUARDIANS); guardian + shrine RUNTIME
+   lives in the world slice (the guardian is a world slime; the host's
+   clocks are world.guardian*); story progress moves ONLY through the
+   stage-2 engine (storyEvent) plus act.setStory for the per-shrine /
+   per-sprout found flags. Announcements: guardians NEVER toast — the
+   awakening and the fall are in-world floats, and the fight rides the
+   top boss bar. The Emperor's toasts stay the Emperor's. */
+function guardianAlive(){ for (const s of world.slimes.values()) if (s.kind==='guardian') return s; return null; }
+/* The finale form is a LOCAL story state: for the player whose finale
+   objective is open, the Emperor IS the Chaos Emperor (name + aura on
+   this client; HP/fire scale applied by the host when the HOST's own
+   finale is open — in solo those are the same blade). */
+function bossIsChaos(){ const o = currentObjective(); return !!o && o.type === 'emperorFinale'; }
+function shrineDone(key){ const st = prog().story; return !!st && st.shrinesDone.includes(key); }
+/* HOST: raise the guardian bound to a shrine — ONE at a time, world-wide.
+   HP scale: base x (1 + .20 x max(0, topLevel-8)) x (1 + .5 x cycles),
+   topLevel read exactly like the Emperor's (strongest blade present). */
+function spawnGuardian(shrine){
+  if (!world.isHost || guardianAlive()) return null;
+  const cfg = GUARDIANS[shrine], pos = SHRINE_POS[shrine];
+  if (!cfg || !pos) return null;
+  const s = spawnSlime({ kind:'guardian', x:pos.x, y:pos.y });
+  let topLevel = prog().level;
+  for (const p of world.peers.values()) if (p.level && p.level > topLevel) topLevel = p.level;
+  const scale = (1 + .20 * Math.max(0, topLevel - 8)) * (1 + .5 * (prog().story ? prog().story.cycles : 0));
+  s.guardian = shrine; s.elite = false;               // spawnSlime's elite roll must never touch a guardian
+  s.color = cfg.color; s.r = cfg.r;
+  s.max = s.hp = Math.round(cfg.hp * scale);
+  s.mul = 3;   // hostKill pays the guardian table entry (the King's coins/xp) x mul — a king x3
+  const now = performance.now();
+  world.guardianFireAt = now + 1400; world.guardianSummonAt = now + (cfg.summonMs || 12000); world.guardianPatternIdx = 0;
+  queueWorld(); broadcastWorld();
+  return s;
+}
+/* Any client: the summoning rite. The flare + awakening float happen
+   HERE, on the summoner's screen; the spawn itself is the host's — done
+   directly when host, else requested with a 'wake' packet on the
+   existing 'boss' channel (the host's receiver intercepts it). */
+function summonGuardian(shrine){
+  const cfg = GUARDIANS[shrine], pos = SHRINE_POS[shrine];
+  if (!cfg || !pos || guardianAlive()) return;
+  spawnPopFx(pos.x, pos.y - .05, cfg.color, 26, .03);
+  for (let i=0;i<10;i++) ses.particles.push({ x:pos.x+rand(-.09,.09), y:pos.y+rand(-.02,.06), vx:rand(-.02,.02), vy:rand(-.16,-.06), life:1, color:cfg.color, r:rand(3,6) });
+  capParticles();
+  addFloat(pos.x, pos.y - .26, 'THE ' + cfg.name + ' AWAKENS!', '#ffd94d', { big:true });
+  sfx.lvl();
+  if (world.isHost) spawnGuardian(shrine);
+  else if (world.sendBoss){ try { world.sendBoss({ p:'wake', shrine, x:+pos.x.toFixed(3), y:+pos.y.toFixed(3) }); } catch(e){} }
+}
+/* A lost sproutling, gathered: flag the spot (it stops rendering for
+   this player, across reloads), burst, and let the ENGINE count it. */
+function collectSprout(id){
+  const st = prog().story; if (!st) return;
+  if (st.quest === 'prologue' || st.sproutsDone || st.sprouts >= 3 || st.sproutsFound.includes(id)) return;
+  const spot = SPROUT_SPOTS.find(sp => sp.id === id); if (!spot) return;
+  act.setStory(s2 => ({ sproutsFound: [...s2.sproutsFound, id] }));
+  spawnPopFx(spot.x, spot.y, '#57d93d', 18, .015);
+  addFloat(spot.x, spot.y - .1, 'LOST SPROUTLING FOUND!', '#b9ff9e', { big:true });
+  sfx.coin();
+  storyEvent('sprout');
+}
+/* ---- the ending: three chapter cards in sequence. playEnding queues
+   them; a watcher in frame() feeds the next card whenever the previous
+   one closes (an open card owns ses.dlgAdvance, so the queue can never
+   stomp a card the player is still reading). ---- */
+const ENDING_CARDS = [
+  ['FINALE', 'The Root Is Cut', [
+    'The crown breaks. Thread by thread, the Rot unravels — out of root, and branch, and leaf.',
+    'For the first time in a thousand years, the Emperor\'s eyes are only a gardener\'s eyes. He sleeps.',
+  ]],
+  ['EPILOGUE', 'The Tree Blooms Again', [
+    'Verdia drinks deep of clean rain. On every branch, buds open — gold, and green, and gold again.',
+    'The gardeners wake gentle. The slimes remember their work. The meadow remembers its colour.',
+  ]],
+  ['SLIME SLASH', 'THE VERDANCE CYCLE', [
+    'A game by Handler & the Raphaels.',
+    'Thank you for playing. The Cycle can turn again, harder — Elder Mirra keeps the road.',
+  ]],
+];
+function playEnding(){ ses.endingQueue = ENDING_CARDS.map(c => [c[0], c[1], [...c[2]]]); }
+const shrineSparkAt = {};   // render cache: won-shrine sparkle throttle, per shrine key (not game state)
 
 /* ============================================================ bank & shop */
 /* ============================================================ E = INTERACT
@@ -3147,6 +3368,8 @@ function interactPressed(){
     if (f && f.panel === panel && panel.contains(f.el) && !f.el.disabled) f.el.click();
     return true;   // a panel is up: E belongs to the panel, never to Meteor Chop
   }
+  if (ses.nearShrine){ summonGuardian(ses.nearShrine); return true; }
+  if (ses.nearSprout){ collectSprout(ses.nearSprout); return true; }
   if (ses.nearNpc){ startDialogue(ses.nearNpc); return true; }
   if (ses.nearBuilding){ openBuilding(ses.nearBuilding); return true; }
   return false;
@@ -3349,7 +3572,7 @@ function buyInn(id){
 }
 function updateInteract(){
   const pr = $('#interactPrompt');
-  if (!ses.started){ pr.classList.add('hidden'); ses.nearBuilding = null; ses.nearNpc = null; updateInteract._pr = null; return; }
+  if (!ses.started){ pr.classList.add('hidden'); ses.nearBuilding = null; ses.nearNpc = null; ses.nearShrine = null; ses.nearSprout = null; updateInteract._pr = null; return; }
   const db = Math.sqrt(dist2(me.x,me.y,BANK_POS.x,BANK_POS.y));
   const ds = Math.sqrt(dist2(me.x,me.y,SHOP_POS.x,SHOP_POS.y));
   const dh = Math.sqrt(dist2(me.x,me.y,HOSPITAL_POS.x,HOSPITAL_POS.y));
@@ -3375,9 +3598,38 @@ function updateInteract(){
     const p = npcPositionAt(def, nowNpc), d = Math.sqrt(dist2(me.x, me.y, p.x, p.y));
     if (d < npcDist){ npcDist = d; npcId = def.id; }
   }
-  const targetNpc = (!ses.dialogue && !panelOpen && npcDist <= .6 && (!building || npcDist < nd)) ? npcId : null;
+  /* Stage 4 world interactables compete for the same prompt, on the same
+     rule as NPCs: in range + strictly nearer than the building wins.
+     SHRINE: only while the current quest objective targets it and no
+     guardian stands. SPROUT: only while the side tale can still count
+     it and this player has not gathered that one. */
+  let shrineId = null, shrineDist = Infinity, sproutId = null, sproutDist = Infinity;
+  if (!ses.dialogue && !panelOpen){
+    const objNow = currentObjective();
+    if (objNow && objNow.type === 'guardian' && !guardianAlive()){
+      const p = SHRINE_POS[objNow.shrine];
+      const d = Math.sqrt(dist2(me.x, me.y, p.x, p.y));
+      if (d <= .55){ shrineId = objNow.shrine; shrineDist = d; }
+    }
+    const stNow = prog().story;
+    if (stNow && stNow.quest !== 'prologue' && !stNow.sproutsDone && stNow.sprouts < 3){
+      for (const sp of SPROUT_SPOTS){
+        if (stNow.sproutsFound.includes(sp.id)) continue;
+        const d = Math.sqrt(dist2(me.x, me.y, sp.x, sp.y));
+        if (d <= .45 && d < sproutDist){ sproutId = sp.id; sproutDist = d; }
+      }
+    }
+  }
+  let winKind = null, winId = null, winDist = Infinity;
+  if (npcDist <= .6 && npcDist < winDist){ winKind = 'npc'; winId = npcId; winDist = npcDist; }
+  if (shrineId && shrineDist < winDist){ winKind = 'shrine'; winId = shrineId; winDist = shrineDist; }
+  if (sproutId && sproutDist < winDist){ winKind = 'sprout'; winId = sproutId; winDist = sproutDist; }
+  const winBeatsBuilding = winKind && (!building || winDist < nd);
+  const targetNpc = (winBeatsBuilding && winKind === 'npc') ? winId : null;
   ses.nearNpc = targetNpc;
-  ses.nearBuilding = targetNpc ? null : building;
+  ses.nearShrine = (winBeatsBuilding && winKind === 'shrine') ? winId : null;
+  ses.nearSprout = (winBeatsBuilding && winKind === 'sprout') ? winId : null;
+  ses.nearBuilding = (targetNpc || ses.nearShrine || ses.nearSprout) ? null : building;
   // change-only DOM writes: this runs EVERY frame, and re-setting the
   // same textContent replaces the text node (layout work) every time
   const prName = (ses.nearBuilding && !panelOpen && !ses.dialogue) ? (ses.nearBuilding==='bank' ? 'BANK' : ses.nearBuilding==='shop' ? 'SHOP' : 'INN') : null;
@@ -3386,10 +3638,15 @@ function updateInteract(){
   // input type re-renders the label
   const cap = ses.lastPtrType==='touch' ? 'TAP' : 'E';
   const npcDefNear = targetNpc ? npcDef(targetNpc) : null;
-  const wantPr = targetNpc ? cap + '|NPC|' + targetNpc : (prName ? cap + '|' + prName : null);
+  const wantPr = targetNpc ? cap + '|NPC|' + targetNpc
+    : ses.nearShrine ? cap + '|SHRINE|' + ses.nearShrine
+    : ses.nearSprout ? cap + '|SPROUT|' + ses.nearSprout
+    : (prName ? cap + '|' + prName : null);
   if (wantPr !== updateInteract._pr){
     updateInteract._pr = wantPr;
     if (targetNpc && npcDefNear){ pr.innerHTML = '<span class="keycap">' + cap + '</span>' + npcDefNear.name; pr.classList.remove('hidden'); }
+    else if (ses.nearShrine){ pr.innerHTML = '<span class="keycap">' + cap + '</span>VERDANT SHRINE'; pr.classList.remove('hidden'); }
+    else if (ses.nearSprout){ pr.innerHTML = '<span class="keycap">' + cap + '</span>LOST SPROUTLING'; pr.classList.remove('hidden'); }
     else if (prName){ pr.innerHTML = '<span class="keycap">' + cap + '</span>OPEN ' + prName; pr.classList.remove('hidden'); }
     else pr.classList.add('hidden');
   }
@@ -3505,7 +3762,9 @@ function joinWorld(roomCode){
   const [sendK, onK] = world.room.makeAction('kill'); world.sendKillFx = sendK;
   onK(f=>{ if (f && typeof f.x==='number') onKillFx(f); });
   const [sendB, onB] = world.room.makeAction('boss'); world.sendBoss = sendB;
-  onB(d=>{ if (d) bossEvent(d); });
+  onB(d=>{ if (!d) return;
+    if (d.p==='wake'){ if (world.isHost) spawnGuardian(d.shrine); return; }   // stage 4: a peer's shrine rite — the HOST raises the guardian
+    bossEvent(d); });
   const [sendMn, onMn] = world.room.makeAction('mine'); world.sendMine = sendMn;
   onMn((d,id)=>{ if (world.isHost && d && typeof d.n==='string') hostMine(d.n, d, id); });
   const [sendMd, onMd] = world.room.makeAction('mined'); world.sendMined = sendMd;
@@ -3722,11 +3981,20 @@ function refreshHUD(){
   // player MP (local only, mirrors the HP rows)
   setStyle($('#mpFill'), 'width', pct(me.mp, me.maxMp));
   setText($('#mpText'), '' + Math.floor(me.mp));   // overlaid ON the bar — number only, no 'MP' prefix
-  // SLIME EMPEROR boss bar — visible while a boss lives anywhere in the world
+  // Boss bar — visible while a boss-class fight lives anywhere in the
+  // world. A shrine GUARDIAN takes the bar over the Emperor while it
+  // stands (it is the fight the story is about); the name plate follows
+  // whoever holds the bar — CHAOS EMPEROR in the finale.
   const bossS = bossAt(performance.now());
-  if (bossS){ $('#bossBar').classList.remove('hidden'); setStyle($('#bossFill'), 'width', pct(bossS.hp, bossS.max)); setText($('#bossHp'), Math.max(0, Math.ceil(bossS.hp)).toLocaleString('en-US')); }
+  const grdS = guardianAlive();
+  const barS = grdS || bossS;
+  if (barS){
+    $('#bossBar').classList.remove('hidden');
+    setText($('#bossBar b'), grdS ? GUARDIANS[grdS.guardian].name : (bossIsChaos() ? 'CHAOS EMPEROR' : 'SLIME EMPEROR'));
+    setStyle($('#bossFill'), 'width', pct(barS.hp, barS.max)); setText($('#bossHp'), Math.max(0, Math.ceil(barS.hp)).toLocaleString('en-US'));
+  }
   else $('#bossBar').classList.add('hidden');
-  document.body.classList.toggle('boss-on', !!bossS);   // mobile CSS shifts the left badge column clear of the lowered boss bar
+  document.body.classList.toggle('boss-on', !!barS);   // mobile CSS shifts the left badge column clear of the lowered boss bar
   // item buttons: counts + greyed when empty
   for (const [id, sel] of [['potion','#itemPotion'],['bomb','#itemBomb'],['shield','#itemShield']]){
     const b = $(sel); if (!b) continue;
@@ -4555,6 +4823,15 @@ function drawMinimap(){
   g.fillStyle = '#e5484d'; g.fillRect(SHOP_POS.x*S2-2.5, SHOP_POS.y*S2-2.5, 5, 5);
   g.fillStyle = '#ffffff'; g.fillRect(HOSPITAL_POS.x*S2-2.5, HOSPITAL_POS.y*S2-2.5, 5, 5);
   g.fillStyle = '#e5484d'; g.beginPath(); g.arc(HOSPITAL_POS.x*S2, HOSPITAL_POS.y*S2, 1.4, 0, 7); g.fill();
+  // current story target: the shrine the quest points at wears a gold diamond
+  {
+    const o = currentObjective();
+    if (o && o.type === 'guardian'){
+      const p = SHRINE_POS[o.shrine], dx = p.x*S2, dy = p.y*S2, dr = 5.5;
+      g.fillStyle = '#ffd94d'; g.strokeStyle = '#5b3a1e'; g.lineWidth = 1.5;
+      g.beginPath(); g.moveTo(dx, dy-dr); g.lineTo(dx+dr, dy); g.lineTo(dx, dy+dr); g.lineTo(dx-dr, dy); g.closePath(); g.fill(); g.stroke();
+    }
+  }
   for (const s of world.slimes.values()){
     g.fillStyle = (s.kind==='king' || s.kind==='boss') ? '#ffd94d' : s.kind==='metal' ? '#c3ced4' : 'rgba(30,90,20,.55)';
     g.beginPath(); g.arc(s.x*S2, s.y*S2, s.kind==='boss'?6 : s.kind==='king'?4.5 : s.kind==='metal'?4:2, 0, 7); g.fill();
@@ -4719,7 +4996,9 @@ $('#restartBtn').onclick = ()=>{
 };
 $('#interactPrompt').addEventListener('pointerdown', e=>{
   e.stopPropagation();   // fire on pointerDOWN so sword movement can't steal the click
-  if (ses.nearNpc) startDialogue(ses.nearNpc);   // NPC prompt: talk
+  if (ses.nearShrine) summonGuardian(ses.nearShrine);   // shrine prompt: wake the guardian
+  else if (ses.nearSprout) collectSprout(ses.nearSprout);   // sprout prompt: gather it
+  else if (ses.nearNpc) startDialogue(ses.nearNpc);   // NPC prompt: talk
   else openBuilding(ses.nearBuilding);   // same actions the E key performs via interactPressed
 });
 $('#depBtn').onclick = ()=>{ act.patchProgress(p => ({ banked: p.banked + p.coins, coins: 0 })); sfx.buy(); updateBankPanel(); refreshHUD(); saveGame(); };   // a deposit must be on disk before the next death or tab kill
@@ -4763,9 +5042,56 @@ const NPC_IMGS = {};
 for (const n of ['elder','forge','pike','child']){
   const im=new Image(); im.src='assets/img/npc-'+n+'.png'; NPC_IMGS[n]=im;
 }
-const imgOk = im => !!(im && im.complete && im.naturalWidth);
+const SHRINE_IMGS = {};
+for (const n of ['meadow','grove','wilds']){
+  const im=new Image(); im.src='assets/img/shrine-'+n+'.png'; SHRINE_IMGS[n]=im;
+}
+const SPROUT_IMG = new Image(); SPROUT_IMG.src = 'assets/img/sprout.png';
+/* The Thorn Regent wears the King's sprite under a green wash — a
+   RUNTIME tint (the shipped slime-king.png file is never edited): the
+   king drawn once to a canvas, green laid over its own pixels only
+   (source-atop, the redTintOf trick), cached. */
+let KING_GREEN_IMG = null;
+function kingGreenImg(){
+  if (KING_GREEN_IMG) return KING_GREEN_IMG;
+  const img = SLIME_IMGS.king;
+  if (!imgOk(img)) return img;
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth || img.width; c.height = img.naturalHeight || img.height;
+  const g2 = c.getContext('2d');
+  g2.drawImage(img, 0, 0);
+  g2.globalCompositeOperation = 'source-atop';
+  g2.fillStyle = 'rgba(64,170,60,.42)'; g2.fillRect(0, 0, c.width, c.height);
+  KING_GREEN_IMG = c;
+  return c;
+}
+/* Pre-rendered radial glow sprite for the CHAOS EMPEROR (purple-red) —
+   drawn under him with drawImage instead of a per-frame gradient. */
+let CHAOS_GLOW_IMG = null;
+function chaosGlowImg(){
+  if (CHAOS_GLOW_IMG) return CHAOS_GLOW_IMG;
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g2 = c.getContext('2d');
+  const gr = g2.createRadialGradient(128, 128, 10, 128, 128, 128);
+  gr.addColorStop(0, 'rgba(200,40,90,.55)');
+  gr.addColorStop(.55, 'rgba(140,20,120,.30)');
+  gr.addColorStop(1, 'rgba(120,10,80,0)');
+  g2.fillStyle = gr; g2.fillRect(0, 0, 256, 256);
+  CHAOS_GLOW_IMG = c;
+  return c;
+}
+const imgOk = im => !!(im && (im.naturalWidth || im.width));   // naturalWidth for Images; canvas tint variants (kingGreenImg) carry width only — both mean "pixels exist"
 function slimeSpriteImg(s){
+  if (s.kind==='guardian' && s.guardian==='grove') return kingGreenImg();   // THORN REGENT: the King's sprite, green-washed at runtime
   return (s.kind==='king' || s.kind==='boss') ? SLIME_IMGS.king : s.kind==='metal' ? SLIME_IMGS.metal : SLIME_IMGS[COLOR2IMG[s.color]||'pink'];
+}
+/* Rendered-size factor over the hitbox radius: the Emperor 1.3x (never
+   reads as just another King), guardians per their config. ONE helper —
+   drawSlime, the ghost pass and the face-fade test must agree. */
+function visFactor(s){
+  if (s.kind==='boss') return 1.3;
+  if (s.kind==='guardian') return (GUARDIANS[s.guardian] || {}).vis || 1.2;
+  return 1;
 }
 /* Sprite geometry for a slime at time t: the image plus every transform the
    normal draw applies (hop squash/stretch, breathing, hit squash, lift).
@@ -4807,7 +5133,7 @@ function redTintOf(img){
   let c = RED_TINTS.get(img);
   if (c) return c;
   c = document.createElement('canvas');
-  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  c.width = img.naturalWidth || img.width; c.height = img.naturalHeight || img.height;
   const g2 = c.getContext('2d');
   g2.drawImage(img, 0, 0);
   g2.globalCompositeOperation = 'source-atop';
@@ -4822,7 +5148,7 @@ function whiteTintOf(img){
   let c = WHITE_TINTS.get(img);
   if (c) return c;
   c = document.createElement('canvas');
-  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  c.width = img.naturalWidth || img.width; c.height = img.naturalHeight || img.height;
   const g2 = c.getContext('2d');
   g2.drawImage(img, 0, 0);
   g2.globalCompositeOperation = 'source-atop';
@@ -4842,7 +5168,7 @@ function colorTintOf(img, color){
   if (c) return c;
   if (byImg.size > 24) byImg.clear();   // peer colours are arbitrary — never let the cache grow past a screenful of players
   c = document.createElement('canvas');
-  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  c.width = img.naturalWidth || img.width; c.height = img.naturalHeight || img.height;
   const g2 = c.getContext('2d');
   g2.drawImage(img, 0, 0);
   g2.globalCompositeOperation = 'source-atop';
@@ -4984,7 +5310,8 @@ function paintSlimeSprite(s, t, baseR, g, faceK){
   // faceK scales ONLY the face's alpha: the ghost pass passes 1 (face
   // inherits the caller's .38, same as the body); the normal pass passes
   // s._faceFade (.38 when this slime is ghosted — see drawEntities).
-  if (s.kind !== 'king' && s.kind !== 'boss'){
+  if (s.kind !== 'king' && s.kind !== 'boss' && !(s.kind==='guardian' && s.guardian==='grove')){
+    // (the Thorn Regent is skipped too: it wears the King's sprite, whose face is baked in)
     if (faceK !== undefined && faceK < 1){ ctx.save(); ctx.globalAlpha *= faceK; drawSlimeFace(s, t, g); ctx.restore(); }
     else drawSlimeFace(s, t, g);
   }
@@ -5029,6 +5356,25 @@ const DECOR = (()=>{
   for (let i=0;i<64;i++){ const p = place(TOWN_R + .06); items.push({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }); }
   for (let i=0;i<34;i++){ const p = place(TOWN_R + .06); items.push({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }); }
   return items;
+})();
+/* The three LOST SPROUTLINGS (stage 4 side tale): fixed scenic spots
+   DERIVED from DECOR itself, so the descriptions are literally true on
+   every client — at the edge of the innermost pond, under the tree
+   nearest the Grove Shrine, beside the rock nearest the Wilds Shrine.
+   Pure decoration data (DECOR is deterministic): the spots are the same
+   for everyone; only the FOUND flags are per-player (progress.story). */
+const SPROUT_SPOTS = (()=>{
+  const ponds = DECOR.filter(d => d.t === 'pond'), trees = DECOR.filter(d => d.t === 'tree'), rocks = DECOR.filter(d => d.t === 'rock');
+  const nearest = (arr, x, y) => arr.reduce((best, d) => (!best || dist2(d.x, d.y, x, y) < dist2(best.x, best.y, x, y)) ? d : best, null);
+  const pond = nearest(ponds, WORLD/2, WORLD/2);
+  const pa = Math.atan2(WORLD/2 - pond.y, WORLD/2 - pond.x);   // the pond's shore, on the side facing town
+  const tree = nearest(trees, SHRINE_POS.grove.x, SHRINE_POS.grove.y);
+  const rock = nearest(rocks, SHRINE_POS.wilds.x, SHRINE_POS.wilds.y);
+  return [
+    { id:'pond',  x:+(pond.x + Math.cos(pa) * pond.r * .92).toFixed(3), y:+(pond.y + Math.sin(pa) * pond.r * .92).toFixed(3) },
+    { id:'grove', x:+(tree.x + .06).toFixed(3), y:+(tree.y + .07).toFixed(3) },
+    { id:'wilds', x:+(rock.x + .10).toFixed(3), y:+(rock.y + .04).toFixed(3) },
+  ];
 })();
 /* Shared wind field: ONE function so grass tufts, flowers, pond shimmer and
    tree canopies all sway with the same gusts crossing the map. */
@@ -5279,6 +5625,19 @@ function drawField(t){
   drawTufts(t);
   // ponds only -- flat ground decals (trees/rocks live in the y-sorted entity pass)
   drawPonds(t);
+  /* THE BLOOM (stage 4): once the local player's Cycle is complete, the
+     meadow wears golden speckles for good — seeded twinkling squares
+     scattered inside r=2.2 of the centre, view-culled like the flowers. */
+  if (prog().story && prog().story.complete){
+    const bss = Math.max(2, Math.round(u*.004));
+    for (let i=0;i<150;i++){
+      const ba = hash01(i*3.17)*Math.PI*2, br = Math.sqrt(hash01(i*7.71))*2.2;
+      const wx = WORLD/2 + Math.cos(ba)*br, wy = WORLD/2 + Math.sin(ba)*br;
+      if (wx < ses.cam.x-.05 || wx > ses.cam.x+vw+.05 || wy < ses.cam.y-.05 || wy > ses.cam.y+vh+.05) continue;
+      ctx.fillStyle = 'rgba(255,205,80,' + (.5 * (.55 + .45*Math.sin(t/600 + i*1.7))).toFixed(3) + ')';
+      ctx.fillRect(NX(wx)-bss/2, NY(wy)-bss/2, bss, bss);
+    }
+  }
   // world border fence: chunky pixel posts + twin rails
   {
     const x0=NX(0), y0=NY(0), x1=NX(WORLD), y1=NY(WORLD), rail=6;
@@ -5458,6 +5817,68 @@ function drawNPC(e, t){
     ctx.restore();
   }
 }
+/* One Verdant Shrine: the stone-ring sprite on the standard ground
+   shadow, bottom-anchored like the buildings (base = pos.y + .10). A
+   WON shrine — its Sigil taken, in progress.story.shrinesDone — glows
+   for good: a halo in the shrine's tint breathing behind the crystal,
+   plus the slow sparkles the frame loop sheds for it. */
+function drawShrine(key, t){
+  const u = UNIT(), pos = SHRINE_POS[key];
+  const x = NX(pos.x), yBot = NY(pos.y) + .10*u;
+  ctx.fillStyle = 'rgba(0,0,0,.18)';
+  ctx.beginPath(); ctx.ellipse(x, NY(pos.y) + .085*u, .24*u, .065*u, 0, 0, 7); ctx.fill();
+  const img = SHRINE_IMGS[key];
+  const w = .46*u, h = imgOk(img) ? w * img.naturalHeight/img.naturalWidth : .46*u;
+  if (shrineDone(key)){
+    const gs = .30*u * (1 + .07*Math.sin(t/700));
+    const ag = ctx.createRadialGradient(x, yBot - h*.72, 2, x, yBot - h*.72, gs);
+    ag.addColorStop(0, GUARDIANS[key].aura + '.38)');
+    ag.addColorStop(1, GUARDIANS[key].aura + '0)');
+    ctx.fillStyle = ag; ctx.beginPath(); ctx.arc(x, yBot - h*.72, gs, 0, 7); ctx.fill();
+  }
+  if (imgOk(img)){
+    ctx.drawImage(img, x - w/2, yBot - h, w, h);
+  } else {
+    // vector fallback: grey stone ring + a tinted crystal diamond
+    ctx.fillStyle = '#8d9499';
+    for (let i=0;i<7;i++){ const a = i/7*Math.PI*2; ctx.beginPath(); ctx.ellipse(x + Math.cos(a)*.17*u, yBot - .02*u + Math.sin(a)*.045*u, .030*u, .020*u, 0, 0, 7); ctx.fill(); }
+    const cfg = GUARDIANS[key], cy = yBot - .20*u;
+    ctx.fillStyle = cfg.color;
+    ctx.beginPath(); ctx.moveTo(x, cy - .075*u); ctx.lineTo(x + .05*u, cy); ctx.lineTo(x, cy + .075*u); ctx.lineTo(x - .05*u, cy); ctx.closePath(); ctx.fill();
+  }
+  if (shrineDone(key)){   // the won crystal burns brighter: a hot core over the sprite's own crystal
+    ctx.save(); ctx.globalAlpha = .5 + .2*Math.sin(t/700);
+    ctx.fillStyle = '#ffffff';
+    const cy = yBot - h*.72;
+    ctx.beginPath(); ctx.moveTo(x, cy - .035*u); ctx.lineTo(x + .020*u, cy); ctx.lineTo(x, cy + .035*u); ctx.lineTo(x - .020*u, cy); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+}
+/* One lost sproutling: a small glowing sprout on a soft green halo —
+   lost things want to be found. Bobbing gently; found ones never reach
+   here (drawEntities filters them per player). */
+function drawSprout(sp, t){
+  const u = UNIT();
+  const x = NX(sp.x), groundY = NY(sp.y);
+  const bob = Math.sin(t/600 + sp.x*7) * .004*u;
+  const gs = .11*u * (1 + .15*Math.sin(t/500 + sp.x*9));
+  const ag = ctx.createRadialGradient(x, groundY - .03*u, 2, x, groundY - .03*u, gs);
+  ag.addColorStop(0, 'rgba(150,255,140,.40)'); ag.addColorStop(1, 'rgba(150,255,140,0)');
+  ctx.fillStyle = ag; ctx.beginPath(); ctx.arc(x, groundY - .03*u, gs, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,.18)';
+  ctx.beginPath(); ctx.ellipse(x, groundY + 2, .035*u, .010*u, 0, 0, 7); ctx.fill();
+  if (imgOk(SPROUT_IMG)){
+    const w = .085*u;
+    ctx.drawImage(SPROUT_IMG, x - w/2, groundY - w + bob, w, w);
+  } else {
+    ctx.fillStyle = '#7a5430'; ctx.beginPath(); ctx.ellipse(x, groundY - 1, .030*u, .010*u, 0, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#2e7d32'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(x, groundY - 2); ctx.lineTo(x, groundY - .035*u + bob); ctx.stroke();
+    ctx.fillStyle = '#57d93d';
+    ctx.beginPath(); ctx.ellipse(x - .014*u, groundY - .042*u + bob, .013*u, .007*u, -.5, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x + .014*u, groundY - .046*u + bob, .013*u, .007*u, .5, 0, 7); ctx.fill();
+  }
+}
 /* Elite radiance — NO circles (Handler: the banded rings still read as
    circles). A star of 8 jagged RAYS radiates from behind the body, slowly
    rotating, over a rotated-square (diamond) pool of ground light. Hard
@@ -5512,7 +5933,7 @@ function drawEliteAura(x, y, baseR, seed, t){
   ctx.restore();
 }
 function drawKindMarks(s, x, y, baseR, t){
-  if (s.kind==='tank'){
+  if (s.kind==='tank' || (s.kind==='guardian' && s.guardian==='meadow')){   // the VERDANT WARDEN wears the tank's pauldrons — armour grown thick as bark
     /* Tank mark: two steel PAULDRONS hugging the body's shoulders. The
        first replacement for the old slate RING was two flat squares —
        Handler: 'Doesn't convey armor. Place it properly, align to the
@@ -5584,7 +6005,7 @@ function drawSlime(s,t){
      same gold crowned sprite). s.r — the hitbox — is UNCHANGED; only the
      rendered size (and everything derived from baseR here: aura, HP bar)
      grows. The ghost pass applies the same factor. */
-  const x=NX(s.x), y=NY(s.y), baseR=s.r*SCALE()*(s.kind==='boss' ? 1.3 : 1);
+  const x=NX(s.x), y=NY(s.y), baseR=s.r*SCALE()*visFactor(s);
   /* KING HP BAR (Handler): a King's floating bar shows ONLY when the local
      player is close (<= KING_BAR_RANGE). Judged against me.x/me.y — the
      same rendered position every other player-relative draw in this
@@ -5592,6 +6013,15 @@ function drawSlime(s,t){
      clients each gate against their OWN player. Other kinds: unchanged. */
   const showBar = s.hp < s.max && (s.kind !== 'king' || dist2(s.x, s.y, me.x, me.y) <= KING_BAR_RANGE * KING_BAR_RANGE);
   if (s.kind==='boss'){
+    // CHAOS EMPEROR (finale form, local story state): a pre-rendered
+    // purple-red glow sprite burns under him, pulsing with the aura
+    const chaos = bossIsChaos();
+    if (chaos){
+      const gs = baseR * 4.6 * (1 + .05 * Math.sin(t/300));
+      ctx.save(); ctx.globalAlpha = .9;
+      ctx.drawImage(chaosGlowImg(), x - gs/2, y - gs/2, gs, gs);
+      ctx.restore();
+    }
     // the Emperor radiates a dark red aura — ENRAGED (<=30% HP, read off
     // the replicated hp; boss HP never rises, so this is effectively a
     // latch) it burns brighter, wider, and pulses
@@ -5604,7 +6034,25 @@ function drawSlime(s,t){
     // identifiable at a glance even mid-cluster
     ctx.save();
     ctx.font = '10px "Press Start 2P", monospace';
-    const label = 'SLIME EMPEROR', tw = ctx.measureText(label).width;
+    const label = chaos ? 'CHAOS EMPEROR' : 'SLIME EMPEROR', tw = ctx.measureText(label).width;
+    const lw = tw + 14, lh = 17, lx = x - lw/2, ly = y - baseR*1.45 - lh/2;
+    ctx.fillStyle = '#40121d'; ctx.fillRect(lx, ly, lw, lh);
+    ctx.strokeStyle = '#ffd94d'; ctx.lineWidth = 2; ctx.strokeRect(lx+1, ly+1, lw-2, lh-2);
+    ctx.fillStyle = '#ffd94d'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, x, ly + lh/2 + 1);
+    ctx.restore();
+  }
+  if (s.kind==='guardian'){
+    // a shrine guardian radiates its shrine's colour and wears its name —
+    // the Emperor's aura + plate construction, in the guardian's tint
+    const cfg = GUARDIANS[s.guardian] || GUARDIANS.meadow;
+    const ag = ctx.createRadialGradient(x, y, baseR*.4, x, y, baseR*1.8);
+    ag.addColorStop(0, cfg.aura + (.45 + .07*Math.sin(t/260)).toFixed(3) + ')');
+    ag.addColorStop(1, cfg.aura + '0)');
+    ctx.fillStyle = ag; ctx.beginPath(); ctx.arc(x, y, baseR*1.8, 0, 7); ctx.fill();
+    ctx.save();
+    ctx.font = '10px "Press Start 2P", monospace';
+    const label = cfg.name, tw = ctx.measureText(label).width;
     const lw = tw + 14, lh = 17, lx = x - lw/2, ly = y - baseR*1.45 - lh/2;
     ctx.fillStyle = '#40121d'; ctx.fillRect(lx, ly, lw, lh);
     ctx.strokeStyle = '#ffd94d'; ctx.lineWidth = 2; ctx.strokeRect(lx+1, ly+1, lw-2, lh-2);
@@ -5761,6 +6209,23 @@ function drawEntities(t){
     if (p.x<ses.cam.x-.45 || p.x>ses.cam.x+vw+.45 || p.y<ses.cam.y-.55 || p.y>ses.cam.y+vh+.25) continue;   // view-culled
     ents.push({ baseY:p.y, kind:'npc', def, x:p.x, y:p.y });
   }
+  // VERDANT SHRINES (stage 4): static landmarks in the same depth order,
+  // and occluders — a slime behind a shrine ghosts like behind a tree
+  for (const key of Object.keys(SHRINE_POS)){
+    const p = SHRINE_POS[key];
+    if (p.x<ses.cam.x-.55 || p.x>ses.cam.x+vw+.55 || p.y<ses.cam.y-.55 || p.y>ses.cam.y+vh+.55) continue;   // view-culled
+    ents.push({ baseY:p.y + .10, kind:'shrine', key });
+    occluders.push({ cx:p.x, hw:.21, top:p.y + .10 - .34, baseY:p.y + .10 });
+  }
+  // unfound sproutlings join too (found ones are gone for this player)
+  {
+    const st = prog().story;
+    if (st) for (const sp of SPROUT_SPOTS){
+      if (st.sproutsFound.includes(sp.id)) continue;
+      if (sp.x<ses.cam.x-.3 || sp.x>ses.cam.x+vw+.3 || sp.y<ses.cam.y-.3 || sp.y>ses.cam.y+vh+.3) continue;   // view-culled
+      ents.push({ baseY:sp.y + .02, kind:'sprout', sp });
+    }
+  }
   // slime anchor = ground contact (y + r*.8) -- NOT the hop-lifted sprite,
   // so a jumping slime never changes depth order mid-hop
   /* VIEW CULL: the world holds ~80-120 slimes but a phone view is ~1.8x1u
@@ -5797,7 +6262,7 @@ function drawEntities(t){
      now gets its face pre-faded to the same .38 in the normal pass, so
      face and body always read at one strength. */
   for (const s of vis){
-    const baseR = s.r * SCALE() * (s.kind==='boss' ? 1.3 : 1);
+    const baseR = s.r * SCALE() * visFactor(s);
     const g = slimeSpriteGeom(s, t, baseR);
     s._faceFade = (g && ghostHits(s, occluders, g).length) ? .38 : 1;
   }
@@ -5807,6 +6272,8 @@ function drawEntities(t){
     else if (e.kind === 'rock') drawRock(e.d);
     else if (e.kind === 'bld') drawBuildings(e.b.key);
     else if (e.kind === 'npc') drawNPC(e, t);
+    else if (e.kind === 'shrine') drawShrine(e.key, t);
+    else if (e.kind === 'sprout') drawSprout(e.sp, t);
     else if (e.kind === 'node') drawNode(e.n, t);
     else if (e.kind === 'orb') drawOrb(e.b, t);
     else drawSlime(e.s, t);
@@ -5849,7 +6316,7 @@ function ghostHits(s, occluders, g){
 function drawGhosts(t, occluders, list){
   const u = UNIT(), vw = W/u, vh = H/u;
   for (const s of (list || world.slimes.values())){
-    const baseR = s.r * SCALE() * (s.kind==='boss' ? 1.3 : 1);   // match drawSlime's visual radius (Emperor 1.3x)
+    const baseR = s.r * SCALE() * visFactor(s);   // match drawSlime's visual radius (Emperor 1.3x, guardians per config)
     const g = slimeSpriteGeom(s, t, baseR);
     if (!g) continue;                            // vector-fallback slimes have no sprite to ghost
     const sb = { l:s.x - s.r*1.5, r:s.x + s.r*1.5, top:s.y - s.r*3.2 - g.liftW, bot:s.y + s.r };
@@ -6101,6 +6568,31 @@ function frame(now){
 
   if (ses.started) updateInteract();   // every frame — the OPEN prompt and panel auto-close must never lag
   if (ses.started) updateDialogue(now);   // the speech bubble tracks its speaker + the typewriter runs
+  /* ---- stage 4 ambient beats ---- */
+  if (ses.endingQueue && ses.endingQueue.length && !ses.chapterCard){
+    const c = ses.endingQueue.shift();   // the ending's next card, fed only when the previous one has closed
+    showChapterCard(c[0], c[1], c[2]);
+    if (!ses.endingQueue.length) ses.endingQueue = null;
+  }
+  if (ses.started && !ses.paused){
+    const stF = prog().story;
+    if (stF && !stF.complete && ses.endingPlayed) ses.endingPlayed = false;   // a new Cycle re-arms the ending
+    // won shrines shed slow sparkles in their tint (seen shrines only)
+    for (const key of Object.keys(SHRINE_POS)){
+      if (!shrineDone(key) || now < (shrineSparkAt[key] || 0)) continue;
+      shrineSparkAt[key] = now + 420;
+      const p = SHRINE_POS[key], vw2 = W/UNIT(), vh2 = H/UNIT();
+      if (p.x < ses.cam.x-.3 || p.x > ses.cam.x+vw2+.3 || p.y < ses.cam.y-.3 || p.y > ses.cam.y+vh2+.3) continue;
+      ses.particles.push({ x:p.x + rand(-.08,.08), y:p.y - rand(.05,.22), vx:rand(-.01,.01), vy:rand(-.05,-.02), life:1, color:GUARDIANS[key].color, r:rand(2.5,5) });
+      capParticles();
+    }
+    // THE BLOOM: in a completed world, petals drift past the Blade
+    if (stF && stF.complete && now >= ses.petalAt){
+      ses.petalAt = now + 650;
+      ses.particles.push({ x:me.x + rand(-.8,.8), y:me.y + rand(-.6,.3), vx:rand(.008,.03), vy:rand(.004,.014), life:2, grav:.25, color: Math.random() < .5 ? '#ffd9e8' : '#ffe9a8', r:rand(2.5,4.5) });
+      capParticles();
+    }
+  }
   drawField(now);
   // y-sorted entity pass: trees, rocks, buildings and slimes by ground
   // anchor, then occlusion ghosts for slimes hidden behind props
