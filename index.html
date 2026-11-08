@@ -1592,6 +1592,8 @@ const freshSession = () => ({
   nearSprout: null,          // sproutling id currently winning the interact prompt (stage 4; session only)
   nearBarrier: null,         // rot barrier key ('A'|'B') currently winning the interact prompt (archipelago; session only)
   crossedIsles: {},          // isles whose first-crossing float has fired this session (archipelago; session only)
+  seenPois: new Set(),       // POI name floats already shown this session (Batch C; session only)
+  nextRippleAt: 0, rippleIx: 0,   // fish-ripple schedule + spot cursor (Batch C ambient; session only)
   endingQueue: null,         // ending chapter cards waiting to play in sequence (stage 4)
   endingPlayed: false,       // the ending sequence has played for this completion (reset when a new cycle begins)
   petalAt: 0,                // post-ending bloom: next drifting-petal emit time
@@ -2023,6 +2025,13 @@ function zoneOf(x,y){
   if (r) return r.lvl;   // isle disc: its own zone; a bridge strip: the NEAR isle's zone (you have not crossed until the far disc)
   return nearestIsle(x, y);
 }
+/* Highest level among EVERY connected blade (mine + peers) — the same
+   read the Emperor and the guardians scale from, in one place. */
+function connectedTopLevel(){
+  let tl = prog().level;
+  for (const p of world.peers.values()) if (p.level && p.level > tl) tl = p.level;
+  return tl;
+}
 function pickKind(zone=0){
   let tot = 0;
   const ws = SLIME_KINDS.map(k=>{
@@ -2073,7 +2082,11 @@ function spawnSlime(opts={}){
     }
   }
   const zi = zoneOf(sx, sy), zone = ZONES[zi];
-  const k = opts.kind ? (SLIME_KINDS.find(m=>m.kind===opts.kind) || SLIME_KINDS[0]) : pickKind(zi);
+  let k = opts.kind ? (SLIME_KINDS.find(m=>m.kind===opts.kind) || SLIME_KINDS[0]) : pickKind(zi);
+  /* FIRST-FIGHT GATE (Batch C): while every connected blade is under
+     level 5, no King spawns on Verdant Isle at all — a new player's
+     first fight must never be a King. The roll degrades to a Big. */
+  if (k.kind === 'king' && zi === 0 && connectedTopLevel() < 5) k = SLIME_KINDS.find(m=>m.kind==='big');
   const id = (world.hostId||me.id).slice(0,4)+'-'+(world.slimeSeq++);
   const hp = k.kind==='boss' ? k.hp : Math.round(k.hp * zone.hp);   // the Emperor keeps his true 4000 HP — no zone scaling
   const s = { id, kind:k.kind, hp, max:hp, r:k.r,
@@ -2109,6 +2122,7 @@ function royalGuard(now, boss){
   broadcastWorld();
 }
 function hostTick(now,dt){
+  const topLvl = connectedTopLevel();   // read once per tick: drives the king gate below
   // wander + spawn
   for (const s of world.slimes.values()){
     if (now>s.turnAt){ s.dir=rand(0,Math.PI*2); s.turnAt=now+rand(800,2600); }
@@ -2134,8 +2148,10 @@ function hostTick(now,dt){
       else if (bd < .55*.55) s.dir = Math.atan2(s.y-by, s.x-bx);   // metal flees ONLY when a player presses within 0.55u
       else mult *= .5;   // otherwise it WANDERS at half rate on the generic turnAt steering — catchable, findable
     }
-    if (s.kind==='king'){
-      // the King HUNTS: it steers straight at the nearest player, faster than its wander
+    if (s.kind==='king' && topLvl >= 5){
+      // the King HUNTS: it steers straight at the nearest player, faster than its wander.
+      // FIRST-FIGHT GATE (Batch C): while every connected blade is under level 5 a King
+      // anywhere only WANDERS (the generic turnAt steering above) — hunting resumes at 5.
       let bx=me.x, by=me.y, bd=dist2(s.x,s.y,me.x,me.y);
       for (const p of world.peers.values()){
         const px=(p.tx!==undefined?p.tx:p.x), py=(p.ty!==undefined?p.ty:p.y);
@@ -5756,6 +5772,22 @@ function chaosGlowImg(){
   CHAOS_GLOW_IMG = c;
   return c;
 }
+/* Pre-rendered GOLD glow for the normal SLIME EMPEROR (Batch C) — the
+   aura that makes him read ~20% larger WITHOUT touching his tuned body
+   scale: presence comes from light, not size. */
+let EMPEROR_GLOW_IMG = null;
+function emperorGlowImg(){
+  if (EMPEROR_GLOW_IMG) return EMPEROR_GLOW_IMG;
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g2 = c.getContext('2d');
+  const gr = g2.createRadialGradient(128, 128, 10, 128, 128, 128);
+  gr.addColorStop(0, 'rgba(255,205,70,.50)');
+  gr.addColorStop(.55, 'rgba(230,160,40,.26)');
+  gr.addColorStop(1, 'rgba(200,130,20,0)');
+  g2.fillStyle = gr; g2.fillRect(0, 0, 256, 256);
+  EMPEROR_GLOW_IMG = c;
+  return c;
+}
 const imgOk = im => !!(im && (im.naturalWidth || im.width));   // naturalWidth for Images; canvas tint variants (kingGreenImg) carry width only — both mean "pixels exist"
 function slimeSpriteImg(s){
   if (s.kind==='guardian' && s.guardian==='grove') return kingGreenImg();   // THORN REGENT: the King's sprite, green-washed at runtime
@@ -5964,6 +5996,14 @@ function paintSlimeSprite(s, t, baseR, g, faceK){
   ctx.save();
   ctx.translate(g.gx, g.gy - g.liftW * UNIT());   // bottom anchor, raised by the hop arc
   ctx.scale(g.sqX, g.sqY);
+  if (s.kind === 'boss'){
+    // EMPEROR AURA (Batch C): the pre-rendered glow burns UNDER the body,
+    // ~2.35 body-widths wide — presence via light, body scale untouched
+    const gl = bossIsChaos() ? chaosGlowImg() : emperorGlowImg(), gs = g.dw * 2.35;
+    ctx.save(); ctx.globalAlpha *= .85;
+    ctx.drawImage(gl, -gs/2, -g.dh * .5 - gs/2, gs, gs);
+    ctx.restore();
+  }
   ctx.drawImage(g.img, -g.dw/2, -g.dh, g.dw, g.dh);
   if (tintK > 0){
     const prevA = ctx.globalAlpha;
@@ -5991,8 +6031,118 @@ function paintSlimeSprite(s, t, baseR, g, faceK){
     if (faceK !== undefined && faceK < 1){ ctx.save(); ctx.globalAlpha *= faceK; drawSlimeFace(s, t, g); ctx.restore(); }
     else drawSlimeFace(s, t, g);
   }
+  /* BOSS IDENTITY (Batch C): runtime-drawn regalia in this same
+     transformed space (the 256-master anchor space the face uses), so
+     squash, flip and the occlusion-ghost pass all inherit them for
+     free. No sprite file is ever touched. */
+  if (s.kind === 'guardian' && s.guardian === 'grove') drawRegentGear(s, t, g);
+  else if (s.kind === 'boss') drawEmperorGear(s, t, g);
+  else if (s.kind === 'guardian' && s.guardian === 'wilds') drawColossusGear(s, t, g);
   ctx.restore();
   return true;
+}
+/* ---- boss regalia painters (Batch C): called from paintSlimeSprite in
+   its transformed local space — body spans x [-dw/2, dw/2], y [-dh, 0],
+   the 256-master anchor space the face layer uses. ---- */
+/* THORN REGENT: a crown of thorns over the baked crown, vine tendrils
+   wrapping the body sides, and leaves forever shaking loose. */
+function drawRegentGear(s, t, g){
+  const dw = g.dw, dh = g.dh;
+  // vine tendrils FIRST (they wrap the body, under the crown ring)
+  ctx.strokeStyle = '#2e7d32'; ctx.lineCap = 'round';
+  for (const side of [-1, 1]){
+    ctx.lineWidth = Math.max(2, dw * .032);
+    ctx.beginPath();
+    ctx.moveTo(side * dw * .40, -dh * .62);
+    ctx.quadraticCurveTo(side * dw * .50, -dh * .38, side * dw * .34, -dh * .14);
+    ctx.stroke();
+    ctx.fillStyle = '#43a047';   // leaves riding the vine
+    for (const f of [.30, .55, .80]){
+      const lx = side * dw * (.40 + .08 * Math.sin(f * 5)), ly = -dh * (.62 - f * .48);
+      ctx.beginPath(); ctx.ellipse(lx, ly, dw * .045, dw * .026, side * .7, 0, 7); ctx.fill();
+    }
+  }
+  // the thorn crown: a dark-green spiky ring above the baked crown
+  const cx = 0, cy = -dh * .86, rr = dw * .30;
+  ctx.strokeStyle = '#1e5631'; ctx.lineWidth = Math.max(2, dw * .045);
+  ctx.beginPath(); ctx.ellipse(cx, cy, rr, rr * .38, 0, 0, 7); ctx.stroke();
+  for (let i = 0; i < 9; i++){
+    const a = -Math.PI * .92 + i / 8 * Math.PI * .84;   // the front arc of the ring
+    const bx = cx + Math.cos(a) * rr, by = cy + Math.sin(a) * rr * .38;
+    const tipX = bx + Math.cos(a) * dw * .10, tipY = by - dw * .13;
+    ctx.fillStyle = i % 2 ? '#1e5631' : '#2e7d32';
+    ctx.beginPath();
+    ctx.moveTo(bx - dw * .035, by); ctx.lineTo(tipX, tipY); ctx.lineTo(bx + dw * .035, by);
+    ctx.closePath(); ctx.fill();
+  }
+  // falling leaves: three motes on deterministic cycles around the body
+  for (let i = 0; i < 3; i++){
+    const cyc = ((t / 2600 + hash01(s.seed * 13.7 + i * 3.31)) % 1 + 1) % 1;
+    const lx = (hash01(s.seed * 7.9 + i * 5.3) - .5) * dw * .95, ly = -dh * .98 + cyc * dh * .85;
+    ctx.save(); ctx.translate(lx, ly); ctx.rotate(cyc * 5 + i);
+    ctx.globalAlpha *= (1 - cyc) * .9;
+    ctx.fillStyle = '#43a047'; ctx.fillRect(-dw * .028, -dw * .016, dw * .056, dw * .032);
+    ctx.restore();
+  }
+}
+/* SLIME EMPEROR / CHAOS EMPEROR: taller jagged spikes over the baked
+   crown, two curved horns, and a pulsing aura ring (the pre-rendered
+   glow itself is laid under the body in paintSlimeSprite). */
+function drawEmperorGear(s, t, g){
+  const dw = g.dw, dh = g.dh, chaos = bossIsChaos();
+  // horns: thick curved strokes sweeping out and up from the crown sides
+  ctx.strokeStyle = '#efe3c8'; ctx.lineCap = 'round';
+  for (const side of [-1, 1]){
+    ctx.lineWidth = Math.max(2.5, dw * .055);
+    ctx.beginPath();
+    ctx.moveTo(side * dw * .28, -dh * .74);
+    ctx.quadraticCurveTo(side * dw * .52, -dh * .78, side * dw * .56, -dh * 1.0);
+    ctx.stroke();
+    ctx.fillStyle = '#efe3c8';   // horn tip
+    ctx.beginPath(); ctx.arc(side * dw * .56, -dh * 1.0, Math.max(1.6, dw * .026), 0, 7); ctx.fill();
+  }
+  // jagged crown spikes, taller and meaner than the baked crown beneath
+  ctx.fillStyle = '#ffd94d'; ctx.strokeStyle = '#b8860b'; ctx.lineWidth = Math.max(1.2, dw * .012);
+  const base = -dh * .80, n = 5;
+  for (let i = 0; i < n; i++){
+    const fx = -dw * .26 + i * (dw * .52 / (n - 1));
+    const tipY = -dh * (i === 2 ? 1.06 : (i % 2 ? .94 : 1.0));
+    ctx.beginPath();
+    ctx.moveTo(fx - dw * .055, base); ctx.lineTo(fx, tipY); ctx.lineTo(fx + dw * .055, base);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
+  // aura ring: a hard light circle around the body, breathing
+  const pulse = .38 + .14 * Math.sin(t / 300);
+  ctx.strokeStyle = chaos ? 'rgba(200,80,255,' + pulse.toFixed(3) + ')' : 'rgba(255,205,70,' + pulse.toFixed(3) + ')';
+  ctx.lineWidth = Math.max(2, dw * .045);
+  ctx.beginPath(); ctx.arc(0, -dh * .5, dw * .70, 0, 7); ctx.stroke();
+}
+/* ROTBLOOM COLOSSUS: dark-pink rot-bloom clusters growing on its back,
+   and a puff of spores every time a hop lands. */
+function drawColossusGear(s, t, g){
+  const dw = g.dw, dh = g.dh;
+  const spots = [[-.20, -.80], [.04, -.90], [.24, -.76], [-.02, -.63]];
+  for (let i = 0; i < spots.length; i++){
+    const cx = spots[i][0] * dw, cy = spots[i][1] * dh, pr = dw * .032 * (1 + hash01(s.seed * 3.3 + i) * .5);
+    ctx.fillStyle = '#d1608f';   // five dark-pink petals
+    for (let k = 0; k < 5; k++){
+      const a = k / 5 * Math.PI * 2 + i;
+      ctx.beginPath(); ctx.arc(cx + Math.cos(a) * pr * 1.15, cy + Math.sin(a) * pr * 1.15, pr, 0, 7); ctx.fill();
+    }
+    ctx.fillStyle = '#5d2440';   // the rot-dark heart of the bloom
+    ctx.beginPath(); ctx.arc(cx, cy, pr * .62, 0, 7); ctx.fill();
+  }
+  /* spore puffs on hop LANDINGS (phase .56-.70 is the land-squash window
+     in slimeSpriteGeom). Only on the full-strength pass — the ghost pass
+     runs at alpha .38 and must not spawn. World-slice field on the
+     entity itself, like _sparkAt on metals. */
+  const hp = hopPhase(s, t);
+  if (ctx.globalAlpha > .9 && hp >= .56 && hp < .72 && t - (s._sporeAt || 0) > 350){
+    s._sporeAt = t;
+    for (let i = 0; i < 6; i++)
+      ses.particles.push({ x:s.x + rand(-s.r, s.r), y:s.y + rand(-.01, .03), vx:rand(-.03, .03), vy:rand(-.06, -.02), life:1, color: i % 2 ? '#d98ab5' : '#b06a94', r:rand(2.5, 5) });
+    capParticles();
+  }
 }
 function drawVideoSlime(s,t,baseR){
   const g = slimeSpriteGeom(s, t, baseR);
@@ -6015,6 +6165,18 @@ const FLOWERS = Array.from({length:15600},(_,i)=>({x:(Math.sin(i*127.1)*.5+.5)*W
    rocks and ponds scattered over the world, kept off the spawn-centre clearing.
    Visual only — no collision. */
 function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+/* POINTS OF INTEREST (Batch C): two named scenic clusters per isle, at
+   fixed spots on land, clear of the town disc, shrines, bridges and
+   buildings. The DECOR IIFE below builds each cluster's props around
+   its centre; updatePoiNotices floats the name on first approach. */
+const POIS = [
+  { id:'ruins',    name:'RUINED CIRCLE',   x:3.6,  y:9.9,  isle:0 },
+  { id:'flowers',  name:'FLOWER GROVE',    x:8.3,  y:15.4, isle:0 },
+  { id:'camp',     name:'HERMIT CAMP',     x:19.7, y:4.6,  isle:1 },
+  { id:'shrooms',  name:'MUSHROOM RING',   x:15.7, y:10.0, isle:1 },
+  { id:'stones',   name:'STANDING STONES', x:14.6, y:15.4, isle:2 },
+  { id:'deadwood', name:'THE DEADWOOD',    x:20.3, y:21.0, isle:2 },
+];
 const DECOR = (()=>{
   const rng = mulberry32(20261107);
   const items = [];
@@ -6049,6 +6211,63 @@ const DECOR = (()=>{
   scatter(ISLES[0], 144, p => ({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }));
   scatter(ISLES[1], 120, p => ({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }));
   scatter(ISLES[2], 144, p => ({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }));
+  /* POND RIMS (Batch C): every pond pre-computes its shore dressing —
+     stones, reed clumps and bare sand patches at seeded angles/radii —
+     so drawPonds can break the sprite's uniform tan ring with zero
+     per-frame allocation. rf spreads the dressing across the ring's
+     width instead of tracing one perfect circle. */
+  for (const d of items){
+    if (d.t !== 'pond') continue;
+    const n = 8 + Math.floor(rng() * 5);
+    d.rim = [];
+    for (let i = 0; i < n; i++)
+      d.rim.push({ a: (i + rng() * .7) / n * Math.PI * 2, rf: .90 + rng() * .30, k: rng() < .42 ? 'stone' : (rng() < .55 ? 'reed' : 'sand') });
+  }
+  /* POI CLUSTERS (Batch C): fixed-centre scenic groups from POIS.
+     Jitter comes from this same seeded rng AFTER the scatter calls, so
+     the scatter layout above is untouched. Every item carries its poi
+     id; SPROUT_SPOTS' nearest-pond/tree/rock derivations are unaffected
+     (no new ponds; the new trees/rocks sit far from the shrine anchors
+     those derivations measure from). */
+  const poi = id => POIS.find(p => p.id === id);
+  { // RUINED CIRCLE — broken pillars: the ISW rock prop, grey-washed, one fallen
+    const P = poi('ruins');
+    for (let i = 0; i < 7; i++){
+      const a = i / 7 * Math.PI * 2 + .3;
+      items.push({ t:'rock', poi:P.id, x:P.x + Math.cos(a) * .30, y:P.y + Math.sin(a) * .21, s:.55 + rng() * .5, tint:'rgba(147,154,159,.55)', rot:(rng() - .5) * .5 });
+    }
+    items.push({ t:'rock', poi:P.id, x:P.x + .05, y:P.y + .03, s:.85, tint:'rgba(147,154,159,.55)', rot:1.25 });   // the fallen pillar
+  }
+  { // FLOWER GROVE — one ground item; drawFlowerGrove paints the dense patch
+    const P = poi('flowers');
+    items.push({ t:'flowers', poi:P.id, x:P.x, y:P.y, r:.55 });
+  }
+  { // HERMIT CAMP — a leaf tent, a campfire, two log seats
+    const P = poi('camp');
+    items.push({ t:'tent', poi:P.id, x:P.x - .14, y:P.y - .06, s:1 });
+    items.push({ t:'campfire', poi:P.id, x:P.x + .04, y:P.y + .10, s:1 });
+    items.push({ t:'log', poi:P.id, x:P.x + .22, y:P.y + .16, s:1, a:.5 });
+    items.push({ t:'log', poi:P.id, x:P.x - .20, y:P.y + .18, s:.9, a:-.4 });
+  }
+  { // MUSHROOM RING — nine mushrooms in a fairy circle
+    const P = poi('shrooms');
+    for (let i = 0; i < 9; i++){
+      const a = i / 9 * Math.PI * 2;
+      items.push({ t:'mushroom', poi:P.id, x:P.x + Math.cos(a) * .26, y:P.y + Math.sin(a) * .19, s:.7 + rng() * .6 });
+    }
+  }
+  { // STANDING STONES — five tall grey slabs in a broken ring
+    const P = poi('stones');
+    for (let i = 0; i < 5; i++){
+      const a = i / 5 * Math.PI * 2 + .8;
+      items.push({ t:'stone', poi:P.id, x:P.x + Math.cos(a) * .29, y:P.y + Math.sin(a) * .21, s:.85 + rng() * .45, tilt:(rng() - .5) * .16 });
+    }
+  }
+  { // THE DEADWOOD — four bare trees (drawTree's dead branch), grey-brown
+    const P = poi('deadwood');
+    const offs = [[0, 0], [.24, .10], [-.22, .14], [.06, -.20]];
+    for (const o of offs) items.push({ t:'tree', poi:P.id, dead:true, x:P.x + o[0], y:P.y + o[1], s:.85 + rng() * .4 });
+  }
   return items;
 })();
 /* The three LOST SPROUTLINGS (stage 4 side tale): fixed scenic spots
@@ -6114,6 +6333,11 @@ function drawTufts(t){
 function drawPonds(t){
   const u = UNIT(), vw = W/u, vh = H/u;
   for (const d of DECOR){
+    if (d.t === 'flowers'){   // Batch C: the Flower Grove is a flat ground patch, drawn with the ponds
+      if (d.x<ses.cam.x-.7 || d.x>ses.cam.x+vw+.7 || d.y<ses.cam.y-.7 || d.y>ses.cam.y+vh+.7) continue;   // view-culled
+      drawFlowerGrove(d, t);
+      continue;
+    }
     if (d.t !== 'pond') continue;   // trees/rocks moved to the y-sorted entity pass
     if (d.x<ses.cam.x-.4 || d.x>ses.cam.x+vw+.4 || d.y<ses.cam.y-.4 || d.y>ses.cam.y+vh+.4) continue;   // view-culled
     const x = NX(d.x), y = NY(d.y);
@@ -6123,6 +6347,7 @@ function drawPonds(t){
       const w = d.r*2.2*u*br, h = w * img.naturalHeight/img.naturalWidth;
       ctx.drawImage(img, x-w/2, y-h/2, w, h);
       drawPondFx(d, x, y, w/2, h/2, t);
+      drawPondRim(d, x, y, w/2, h/2, t);   // Batch C: break the uniform tan ring
       continue;
     }
     const r = d.r*u*br;
@@ -6130,6 +6355,7 @@ function drawPonds(t){
     ctx.fillStyle = '#7cc0f2'; ctx.beginPath(); ctx.ellipse(x-r*.12, y-r*.08, r*.68, r*.4, 0, 0, 7); ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.beginPath(); ctx.ellipse(x-r*.3, y-r*.16, r*.2, r*.07, -.4, 0, 7); ctx.fill();
     drawPondFx(d, x, y, r, r*.62, t);
+    drawPondRim(d, x, y, r, r*.62, t);
   }
 }
 /* Water life, clipped to the pond's own ellipse: two soft shimmer bands of
@@ -6159,6 +6385,7 @@ function drawPondFx(d, x, y, rx, ry, t){
 }
 function drawTree(d, t){
   const u = UNIT(), x = NX(d.x), y = NY(d.y);
+  if (d.dead){ drawDeadTree(d, x, y, u); return; }   // Batch C: the Deadwood's bare grey-brown trees (runtime-drawn, no sprite)
   const img = WORLD_IMGS['decor-tree'];
   if (imgOk(img)){   // pixel tree sprite, bottom-anchored on the spot
     const w = .36*u*d.s, h = w * img.naturalHeight/img.naturalWidth;
@@ -6182,6 +6409,32 @@ function drawTree(d, t){
   ctx.beginPath(); ctx.arc(x+cr*.45, y-th-cr*.25, cr*.62, 0, 7); ctx.fill();
   ctx.fillStyle = '#66bb6a'; ctx.beginPath(); ctx.arc(x-cr*.22, y-th-cr*.85, cr*.42, 0, 7); ctx.fill();
 }
+/* A DEAD TREE (Batch C): tapered grey-brown trunk and bare branches,
+   runtime-drawn in the same flat pixel style — the ISW tree sprite
+   tinted would still read as a leafy tree in grey, not a dead one. */
+function drawDeadTree(d, x, y, u){
+  const s = d.s, th = .34 * u * s, tw = .030 * u * s;
+  ctx.fillStyle = 'rgba(38,32,40,.18)';
+  ctx.beginPath(); ctx.ellipse(x, y + .012 * u, tw * 2.6, tw * .8, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#7d6a58';   // grey-brown trunk, lit from the left
+  ctx.beginPath();
+  ctx.moveTo(x - tw, y); ctx.lineTo(x - tw * .38, y - th); ctx.lineTo(x + tw * .38, y - th); ctx.lineTo(x + tw, y);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#66543f';   // shaded right half
+  ctx.beginPath();
+  ctx.moveTo(x, y); ctx.lineTo(x, y - th); ctx.lineTo(x + tw * .38, y - th); ctx.lineTo(x + tw, y);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#7d6a58'; ctx.lineCap = 'round';
+  const branch = (x0, y0, x1, y1, w) => { ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); };
+  const seed = hash01(d.x * 31.7 + d.y * 17.3);
+  branch(x, y - th * .98, x - th * .34, y - th * 1.22, tw * .55);                     // crown limbs
+  branch(x, y - th * .98, x + th * .30, y - th * 1.18, tw * .55);
+  branch(x, y - th * .80, x - th * .30, y - th * .92, tw * .42);
+  branch(x, y - th * .68, x + th * .34, y - th * .86, tw * .42);
+  branch(x - th * .30, y - th * .92, x - th * .44, y - th * 1.02, tw * .26);           // twig tips
+  branch(x + th * .30, y - th * .86, x + th * .46, y - th * .94, tw * .26);
+  if (seed > .5) branch(x, y - th * .52, x - th * .22, y - th * .60, tw * .3);        // seeded variety: half the dead trees carry a low limb
+}
 function drawRock(d){
   const u = UNIT(), x = NX(d.x), y = NY(d.y);
   const img = WORLD_IMGS['decor-rock'];
@@ -6190,13 +6443,165 @@ function drawRock(d){
     // ground shadow (the sprite path had none)
     ctx.fillStyle = 'rgba(38,32,40,.18)';
     ctx.beginPath(); ctx.ellipse(x, y + h*.36, w*.40, w*.11, 0, 0, 7); ctx.fill();
-    ctx.drawImage(img, x-w/2, y-h/2, w, h);
+    // Batch C: tinted / toppled variants (the Ruined Circle's pillars) —
+    // the tint is a translucent source-atop wash, shading preserved
+    const src = d.tint ? colorTintOf(img, d.tint) : img;
+    if (d.rot){ ctx.save(); ctx.translate(x, y); ctx.rotate(d.rot); ctx.drawImage(src, -w/2, -h/2, w, h); ctx.restore(); }
+    else ctx.drawImage(src, x-w/2, y-h/2, w, h);
     return;
   }
   const r = .035*u*d.s;
-  ctx.fillStyle = '#9aa0a3'; ctx.beginPath(); ctx.ellipse(x, y, r, r*.75, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = d.tint ? '#939a9f' : '#9aa0a3'; ctx.beginPath(); ctx.ellipse(x, y, r, r*.75, 0, 0, 7); ctx.fill();
   ctx.fillStyle = '#b9bfc2'; ctx.beginPath(); ctx.ellipse(x-r*.25, y-r*.22, r*.55, r*.4, 0, 0, 7); ctx.fill();
   ctx.fillStyle = '#7e858a'; ctx.beginPath(); ctx.ellipse(x+r*.4, y+r*.18, r*.4, r*.3, 0, 0, 7); ctx.fill();
+}
+/* ---- POI prop painters (Batch C): flat pixel shapes, bottom-anchored
+   like the other decor, drawn from the y-sorted entity pass. ---- */
+function stoneBox(d){   // occluder box for a standing stone (drawStone's slab)
+  const w = .14 * d.s, h = .31 * d.s, baseY = d.y + .02;
+  return { cx:d.x, hw:w/2, top:baseY - h, baseY };
+}
+function drawStone(d){
+  const u = UNIT(), x = NX(d.x), y = NY(d.y) + .02 * u;
+  const w = .14 * u * d.s, h = .31 * u * d.s;
+  ctx.fillStyle = 'rgba(38,32,40,.18)';
+  ctx.beginPath(); ctx.ellipse(x, y, w * .55, w * .16, 0, 0, 7); ctx.fill();
+  ctx.save(); ctx.translate(x, y); ctx.rotate(d.tilt || 0);
+  ctx.fillStyle = '#9aa0a3';   // tapered slab, narrower at the top
+  ctx.beginPath();
+  ctx.moveTo(-w/2, 0); ctx.lineTo(-w*.34, -h); ctx.lineTo(w*.30, -h); ctx.lineTo(w/2, 0);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#868d91';   // shaded right face
+  ctx.beginPath();
+  ctx.moveTo(0, 0); ctx.lineTo(-w*.02, -h); ctx.lineTo(w*.30, -h); ctx.lineTo(w/2, 0);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#c2c8cb'; ctx.fillRect(-w*.34, -h, w*.64, Math.max(2, h*.05));   // worn top edge
+  ctx.strokeStyle = 'rgba(38,32,40,.30)'; ctx.lineWidth = Math.max(1, w*.05);      // a crack
+  ctx.beginPath(); ctx.moveTo(-w*.08, -h*.82); ctx.lineTo(w*.05, -h*.55); ctx.lineTo(-w*.03, -h*.34); ctx.stroke();
+  ctx.restore();
+}
+function tentBox(d){
+  const baseY = d.y + .04;
+  return { cx:d.x, hw:.18, top:baseY - .27, baseY };
+}
+function drawTent(d){
+  const u = UNIT(), x = NX(d.x), y = NY(d.y) + .04 * u;
+  const w = .36 * u, h = .27 * u;
+  ctx.fillStyle = 'rgba(38,32,40,.18)';
+  ctx.beginPath(); ctx.ellipse(x, y, w * .52, w * .13, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#8a5a33'; ctx.fillRect(x - 1.5, y - h - .012 * u, 3, h + .012 * u);   // centre pole poking past the peak
+  ctx.fillStyle = '#3f7d3a';   // left leaf panel
+  ctx.beginPath(); ctx.moveTo(x, y - h); ctx.lineTo(x - w/2, y); ctx.lineTo(x, y); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#35682f';   // right leaf panel, a shade darker
+  ctx.beginPath(); ctx.moveTo(x, y - h); ctx.lineTo(x + w/2, y); ctx.lineTo(x, y); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#2c3436';   // the dark opening
+  ctx.beginPath(); ctx.moveTo(x, y - h * .52); ctx.lineTo(x - w * .17, y); ctx.lineTo(x + w * .17, y); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.14)';   // leaf speckles on the lit panel
+  for (let i = 0; i < 5; i++){
+    const hx = hash01(d.x * 91.7 + i * 13.1), hy = hash01(d.y * 57.3 + i * 7.7);
+    ctx.fillRect(x - w * .42 + hx * w * .36, y - h * .72 + hy * h * .55, 3, 2);
+  }
+}
+function drawLog(d){
+  const u = UNIT(), x = NX(d.x), y = NY(d.y);
+  const w = .17 * u * d.s, h = .038 * u;
+  ctx.fillStyle = 'rgba(38,32,40,.15)';
+  ctx.beginPath(); ctx.ellipse(x, y + h * .5, w * .52, h * .34, 0, 0, 7); ctx.fill();
+  ctx.save(); ctx.translate(x, y); ctx.rotate(d.a || 0);
+  ctx.fillStyle = '#8a5a33'; roundRect(-w/2, -h/2, w, h, h/2); ctx.fill();
+  ctx.fillStyle = '#a06a35'; roundRect(-w/2, -h/2, w, h * .45, h/2); ctx.fill();
+  ctx.fillStyle = '#c9a06a';   // sawn end rings
+  ctx.beginPath(); ctx.ellipse(-w/2 + 2, 0, 2.6, h * .34, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(w/2 - 2, 0, 2.6, h * .34, 0, 0, 7); ctx.fill();
+  ctx.restore();
+}
+function drawMushroom(d){
+  const u = UNIT(), x = NX(d.x), y = NY(d.y);
+  const s = d.s, cw = .052 * u * s, ch = .030 * u * s, sh = .026 * u * s;
+  ctx.fillStyle = 'rgba(38,32,40,.14)';
+  ctx.beginPath(); ctx.ellipse(x, y, cw * .55, cw * .16, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#efe3c8'; ctx.fillRect(x - cw * .14, y - sh, cw * .28, sh);   // stem
+  ctx.fillStyle = '#a8503c';   // cap: a half-disc with a flat pixel bottom
+  ctx.beginPath(); ctx.ellipse(x, y - sh, cw/2, ch, 0, Math.PI, 0); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#8a3b2c'; ctx.fillRect(x - cw/2, y - sh - 1.5, cw, 3);        // cap rim shadow
+  ctx.fillStyle = '#f6ead2';   // spots
+  ctx.fillRect(x - cw * .28, y - sh - ch * .62, 3.4, 2.6);
+  ctx.fillRect(x + cw * .10, y - sh - ch * .80, 2.8, 2.2);
+  ctx.fillRect(x + cw * .26, y - sh - ch * .38, 2.4, 2);
+}
+function drawCampfire(d, t){
+  const u = UNIT(), x = NX(d.x), y = NY(d.y);
+  ctx.fillStyle = 'rgba(255,150,50,.10)';   // warm light pool on the ground
+  ctx.beginPath(); ctx.ellipse(x, y, .11 * u, .05 * u, 0, 0, 7); ctx.fill();
+  for (let i = 0; i < 6; i++){   // stone ring
+    const a = i / 6 * Math.PI * 2, sx = x + Math.cos(a) * .052 * u, sy = y + Math.sin(a) * .026 * u;
+    ctx.fillStyle = i % 2 ? '#9aa0a3' : '#868d91'; ctx.fillRect(sx - 3.5, sy - 2.5, 7, 5);
+  }
+  ctx.save(); ctx.translate(x, y);   // two crossed logs
+  ctx.fillStyle = '#7a4d16';
+  ctx.rotate(.5); ctx.fillRect(-.038 * u, -.008 * u, .076 * u, .016 * u);
+  ctx.rotate(-1.0); ctx.fillRect(-.038 * u, -.008 * u, .076 * u, .016 * u);
+  ctx.restore();
+  /* FLAME PARTICLES, deterministic: nine motes on fixed cycles (age from
+     the clock + index) rising, narrowing and cooling orange -> yellow ->
+     ember. No state, no allocation — the cycle IS the particle system. */
+  for (let i = 0; i < 9; i++){
+    const age = ((t + i * 173) % 810) / 810;
+    const fx = x + Math.sin(i * 7.3 + t / 210) * .013 * u * (1 - age);
+    const fy = y - .008 * u - age * .072 * u;
+    const fs = Math.max(2, (1 - age) * .020 * u);
+    ctx.fillStyle = age < .35 ? '#ffb52e' : age < .7 ? '#ff8a3c' : '#e5484d';
+    ctx.globalAlpha = 1 - age * .55;
+    ctx.fillRect(fx - fs/2, fy - fs/2, fs, fs);
+  }
+  ctx.globalAlpha = 1;
+}
+/* FLOWER GROVE ground patch (Batch C): a soft meadow disc and a dense
+   seeded burst of pixel flowers — far denser than the world scatter. */
+function drawFlowerGrove(d, t){
+  const u = UNIT(), x = NX(d.x), y = NY(d.y), r = d.r * u;
+  /* NO filled disc: a hard ellipse edge read as a UI blob in playtest
+     stills. The meadow patch is suggested instead by a soft falloff of
+     darker grass speckles (sqrt distribution concentrates them at the
+     centre, so the patch fades out organically). */
+  ctx.fillStyle = 'rgba(46,125,50,.16)';
+  for (let i = 0; i < 110; i++){
+    const a = hash01(i * 5.31 + d.x) * Math.PI * 2, rr = Math.sqrt(hash01(i * 7.97 + d.y));
+    const sx = x + Math.cos(a) * rr * r * .85, sy = y + Math.sin(a) * rr * r * .62, ss = 3 + (i % 3) * 2;
+    ctx.fillRect(sx - ss/2, sy - ss/2, ss, ss);
+  }
+  const cols = ['#ffffff', '#ffd1e8', '#fff3a0', '#ffb3d9', '#c39bff'];
+  for (let i = 0; i < 90; i++){
+    const a = hash01(i * 3.77 + d.x) * Math.PI * 2, rr = Math.sqrt(hash01(i * 9.13 + d.y)) * .92;
+    const fx = x + Math.cos(a) * rr * r + windAt(d.x, d.y, t) * .003 * u, fy = y + Math.sin(a) * rr * r * .72;
+    const fs = 4 + (i % 3) * 2;
+    ctx.fillStyle = cols[i % cols.length]; ctx.fillRect(fx - fs/2, fy - fs/2, fs, fs);
+    ctx.fillStyle = 'rgba(176,120,20,.9)'; ctx.fillRect(fx - 1, fy - 1, 2, 2);
+  }
+}
+/* POND RIM dressing (Batch C): the pond's pre-computed rim items —
+   patchy sand blobs break the sprite's uniform tan ring, stones sit on
+   it, reed clumps rise off it (swaying in the shared wind field). */
+function drawPondRim(d, x, y, rx, ry, t){
+  if (!d.rim) return;
+  const u = UNIT();
+  for (const it of d.rim){
+    const px = x + Math.cos(it.a) * rx * it.rf, py = y + Math.sin(it.a) * ry * it.rf;
+    if (it.k === 'sand'){
+      ctx.fillStyle = 'rgba(230,207,154,.45)';
+      ctx.beginPath(); ctx.ellipse(px, py, .030 * u * (0.7 + it.rf * .4), .016 * u, it.a, 0, 7); ctx.fill();
+    } else if (it.k === 'stone'){
+      const ss = .011 * u * (0.8 + it.rf * .35);
+      ctx.fillStyle = '#9aa0a3'; ctx.fillRect(px - ss/2, py - ss/2, ss, ss * .8);
+      ctx.fillStyle = '#b9bfc2'; ctx.fillRect(px - ss/2, py - ss/2, ss * .55, ss * .4);
+    } else {   // reed clump: three blades, tips leaning with the wind
+      const lean = windAt(d.x + it.a, d.y, t) * .006 * u, bh = .038 * u * (0.8 + it.rf * .3);
+      ctx.strokeStyle = '#3e7d3a'; ctx.lineWidth = Math.max(1.6, .004 * u); ctx.lineCap = 'round';
+      for (const off of [-.008, 0, .008]){
+        ctx.beginPath(); ctx.moveTo(px + off * u, py); ctx.quadraticCurveTo(px + off * u + lean * .4, py - bh * .6, px + off * u + lean, py - bh); ctx.stroke();
+      }
+    }
+  }
 }
 /* Ore node: the decor-rock sprite studded with chunky gem crystals in its
    type's colours. When mined it SHAKES (an object effect — a quick wobble
@@ -6254,6 +6659,91 @@ function drawNode(n, t){
     ctx.beginPath(); ctx.moveTo(w*.3, -h*.7); ctx.lineTo(w*.08, -h*.5); ctx.lineTo(w*.2, -h*.28); ctx.stroke();
   }
   ctx.restore();
+}
+/* ============================================================ ambient life (Batch C)
+   Fixed, pre-computed citizen pools — every position is a deterministic
+   function of the clock, so there is NO per-frame allocation and nothing
+   to sync or persist. Counts are capped by construction: 16 gulls,
+   84 fireflies, 130 petal motes, 30 ripple spots. All view-culled. */
+const GULLS = (()=>{
+  const rng = mulberry32(20261111), arr = [];
+  for (let i = 0; i < 16; i++){
+    const I = ISLES[i % 3], ca = rng() * Math.PI * 2, cd = I.r + .55 + rng() * .5;
+    arr.push({ cx:I.cx + Math.cos(ca) * cd, cy:I.cy + Math.sin(ca) * cd * .8, r:.30 + rng() * .35, sp:(rng() < .5 ? -1 : 1) * (.25 + rng() * .3), ph:rng() * 7, s:.8 + rng() * .5 });
+  }
+  return arr;
+})();
+const FIREFLIES = (()=>{
+  const rng = mulberry32(20261112), arr = [], I = ISLES[1];
+  for (let i = 0; i < 84; i++){
+    const a = rng() * Math.PI * 2, d = Math.sqrt(rng()) * I.r * .88;
+    arr.push({ x:I.cx + Math.cos(a) * d, y:I.cy + Math.sin(a) * d, ph:rng() * 7 });
+  }
+  return arr;
+})();
+const PETAL_MOTES = (()=>{
+  const rng = mulberry32(20261113), arr = [], I = ISLES[0];
+  for (let i = 0; i < 130; i++){
+    const a = rng() * Math.PI * 2, d = Math.sqrt(rng()) * (I.r - .1);
+    arr.push({ x:I.cx + Math.cos(a) * d, y:I.cy + Math.sin(a) * d, ph:rng() * 7, c: rng() < .6 ? '#ffd9e8' : '#fff3f6' });
+  }
+  return arr;
+})();
+const RIPPLE_SPOTS = (()=>{
+  const rng = mulberry32(20261114), arr = [];
+  for (const I of ISLES) for (let i = 0; i < 10; i++){
+    const a = rng() * Math.PI * 2, d = I.r + .16 + rng() * .45;   // just off the shore, in the sea
+    arr.push({ x:I.cx + Math.cos(a) * d, y:I.cy + Math.sin(a) * d });
+  }
+  return arr;
+})();
+function drawAmbientAir(t){
+  const u = UNIT(), vw = W/u, vh = H/u;
+  const inView = (wx, wy, m) => wx >= ses.cam.x - m && wx <= ses.cam.x + vw + m && wy >= ses.cam.y - m && wy <= ses.cam.y + vh + m;
+  // PETALS over Verdant — the light pre-bloom drift (the post-bloom
+  // particle petals in frame() still layer on top once the Cycle ends)
+  for (const p of PETAL_MOTES){
+    const wx = p.x + Math.sin(t/1500 + p.ph) * .06, wy = p.y + Math.cos(t/1900 + p.ph * 1.3) * .045;
+    if (!inView(wx, wy, .1)) continue;
+    ctx.save(); ctx.translate(NX(wx), NY(wy)); ctx.rotate(p.ph + t/1100);
+    ctx.globalAlpha = .75; ctx.fillStyle = p.c; ctx.fillRect(-2.2, -1.3, 4.4, 2.6);
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+  // FIREFLIES in the Grove shade: slow drift, pulsing glow (two stacked
+  // squares — no shadowBlur, per the perf rules)
+  for (const f of FIREFLIES){
+    const wx = f.x + Math.sin(t/2300 + f.ph) * .05, wy = f.y + Math.cos(t/1900 + f.ph * 1.3) * .04;
+    if (!inView(wx, wy, .1)) continue;
+    const pulse = .3 + .7 * Math.abs(Math.sin(t/640 + f.ph)), x = NX(wx), y = NY(wy);
+    ctx.globalAlpha = .16 * pulse; ctx.fillStyle = '#baff9e'; ctx.fillRect(x - 4, y - 4, 8, 8);
+    ctx.globalAlpha = .85 * pulse; ctx.fillStyle = '#eaffb0'; ctx.fillRect(x - 1.5, y - 1.5, 3, 3);
+  }
+  ctx.globalAlpha = 1;
+  // GULLS over the sea: white pixel birds circling the shores on sine paths
+  for (const g of GULLS){
+    const a = t/1000 * g.sp + g.ph;
+    const wx = g.cx + Math.cos(a) * g.r, wy = g.cy + Math.sin(a) * g.r * .55;
+    if (!inView(wx, wy, .2)) continue;
+    const flap = Math.sin(t/170 + g.ph), s = g.s;
+    ctx.save(); ctx.translate(NX(wx), NY(wy));
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(2, 3 * s); ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-9 * s, -flap * 5);
+    ctx.quadraticCurveTo(-4 * s, 2, 0, 0);
+    ctx.quadraticCurveTo(4 * s, 2, 9 * s, -flap * 5);
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(-2 * s, -1, 4 * s, 2);
+    ctx.restore();
+  }
+}
+/* POI name floats: the first time the blade comes within .8u of a POI
+   centre, its name floats once — a session set keeps it to once. */
+function updatePoiNotices(){
+  for (const p of POIS){
+    if (ses.seenPois.has(p.id)) continue;
+    if (dist2(me.x, me.y, p.x, p.y) < .8 * .8){ ses.seenPois.add(p.id); addFloat(p.x, p.y - .3, p.name, '#ffe9a8'); }
+  }
 }
 function drawField(t){
   const u=UNIT(), vw=W/u, vh=H/u;
@@ -6969,6 +7459,11 @@ function drawEntities(t){
     if (d.x<ses.cam.x-.55 || d.x>ses.cam.x+vw+.55 || d.y<ses.cam.y-.55 || d.y>ses.cam.y+vh+.55) continue;   // view-culled
     if (d.t === 'tree'){ const b = treeBox(d); ents.push({ baseY:b.baseY, kind:'tree', d }); occluders.push(b); }
     else if (d.t === 'rock'){ const b = rockBox(d); ents.push({ baseY:b.baseY, kind:'rock', d }); occluders.push(b); }
+    else if (d.t === 'stone'){ const b = stoneBox(d); ents.push({ baseY:b.baseY, kind:'stone', d }); occluders.push(b); }
+    else if (d.t === 'tent'){ const b = tentBox(d); ents.push({ baseY:b.baseY, kind:'tent', d }); occluders.push(b); }
+    else if (d.t === 'log'){ ents.push({ baseY:d.y + .03, kind:'log', d }); }          // low props: depth-sorted, never occlude
+    else if (d.t === 'mushroom'){ ents.push({ baseY:d.y + .02, kind:'mushroom', d }); }
+    else if (d.t === 'campfire'){ ents.push({ baseY:d.y + .02, kind:'campfire', d }); }
   }
   for (const b of BUILDING_DEFS){
     ents.push({ baseY:b.pos.y + .10, kind:'bld', b });
@@ -7054,6 +7549,11 @@ function drawEntities(t){
   for (const e of ents){
     if (e.kind === 'tree') drawTree(e.d, t);
     else if (e.kind === 'rock') drawRock(e.d);
+    else if (e.kind === 'stone') drawStone(e.d);
+    else if (e.kind === 'tent') drawTent(e.d);
+    else if (e.kind === 'log') drawLog(e.d);
+    else if (e.kind === 'mushroom') drawMushroom(e.d);
+    else if (e.kind === 'campfire') drawCampfire(e.d, t);
     else if (e.kind === 'bld') drawBuildings(e.b.key);
     else if (e.kind === 'npc') drawNPC(e, t);
     else if (e.kind === 'shrine') drawShrine(e.key, t);
@@ -7253,6 +7753,14 @@ function drawObjectiveArrow(now){
   ctx.fillStyle = '#fff8e7'; ctx.beginPath(); ctx.arc(0, 0, 2.4, 0, 7); ctx.fill();
   ctx.restore();
 }
+/* TRAIL SWOOSH (Batch C): past ~1200 px/s of pointer speed the swept
+   trail thins and fades, so a full-speed flick reads as a blade streak
+   instead of a thick white banana covering the screen. At 2400 px/s:
+   width x0.55, alpha x0.60; linear between 1200 and 2400, flat outside. */
+function trailSpeedScale(v){
+  const f = clamp((v - 1200) / 1200, 0, 1);
+  return { w: 1 - .45 * f, a: 1 - .40 * f };
+}
 function frame(now){
   requestAnimationFrame(frame);
   // NO frame skip (Handler: the 60 FPS gate felt like a fighting-game
@@ -7377,6 +7885,7 @@ function frame(now){
   }
 
   if (ses.started) updateInteract();   // every frame — the OPEN prompt and panel auto-close must never lag
+  if (ses.started) updatePoiNotices();   // Batch C: POI name floats on first approach
   if (ses.started) updateDialogue(now);   // the speech bubble tracks its speaker + the typewriter runs
   /* ---- stage 4 ambient beats ---- */
   if (ses.endingQueue && ses.endingQueue.length && !ses.chapterCard){
@@ -7402,11 +7911,24 @@ function frame(now){
       ses.particles.push({ x:me.x + rand(-.8,.8), y:me.y + rand(-.6,.3), vx:rand(.008,.03), vy:rand(.004,.014), life:2, grav:.25, color: Math.random() < .5 ? '#ffd9e8' : '#ffe9a8', r:rand(2.5,4.5) });
       capParticles();
     }
+    // FISH RIPPLES (Batch C): every ~2.4-4.1s a pair of expanding rings
+    // blooms at the next seeded shore spot — but only near the view, so
+    // the sea the player can see is the sea that ripples
+    if (now >= ses.nextRippleAt){
+      ses.nextRippleAt = now + 2400 + (ses.rippleIx * 613) % 1700;
+      const sp = RIPPLE_SPOTS[ses.rippleIx++ % RIPPLE_SPOTS.length];
+      const vw3 = W/UNIT(), vh3 = H/UNIT();
+      if (sp.x > ses.cam.x - .6 && sp.x < ses.cam.x + vw3 + .6 && sp.y > ses.cam.y - .6 && sp.y < ses.cam.y + vh3 + .6){
+        ses.popRings.push({ x:sp.x, y:sp.y, r:.015, life:1, color:'#bfe6ff' });
+        ses.popRings.push({ x:sp.x, y:sp.y, r:.004, life:.8, color:'#dff4ff' });
+      }
+    }
   }
   drawField(now);
   // y-sorted entity pass: trees, rocks, buildings and slimes by ground
   // anchor, then occlusion ghosts for slimes hidden behind props
   drawEntities(now);
+  drawAmbientAir(now);   // Batch C: gulls, fireflies, drifting petals (drawn before the title dim, so the title stays dimmed)
   /* BATCH A title composition: while the title is up, the world renders
      DIMMED under a translucent overlay (the DOM #title gradient stays as
      the vignette) — ambient slimes and decor keep living underneath,
@@ -7521,7 +8043,8 @@ function frame(now){
              trailing (grip) edge stroked in colour, 3px @ .3 — both edges
              of the blade read. age here is ageFade: 1 = newest. */
         const S2 = ses.myTrail.map(p => ({ bx:NX(p.bx), by:NY(p.by), tx:NX(p.tx), ty:NY(p.ty), age: clamp(1-(now-p.t)/470, 0, 1) }));
-        const hw = clamp(myReach() * SCALE() * (1 + bl.ext) * .16, 9, 26);   // saber halfwidth follows weapon reach, as drawSword computes it
+        const ts = trailSpeedScale(me.ptrSpeedPx);   // Batch C: fast flicks thin + fade the swoosh
+        const hw = clamp(myReach() * SCALE() * (1 + bl.ext) * .16, 9, 26) * ts.w;   // saber halfwidth follows weapon reach, as drawSword computes it
         ctx.save(); ctx.lineCap='round'; ctx.lineJoin='round';
         ctx.globalCompositeOperation = 'lighter';   // additive light blending
         const quad = (ax, ay, bx2, by2, cx, cy, dx, dy)=>{
@@ -7531,15 +8054,15 @@ function frame(now){
           const p0 = S2[i-1], p1 = S2[i], ageFade = (p0.age + p1.age)/2;
           if (ageFade <= .01) continue;
           ctx.fillStyle = me.color;
-          ctx.globalAlpha = .13 * ageFade;   // A: full swept quad
+          ctx.globalAlpha = .13 * ageFade * ts.a;   // A: full swept quad
           quad(p0.bx, p0.by, p0.tx, p0.ty, p1.tx, p1.ty, p1.bx, p1.by);
           const o0x = p0.bx + (p0.tx-p0.bx)*.45, o0y = p0.by + (p0.ty-p0.by)*.45;
           const o1x = p1.bx + (p1.tx-p1.bx)*.45, o1y = p1.by + (p1.ty-p1.by)*.45;
-          ctx.globalAlpha = .35 * ageFade;   // B: outer half toward the edge
+          ctx.globalAlpha = .35 * ageFade * ts.a;   // B: outer half toward the edge
           quad(o0x, o0y, p0.tx, p0.ty, p1.tx, p1.ty, o1x, o1y);
-          ctx.globalAlpha = .9 * ageFade; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(1, hw*.8);   // C: leading edge
+          ctx.globalAlpha = .9 * ageFade * ts.a; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(1, hw*.8);   // C: leading edge
           ctx.beginPath(); ctx.moveTo(p0.tx, p0.ty); ctx.lineTo(p1.tx, p1.ty); ctx.stroke();
-          ctx.globalAlpha = .3 * ageFade; ctx.strokeStyle = me.color; ctx.lineWidth = 3;                    // C: trailing edge
+          ctx.globalAlpha = .3 * ageFade * ts.a; ctx.strokeStyle = me.color; ctx.lineWidth = 3;                    // C: trailing edge
           ctx.beginPath(); ctx.moveTo(p0.bx, p0.by); ctx.lineTo(p1.bx, p1.by); ctx.stroke();
         }
         /* HEAD GLOW at the live tip — the saber's head must read even in
@@ -7547,11 +8070,11 @@ function frame(now){
            core. (The bloom was a shadowBlur once; discs are far cheaper
            on mobile GPUs and read the same in a still.) */
         const tipP = S2[S2.length-1];
-        ctx.globalAlpha = .35; ctx.fillStyle = me.color;
+        ctx.globalAlpha = .35 * ts.a; ctx.fillStyle = me.color;
         ctx.beginPath(); ctx.arc(tipP.tx, tipP.ty, hw*1.5, 0, 7); ctx.fill();
-        ctx.globalAlpha = .5;   // mid falloff disc — layered alpha discs replace the shadowBlur=18 bloom (same read, no blur pass)
+        ctx.globalAlpha = .5 * ts.a;   // mid falloff disc — layered alpha discs replace the shadowBlur=18 bloom (same read, no blur pass)
         ctx.beginPath(); ctx.arc(tipP.tx, tipP.ty, hw*1.1, 0, 7); ctx.fill();
-        ctx.globalAlpha = .95; ctx.fillStyle = '#ffffff';
+        ctx.globalAlpha = .95 * ts.a; ctx.fillStyle = '#ffffff';
         ctx.beginPath(); ctx.arc(tipP.tx, tipP.ty, hw*.9, 0, 7); ctx.fill();
         ctx.restore(); ctx.globalAlpha = 1;
       }
