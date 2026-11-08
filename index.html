@@ -1148,6 +1148,9 @@ const freshSession = () => ({
   seenBosses: new Set(),     // boss ids already announced by the banner
   // input / pointer
   pointerDown: false, lastClient: null, lastMoveT: 0,
+  ptrBuf: Array.from({ length: 64 }, () => ({ x:0, y:0, t:0 })),   // ring of recent pointer samples {x, y (world), t (ms)} — events only APPEND here; the blade is EVALUATED from this stream once per frame (see updatePointer), never placed by a raw event
+  ptrStart: 0, ptrCount: 0,   // ring bookkeeping: physical index of the oldest live sample + live count
+  ptrEvalT: 0,                // last frame time updatePointer evaluated the stream (segment-speed dt)
   uiPointer: false,          // a press that started on UI (not the canvas) must never move the sword
   downInfo: null,            // canvas pointerdown record for the tap-vs-drag skill gate
   // menus + panels
@@ -2356,6 +2359,7 @@ function death(){
   me.hp = me.maxHp;
   const sp = prog().spawnAt || { x: WORLD/2, y: WORLD/2 + .1 };   // inn-saved respawn, else town centre
   me.x = sp.x; me.y = sp.y; me.px = me.x; me.py = me.y;
+  pinPtr(me.x, me.y, now);   // respawn teleport: restart the pointer stream here, or the frame evaluator would drag the sword back to wherever the mouse sits
   const vw = W/UNIT(), vh = H/UNIT();
   ses.cam.x = clamp(me.x - vw/2, 0, Math.max(0, WORLD - vw));
   ses.cam.y = clamp(me.y - vh/2, 0, Math.max(0, WORLD - vh));
@@ -2718,35 +2722,106 @@ setInterval(()=>{ // sword state @ ~20Hz
 // below keep using RAW client deltas, which a constant offset never changes.
 const TOUCH_LIFT = 48;
 const ptrY = e => e.clientY - (e.pointerType==='touch' ? TOUCH_LIFT : 0);
+/* Pointer SAMPLES, not placements: events only APPEND timestamped world
+   points to the session ring buffer; the blade is placed once per frame by
+   updatePointer(), which evaluates the stream at render time. The old code
+   placed the blade directly from each raw event, so its motion inherited
+   the mouse's event rate instead of the display's: on a 120/144Hz+ monitor
+   fed by a 60–125Hz event stream the sword sat still for a frame, then
+   jumped two frames' worth — judder, worst on diagonals — and me.angle
+   snapped to each event's delta direction. */
+const PTR_DELAY = 8;        // ms: evaluate the stream this far behind the frame clock, so two samples almost always bracket the eval time
+const PTR_GAP_SNAP = 120;   // ms: a longer silence between samples is a teleport (stall / tab-out / re-entry), never a sweep
+function pushPtrSample(x, y, t){
+  const buf = ses.ptrBuf, N = buf.length;
+  let slot;
+  if (ses.ptrCount < N){ slot = (ses.ptrStart + ses.ptrCount) % N; ses.ptrCount++; }
+  else { slot = ses.ptrStart; ses.ptrStart = (ses.ptrStart + 1) % N; }   // full: overwrite the oldest sample
+  const s = buf[slot]; s.x = x; s.y = y; s.t = t;
+}
+function pinPtr(x, y, t){   // teleport the sword (tap snap / respawn / dash landing): restart the stream at the new point so the evaluator holds it there instead of gliding in from the stale path
+  ses.ptrStart = 0; ses.ptrCount = 0;
+  pushPtrSample(x, y, t);
+}
 addEventListener('pointermove', e=>{
   if (ses.uiPointer) return;
-  const x=clamp(ses.cam.x + e.clientX/UNIT(), .02, WORLD-.02), y=clamp(ses.cam.y + ptrY(e)/UNIT(), .02, WORLD-.02);
-  const now=performance.now();
-  // Direction & speed from RAW CLIENT deltas: immune to camera drift, and
-  // speed (px/s) is independent of the pointer's event rate / polling Hz.
-  let cdx=0, cdy=0, spd=0;
-  if (ses.lastClient){
-    cdx=e.clientX-ses.lastClient.x; cdy=e.clientY-ses.lastClient.y;
-    const dtm=Math.max(1, now-ses.lastMoveT);
-    spd=Math.hypot(cdx,cdy)/dtm*1000;
-    if (Math.hypot(cdx,cdy)>1.5) me.angle=Math.atan2(cdy,cdx);
-    if (ses.downInfo) ses.downInfo.travel += Math.hypot(cdx,cdy);   // tap-vs-drag tracking for the tap gate
+  const now = performance.now();
+  // Coalesced events: the browser batches sub-frame pointer points into one
+  // callback — sample EVERY point (the stream is only as smooth as its
+  // densest input); fall back to the event itself when unsupported.
+  const list = (typeof e.getCoalescedEvents === 'function') ? e.getCoalescedEvents() : null;
+  const pts = (list && list.length) ? list : [e];
+  for (let i=0;i<pts.length;i++){
+    const ev = pts[i];
+    // tap-gate travel from RAW client deltas (a constant touch lift cancels out of a delta)
+    if (ses.lastClient && ses.downInfo) ses.downInfo.travel += Math.hypot(ev.clientX - ses.lastClient.x, ev.clientY - ses.lastClient.y);
+    ses.lastClient = { x:ev.clientX, y:ev.clientY };
+    pushPtrSample(
+      clamp(ses.cam.x + ev.clientX/UNIT(), .02, WORLD-.02),
+      clamp(ses.cam.y + ptrY(ev)/UNIT(), .02, WORLD-.02),
+      ev.timeStamp || now);
   }
-  ses.lastClient={x:e.clientX, y:e.clientY}; ses.lastMoveT=now;
-  me.speed = spd;
-  me.ptrSpeedPx = Math.max(me.ptrSpeedPx||0, spd);   // decayed per frame in frame(); gates idle-blade hits
-  // a fast flick attacks: SWING weapons arc (direction follows the swipe),
-  // STAB weapons lunge straight along it
-  if (ses.started && now>=me.whirlUntil){
-    if (myWeapon().motion==='stab'){
-      if (spd>950 && now-me.stabT0>170){ me.stabT0=now; me.stabAng=me.angle; }
-    } else if (spd>620 && now-me.swingT0>200){
-      me.swingT0=now;
-      me.swingDir = Math.abs(cdx)>=Math.abs(cdy) ? (cdx>=0?1:-1) : (cdy>=0?1:-1);
+  ses.lastMoveT = now;
+});
+/* Per frame: evaluate the pointer stream at (now - PTR_DELAY) and place the
+   blade there. Interpolating between the two bracketing samples spreads the
+   motion evenly over rendered frames at ANY display rate; when the stream
+   runs dry the newest point is HELD — no extrapolation, no overshoot.
+   Combat keeps using the true path: this frame-to-frame evaluated segment
+   drives me.px/py -> me.x/y, ptrSpeed (the bladeLive gate), the swing/stab
+   flick triggers and the (smoothed) heading, exactly as the raw event feed
+   drove them before. */
+function updatePointer(now){
+  if (!ses.ptrCount){ ses.ptrEvalT = now; return; }
+  const evalT = now - PTR_DELAY;
+  const buf = ses.ptrBuf, N = buf.length, start = ses.ptrStart, count = ses.ptrCount;
+  // last sample at or before evalT (scan newest -> oldest; the ring is tiny)
+  let j = -1;
+  for (let i=count-1; i>=0; i--){ if (buf[(start+i)%N].t <= evalT){ j = i; break; } }
+  let ex, ey, snap = false;
+  if (j < 0){ const s0 = buf[start]; ex = s0.x; ey = s0.y; }   // eval time precedes the stream: sit on the oldest point
+  else {
+    const A = buf[(start+j)%N];
+    if (j === count-1){ ex = A.x; ey = A.y; }                 // stream dry: hold the newest point
+    else {
+      const B = buf[(start+j+1)%N], span = B.t - A.t;
+      if (span > PTR_GAP_SNAP){ ex = B.x; ey = B.y; snap = true; }
+      else if (span <= 0){ ex = B.x; ey = B.y; }
+      else { const f = (evalT - A.t)/span; ex = A.x + (B.x-A.x)*f; ey = A.y + (B.y-A.y)*f; }
     }
   }
-  me.px=me.x; me.py=me.y; me.x=x; me.y=y;
-});
+  // prune everything older than the bracket (on a gap-snap keep the landing point, not the stale bracket)
+  const drop = snap ? j+1 : j;
+  if (drop > 0){ ses.ptrStart = (start + drop) % N; ses.ptrCount = count - drop; }
+  const prevX = me.x, prevY = me.y;
+  me.px = prevX; me.py = prevY; me.x = ex; me.y = ey;
+  if (snap) me.trailBreak = true;   // teleports don't streak the trail across the gap
+  const fdt = ses.ptrEvalT ? clamp(now - ses.ptrEvalT, 1, 100) : 16.7;
+  ses.ptrEvalT = now;
+  const dxPx = (ex - prevX) * UNIT(), dyPx = (ey - prevY) * UNIT();
+  const distPx = Math.hypot(dxPx, dyPx);
+  const spd = snap ? 0 : distPx / fdt * 1000;
+  me.speed = spd;
+  if (spd > (me.ptrSpeedPx||0)) me.ptrSpeedPx = spd;   // frame() already applied this frame's decay — same max() contract the event feed had
+  if (distPx > 1.5){
+    // heading: angular-lerp toward the segment direction (~32ms constant)
+    // instead of the old per-event snap of me.angle
+    const heading = Math.atan2(dyPx, dxPx);
+    let dA = heading - me.angle;
+    while (dA > Math.PI) dA -= Math.PI*2;
+    while (dA < -Math.PI) dA += Math.PI*2;
+    me.angle += dA * (1 - Math.exp(-fdt/32));
+  }
+  // flick triggers: same weapons, thresholds and cooldowns as the old event handler
+  if (ses.started && now >= me.whirlUntil){
+    if (myWeapon().motion==='stab'){
+      if (spd>950 && now-me.stabT0>170){ me.stabT0=now; me.stabAng=Math.atan2(dyPx,dxPx); }
+    } else if (spd>620 && now-me.swingT0>200){
+      me.swingT0=now;
+      me.swingDir = Math.abs(dxPx)>=Math.abs(dyPx) ? (dxPx>=0?1:-1) : (dyPx>=0?1:-1);
+    }
+  }
+}
 addEventListener('pointerdown', e=>{
   ses.uiPointer = e.target !== cv;   // UI presses are for buttons/panels — flag them so pointermove ignores the drag
   if (!ses.started) return;
@@ -2757,6 +2832,7 @@ addEventListener('pointerdown', e=>{
     me.x=clamp(ses.cam.x + e.clientX/UNIT(), .02, WORLD-.02);
     me.y=clamp(ses.cam.y + ptrY(e)/UNIT(), .02, WORLD-.02);
     me.trailBreak = true;   // sword teleported to the tap point — don't streak the trail across the screen
+    pinPtr(me.x, me.y, performance.now());   // restart the sample stream at the tap point — the frame evaluator must hold the sword here, not glide in from the last drag position
     // the weapon skill fires on pointerUP, and only for a genuine tap
     // (see pointerup) — releasing a drag must NOT cast
     ses.downInfo = { t:performance.now(), travel:0 };
@@ -3727,6 +3803,7 @@ function castWeaponSkill(){
       if (dist2(x0+dx*t, y0+dy*t, s.x, s.y) < .13*.13) doHit(s, Math.round(dmg*3));
     }
     me.x = x1; me.y = y1; me.px = x1; me.py = y1;
+    pinPtr(me.x, me.y, now);   // the dash LANDS here: restart the pointer stream at the landing point (on touch there may be no further pointer events — the sword must stay landed)
     me.trailBreak = true; ses.myTrail.length = 0;
     ses.popRings.push({ x:me.x, y:me.y, r:.03, life:1, color:wcol });
     beep(200,.15,'sawtooth',.08,600);
@@ -4995,6 +5072,7 @@ function frame(now){
   // speed the game up.
   const dt = ses.paused ? 0 : Math.min(50, now-ses.lastT); ses.lastT=now;   // pause freezes local dt only; world/netcode keep running
   me.ptrSpeedPx *= Math.exp(-dt/110);   // pointer-speed memory decays fast — a stopped hand stops cutting within ~a few hundred ms
+  updatePointer(now);   // place the blade from the pointer sample stream (interpolated, frame-rate) BEFORE anything reads me.x/me.y this frame
   ctx.setTransform(DPR,0,0,DPR,0,0);
 
   // remote slime interpolation — frame-rate independent: the old constant
