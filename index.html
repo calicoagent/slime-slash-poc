@@ -1463,7 +1463,7 @@ function onLand(x, y){ return landRegion(x, y) !== null; }
    that chapter (a mid-chapter save between Guardian kill and Elder
    return behaves), and New Cycle+ re-locks for free because it resets
    sigils to 0 and the quest back to 'meadow'. ---- */
-const QUEST_ORDER = ['prologue','meadow','grove','wilds','finale','postgame'];
+const QUEST_ORDER = ['prologue','meadow','bell','grove','scout','wilds','herald','finale','postgame'];
 function questPast(id){
   const st = prog().story; if (!st) return false;
   if (st.complete) return true;
@@ -1716,7 +1716,19 @@ const QUESTS = [
       { type:'return', to:'elder', text:'Bring the Sigil to Elder Mirra' },
     ],
     rewards:{ coins:150, sp:1, relic:'pauldron' } },
-  { id:'grove', chapter:'CHAPTER II', title:'Sigil of the Grove', giver:'elder',
+  { id:'bell', chapter:'CHAPTER II', title:'The Thornwick Bell', giver:'elder',
+    summary:'The Hermit at Thornwick told of the First Garden, and of the guardian who took the sickness into himself.',
+    intro:[
+      'The first Sigil sings — but Elder Mirra\'s brow stays dark. Something in the old tale does not fit.',
+      'At Thornwick\'s edge, on Grove Isle, lives a badger older than the bell he keeps beside: the HERMIT, who counts rings no one else can see.',
+      'Ask him what the Rot IS, Blade. Not where. Not how strong. What.',
+    ],
+    objectives:[
+      { type:'talk', to:'hermit', text:'Ask the Hermit at Thornwick what the Rot is' },
+      { type:'return', to:'elder', text:'Carry the Hermit\'s words back to Elder Mirra' },
+    ],
+    rewards:{ coins:200, sp:1 } },
+  { id:'grove', chapter:'CHAPTER III', title:'Sigil of the Grove', giver:'elder',
     summary:'The Thorn Regent\'s court dissolved, and the second Sigil woke.',
     intro:[
       'Deeper in the Grove, the second Sigil dreams under thorns.',
@@ -1728,7 +1740,18 @@ const QUESTS = [
       { type:'return', to:'elder', text:'Bring the Sigil to Elder Mirra' },
     ],
     rewards:{ coins:250, sp:1, relic:'crown' } },
-  { id:'wilds', chapter:'CHAPTER III', title:'Sigil of the Wilds', giver:'elder',
+  { id:'scout', chapter:'CHAPTER IV', title:'What the Scout Saw', giver:'elder',
+    summary:'Scout Vex followed the Emperor by night and saw him keep a grave-watch at the Root Shrine on the far shore.',
+    intro:[
+      'Two Sigils sing, and Elder Mirra has a new question — and it is not for you. It is for the Wilds.',
+      'Scout Vex keeps Rotwatch, the camp on the Wilds shore, watching the Emperor\'s court so it cannot watch us.',
+      'His gull came at dawn with three words scratched on the band: COME AND SEE.',
+    ],
+    objectives:[
+      { type:'talk', to:'vex', text:'Hear Scout Vex\'s report at Rotwatch' },
+    ],
+    rewards:{ coins:300, sp:1 } },
+  { id:'wilds', chapter:'CHAPTER V', title:'Sigil of the Wilds', giver:'elder',
     summary:'The Rotbloom Colossus burst, and the third Sigil woke.',
     intro:[
       'The last Sigil lies deep in the Wilds, where the Rot blooms thickest.',
@@ -1740,7 +1763,18 @@ const QUESTS = [
       { type:'return', to:'elder', text:'Bring the Sigil to Elder Mirra' },
     ],
     rewards:{ coins:400, sp:2, relic:'heart' } },
-  { id:'finale', chapter:'CHAPTER IV', title:'The Root of Rot', giver:'elder',
+  { id:'herald', chapter:'CHAPTER VI', title:'The Fourth Sigil', giver:'elder',
+    summary:'The Root Herald fell at the far shore, and no Sigil woke — only the truth. The way below stands open.',
+    intro:[
+      'Three Sigils sing — and still the road below stays shut. Vex\'s report named the lock.',
+      'On the Wilds\' far shore stands the ROOT SHRINE, where the Emperor keeps his grave-watch.',
+      'Its keeper wakes for you now: the ROOT HERALD, first of the guard. Cut him down, Blade — and listen to what falls with him.',
+    ],
+    objectives:[
+      { type:'guardian', shrine:'root', sigil:false, text:'Defeat the Root Herald at the Root Shrine' },
+    ],
+    rewards:{ coins:600, sp:2, relic:'eye' } },
+  { id:'finale', chapter:'CHAPTER VII', title:'The Root of Rot', giver:'elder',
     summary:'The Chaos Emperor fell, the Rot was cut at its root, and the Tree bloomed again.',
     intro:[
       'Three Sigils sing together. The Rot knows your name now, Blade.',
@@ -1770,21 +1804,25 @@ const SHRINE_POS = {
   meadow: { x: TOWN.x + 4.6, y: TOWN.y },
   grove:  { x: ISLES[1].cx - 3.24, y: ISLES[1].cy + 1.99 },   // the old bearing at ~.60r, rescaled to r 6.4
   wilds:  { x: ISLES[2].cx + 3.91, y: ISLES[2].cy - 2.87 },   // the old bearing at ~.65r, rescaled to r 7.4
+  root:   { x: ISLES[2].cx - 3.90, y: ISLES[2].cy + 2.90 },   // FF1 arc: the ROOT SHRINE — Wilds' far (south-west) shore, opposite the Wilds Shrine; NOT a Sigil shrine (its guardian drops the way open, not a Sigil)
 };
 /* Guardian configs: base HP scales in spawnGuardian by
    (1 + .20 x max(0, topLevel-8)) x (1 + .5 x story.cycles) — the same
    topLevel the Emperor reads. vis = rendered size factor (drawSlime);
    chase = steering speed multiplier in the host sim; pattern picks the
    orb repertoire: warden rings, regent fans + dart summons, colossus
-   alternating fat rings and fans (and a splitter's death, into mids). */
+   alternating fat rings and fans (and a splitter's death, into mids),
+   herald aimed bursts + rings with splitter summons (pattern 'herald'). */
 const GUARDIANS = {
   meadow: { name:'VERDANT WARDEN',    hp:900,  r:.088, color:'#7ee787', vis:1.15, chase:.8,  fireMs:3000, pattern:'ring',     aura:'rgba(46,125,50,' },
-  grove:  { name:'THORN REGENT',      hp:1600, r:.100, color:'#7ee787', vis:1.30, chase:1.6, fireMs:2600, pattern:'fan',      aura:'rgba(21,127,116,', summonMs:12000 },
+  grove:  { name:'THORN REGENT',      hp:1600, r:.100, color:'#7ee787', vis:1.30, chase:1.6, fireMs:2600, pattern:'fan',      aura:'rgba(21,127,116,', summonMs:12000, summonKind:'dart', summonN:2, summonText:'THE REGENT CALLS!' },
   wilds:  { name:'ROTBLOOM COLOSSUS', hp:2400, r:.115, color:'#c39bff', vis:1.25, chase:.7,  fireMs:2800, pattern:'colossus', aura:'rgba(120,60,180,' },
+  root:   { name:'ROOT HERALD',       hp:3000, r:.105, color:'#b478d9', vis:1.35, chase:1.2, fireMs:2400, pattern:'herald',   aura:'rgba(122,63,166,', summonMs:14000, summonKind:'splitter', summonN:2, summonText:'THE HERALD CALLS THE ROT!' },
 };
 const freshStory = () => ({
   quest:'prologue', step:0, objHave:0,       // current chain quest + objective index + counted progress
   sigils:0, cycles:0, complete:false,        // Sigils held, New Cycle+ count, finale done
+  heraldDone:false,                          // FF1 arc: the Root Herald has fallen — the finale gate is sigils>=3 AND this (pre-arc saves lack the key; loadProgress migrates on its absence)
   sprouts:0, sproutsDone:false,              // side tale: sproutlings found (of 3) + returned
   sproutsFound:[],                           // stage 4: WHICH sproutling spots are collected (ids into SPROUT_SPOTS)
   shrinesDone:[],                            // stage 4: shrines whose Sigil is won — their crystals glow for good
@@ -1918,13 +1956,30 @@ const store = createStore((set, get) => {
       if (d.story && typeof d.story === 'object'){
         const s = d.story;
         const ownedR = Array.isArray(s.relicsOwned) ? [...new Set(s.relicsOwned.filter(id => RELICS[id]))] : [];
+        /* FF1-ARC MIGRATION: saves written before the arc grew carry no
+           'heraldDone' key — its ABSENCE is the old-save marker (new
+           saves always write the key, true or false). The one remap:
+           a pre-arc save standing at the old finale gate (quest
+           'finale', three Sigils in hand) still owes the fourth
+           guardian, so it resumes at 'herald' with the step reset —
+           story-correct under the new gate (sigils>=3 AND heraldDone).
+           'grove' and 'wilds' keep their ids: the talk beats before
+           their slots (bell / scout) are treated as done-in-passing —
+           a Blade past the slot is never sent backwards, and the Root
+           Shrine wakes for three Sigils regardless (rootShrineAwake).
+           complete saves (quest 'postgame') are untouched. */
+        const hadHeraldFlag = Object.prototype.hasOwnProperty.call(s, 'heraldDone');
+        let mQuest = QUESTS.some(q => q.id === s.quest) || s.quest === 'postgame' ? s.quest : 'prologue';
+        let mStep = clamp(s.step|0, 0, 8), mObjHave = Math.max(0, s.objHave|0);
+        if (!hadHeraldFlag && mQuest === 'finale'){ mQuest = 'herald'; mStep = 0; mObjHave = 0; }
         next.story = {
-          quest: QUESTS.some(q => q.id === s.quest) || s.quest === 'postgame' ? s.quest : 'prologue',
-          step: clamp(s.step|0, 0, 8), objHave: Math.max(0, s.objHave|0),
+          quest: mQuest,
+          step: mStep, objHave: mObjHave,
           sigils: clamp(s.sigils|0, 0, 3), cycles: Math.max(0, s.cycles|0), complete: !!s.complete,
+          heraldDone: hadHeraldFlag ? !!s.heraldDone : false,
           sprouts: clamp(s.sprouts|0, 0, 3), sproutsDone: !!s.sproutsDone, cardSeen: !!s.cardSeen,
           sproutsFound: Array.isArray(s.sproutsFound) ? [...new Set(s.sproutsFound.filter(id => ['pond','grove','wilds'].includes(id)))] : [],
-          shrinesDone: Array.isArray(s.shrinesDone) ? [...new Set(s.shrinesDone.filter(id => ['meadow','grove','wilds'].includes(id)))] : [],
+          shrinesDone: Array.isArray(s.shrinesDone) ? [...new Set(s.shrinesDone.filter(id => ['meadow','grove','wilds','root'].includes(id)))] : [],
           relicsOwned: ownedR,
           relicsEquipped: Array.isArray(s.relicsEquipped) ? s.relicsEquipped.filter(id => ownedR.includes(id)).slice(0, 2) : [],
         };
@@ -2559,20 +2614,25 @@ function hostTick(now,dt){
         };
         if (cfg.pattern === 'ring') payload = { p:'ring', x:+grd.x.toFixed(3), y:+grd.y.toFixed(3), at:now, n:10, spd:.30, sm:1 };
         else if (cfg.pattern === 'fan') payload = fanPayload();
+        else if (cfg.pattern === 'herald') payload = (world.guardianPatternIdx++ % 3 === 2)   // ROOT HERALD: two aimed bursts, then a ring, then bursts again...
+          ? { p:'ring', x:+grd.x.toFixed(3), y:+grd.y.toFixed(3), at:now, n:12, spd:.30, sm:1 }
+          : { ...fanPayload(), n:5, spread:.4, spd:.48 };
         else payload = (world.guardianPatternIdx++ % 2 === 0)   // COLOSSUS: fat ring, then a fan, then a ring...
           ? { p:'ring', x:+grd.x.toFixed(3), y:+grd.y.toFixed(3), at:now, n:14, spd:.30, sm:1 }
           : fanPayload();
         bossEvent(payload);   // local sim first, network second — the Emperor's rule
         if (world.sendBoss && hasPeers()){ try { world.sendBoss(payload); } catch(e){} }
       }
-      // THORN REGENT summons: 2 darts to its side every summonMs
+      // Guardian summons (config-driven): the THORN REGENT calls 2 darts
+      // to its side; the ROOT HERALD calls 2 splitters of the Rot — both
+      // ride cfg.summonKind / summonN / summonText on the same clock.
       if (cfg.summonMs){
         if (!world.guardianSummonAt) world.guardianSummonAt = now + cfg.summonMs;
         else if (now >= world.guardianSummonAt){
           world.guardianSummonAt = now + cfg.summonMs;
-          for (let i=0;i<2;i++)
-            spawnSlime({ kind:'dart', x:clamp(grd.x+rand(-.22,.22), .06, WORLD-.06), y:clamp(grd.y+rand(-.22,.22), .1, WORLD-.06) });
-          addFloat(grd.x, grd.y-.2, 'THE REGENT CALLS!', '#8affd1', { big:true });
+          for (let i=0;i<(cfg.summonN || 2);i++)
+            spawnSlime({ kind:cfg.summonKind || 'dart', x:clamp(grd.x+rand(-.22,.22), .06, WORLD-.06), y:clamp(grd.y+rand(-.22,.22), .1, WORLD-.06) });
+          addFloat(grd.x, grd.y-.2, cfg.summonText || 'THE REGENT CALLS!', '#8affd1', { big:true });
           broadcastWorld();   // minions ride the normal slime sync
         }
       }
@@ -2905,8 +2965,12 @@ function bossEvent(d){
     const n = d.n || 26, spd = (d.spd || .34) * sm;
     for (let i=0;i<n;i++){ const a = (i/n)*Math.PI*2; spawnBullet(d.x, d.y, Math.cos(a)*spd, Math.sin(a)*spd, now); }
   } else if (d.p==='fan'){
-    const aim = +d.aim || 0;
-    for (let i=0;i<9;i++){ const a = aim + (i-4)*(1.0/8); spawnBullet(d.x, d.y, Math.cos(a)*.4*sm, Math.sin(a)*.4*sm, now); }
+    /* n / spread / spd are optional (the Emperor's volleys never set
+       them and get the classic 9 orbs over 1.0 rad at .4); the Root
+       Herald's AIMED BURSTS ride the same event with n:5, spread:.4,
+       spd:.48 — a tight fast fan at the nearest blade. */
+    const aim = +d.aim || 0, n = d.n || 9, spread = d.spread !== undefined ? d.spread : 1.0, spd = (d.spd || .4) * sm;
+    for (let i=0;i<n;i++){ const a = aim + (n > 1 ? (i-(n-1)/2) * (spread/(n-1)) : 0); spawnBullet(d.x, d.y, Math.cos(a)*spd, Math.sin(a)*spd, now); }
   } else if (d.p==='spiral'){
     world.spiralEmitters.push({ until: now+2400, nextAt: now, ang: rand(0, Math.PI*2), sm });
   } else if (d.p==='spread'){
@@ -3220,7 +3284,7 @@ function gainXp(n){
      storyEvent('kill', { kind })            — wired below in onKillFx
      storyEvent('talk',   { npc:'elder' })   — NPC dialogue (next stage)
      storyEvent('return', { npc:'elder' })   — NPC dialogue (next stage)
-     storyEvent('guardian', { shrine:'meadow' | 'grove' | 'wilds' })
+     storyEvent('guardian', { shrine:'meadow' | 'grove' | 'wilds' | 'root' })
      storyEvent('emperorFinale')             — Chaos Emperor kill (finale stage)
      storyEvent('sprout')                    — a sproutling pickup (NPC stage)
    All state moves through act.setStory / act.grantRelic; rewards through
@@ -3240,7 +3304,7 @@ function objectiveProgressText(){
   const s = prog().story, obj = currentObjective();
   if (!obj) return '';
   if (obj.type === 'killCount' || obj.type === 'killKind') return Math.min(s.objHave, obj.n) + ' / ' + obj.n;
-  if (obj.type === 'guardian') return 'Sigils ' + s.sigils + ' / 3';
+  if (obj.type === 'guardian') return obj.sigil === false ? 'The Fourth Guardian' : 'Sigils ' + s.sigils + ' / 3';
   return '';
 }
 /* WHERE the current objective lives in the world — the one answer the
@@ -3314,7 +3378,8 @@ function storyEvent(type, data = {}){
     act.setStory({ objHave: s.objHave + 1 });
     advanced = s.objHave + 1 >= obj.n;
   } else if (obj.type === 'guardian' && type === 'guardian' && data.shrine === obj.shrine){
-    act.setStory({ sigils: Math.min(3, s.sigils + 1) });   // the Sigil wakes as its guardian falls
+    if (obj.sigil !== false) act.setStory({ sigils: Math.min(3, s.sigils + 1) });   // the Sigil wakes as its guardian falls
+    if (obj.shrine === 'root') act.setStory({ heraldDone: true });   // the Herald drops no Sigil — he drops the WAY OPEN (the finale gate is sigils>=3 AND heraldDone)
     advanced = true;
   } else if (obj.type === 'emperorFinale' && type === 'emperorFinale'){
     advanced = true;
@@ -3322,7 +3387,7 @@ function storyEvent(type, data = {}){
     advanced = true;
   }
   if (advanced){
-    if (obj.type === 'guardian') playJingle('sigil');   // the Sigil wakes the moment its guardian falls — before the return trip completes the quest
+    if (obj.type === 'guardian' && obj.sigil !== false) playJingle('sigil');   // the Sigil wakes the moment its guardian falls — before the return trip completes the quest (the Herald wakes no Sigil: the truth cards are his music)
     advanceStoryObjective();
   }
   else if (obj.type === 'killCount' || obj.type === 'killKind') saveGame();   // counted progress is an event: persist it
@@ -3330,13 +3395,19 @@ function storyEvent(type, data = {}){
 }
 function grantQuestRewards(q, label){
   const r = q.rewards || {};
+  /* A quest relic already held (New Cycle+ replays, or the Eye the
+     Herald granted before the finale could name it) pays out in coin
+     instead — guardian norms: the fall is never empty-handed. */
+  const relicHeld = !!(r.relic && prog().story && prog().story.relicsOwned.includes(r.relic));
   if (r.coins) act.addCoins(r.coins);
   if (r.sp) act.patchProgress(p => ({ sp: p.sp + r.sp }));
-  if (r.relic) act.grantRelic(r.relic);
+  if (r.relic && !relicHeld) act.grantRelic(r.relic);
+  if (r.relic && relicHeld) act.addCoins(150);
   const bits = [];
   if (r.coins) bits.push('+' + r.coins + ' coins');
   if (r.sp) bits.push('+' + r.sp + ' SP');
-  if (r.relic && RELICS[r.relic]) bits.push('RELIC: ' + RELICS[r.relic].name);
+  if (r.relic && relicHeld) bits.push('+150 coins');
+  else if (r.relic && RELICS[r.relic]) bits.push('RELIC: ' + RELICS[r.relic].name);
   notify(label + ' — ' + q.title.toUpperCase(), { type:'story', sub: bits.join(' · ') });
   playJingle('quest');
 }
@@ -3349,12 +3420,38 @@ function advanceStoryObjective(){
   }
   completeStoryQuest();
 }
+/* ---- THE TRUTH (FF1 arc): when the Root Herald falls, the tale turns
+   inside out. Three cards, fed through the same queue the ending uses
+   (ses.endingQueue, drained by the frame watcher whenever no card is
+   open), with the finale's own chapter card queued LAST — the player
+   reads the truth before the Elder's briefing can begin. ---- */
+const TRUTH_CARDS = [
+  ['THE TRUTH', 'The Guardian\'s Burden', [
+    'The Root Herald falls, and his banner settles over him like a shroud. In the quiet under the Wilds, the roots themselves begin to speak.',
+    'The Slime Emperor was no tyrant grown fat on Rot. He was Verdia\'s own guardian — the first gardener, the Tree\'s right hand.',
+    'When the sickness rose from below, he took it INTO HIMSELF and wore it as a crown — so the Tree would not scream.',
+  ]],
+  ['THE TRUTH', 'The Grief of the Tree', [
+    'But the Rot is no invader, Blade. The Rot is the Tree\'s GRIEF — grief for a cut made long ago, by a trusted edge.',
+    'Something was taken from Verdia by a blade it loved. The heart broke trying to forget it was ever whole.',
+    'So the Tree shattered its own heart into three Sigils, and scattered the memory to the winds.',
+  ]],
+  ['THE TRUTH', 'The Blade Remembers', [
+    'The cut was a BLADE. A blade grown from the Tree\'s own branch — a blade carried by no hand.',
+    'You have ended this Cycle before, Blade. More than once. The garden remembers what you cannot.',
+    'The Herald carried no Sigil. He carried the way open. Below, the Emperor waits — still standing guard over the grave.',
+  ]],
+];
 function completeStoryQuest(){
   const s = prog().story, q = questById(s.quest); if (!q) return;
   grantQuestRewards(q, 'QUEST COMPLETE');
   const idx = QUESTS.indexOf(q), next = QUESTS[idx + 1];
   if (q.id === 'finale' || !next){
     act.setStory({ quest:'postgame', step:0, objHave:0, complete:true });
+  } else if (q.id === 'herald'){
+    act.setStory({ quest: next.id, step:0, objHave:0 });
+    // the TRUTH plays before the finale's card (see TRUTH_CARDS above)
+    ses.endingQueue = [...TRUTH_CARDS.map(c => [c[0], c[1], [...c[2]]]), [next.chapter, next.title, [...next.intro]]];
   } else {
     act.setStory({ quest: next.id, step:0, objHave:0 });
     showChapterCard(next.chapter, next.title, next.intro);   // the next chapter opens with its card
@@ -3370,7 +3467,7 @@ function completeStoryQuest(){
 function startNewCycle(){
   const s = prog().story;
   if (!s || !s.complete) return false;
-  act.setStory({ quest:'meadow', step:0, objHave:0, sigils:0, complete:false, cycles:s.cycles + 1 });
+  act.setStory({ quest:'meadow', step:0, objHave:0, sigils:0, complete:false, cycles:s.cycles + 1, heraldDone:false });   // the Herald re-locks with the chain, like every guardian
   saveGame(); refreshHUD(); updateQuestTracker();
   const q = questById('meadow');
   if (q) showChapterCard(q.chapter, q.title, q.intro);
@@ -3523,9 +3620,15 @@ function elderLines(){
     'The third Sigil wakes. Hear it, Blade? The whole buried heart is singing.',
     'Return when you are ready. What waits below has worn a crown too long.',
   ]};
+  if (s.step === 1 && s.quest === 'bell') return { lines:[
+    '\'A thing that was carried.\' Hm. Hm! The old badger hoards truth like winter nuts.',
+    'A guardian who took the sickness into himself... I have read the prophecy a thousand times, Blade, and never once read THAT in it.',
+    'Then the Grove, and quickly. The Regent\'s thorns will not loosen while we sit with riddles.',
+  ]};
   if (s.quest === 'finale' && s.step === 0) return { lines:[
     'Lay the three Sigils in my hands, Blade. Feel how they sing together?',
     'That song is the Tree remembering its heart. The Rot has heard it too.',
+    'And carry the Herald\'s truth down with you: the crowned one was Verdia\'s guardian, and his crown is a seal he CHOSE. Cut the seal, Blade — spare what is left of the gardener.',
     'Beneath us, its crowned prisoner wakes: the old guardian, the Slime Emperor.',
     'Go, Verdant Blade. Cut the Rot at its root, and let Verdia bloom again.',
   ]};
@@ -3544,6 +3647,18 @@ function elderLines(){
   if (s.quest === 'wilds') return { lines:[
     'The last Sigil lies deep in the Wilds, where the Rot blooms thick as summer.',
     'The Colossus seeds itself as it dies. Finish every piece it leaves behind.',
+  ]};
+  if (s.quest === 'bell') return { lines:[
+    'The Hermit keeps Thornwick\'s edge, Blade — a badger older than the bell he is named for.',
+    'Ask him what the Rot IS. Not where. Not how strong. What. No one has asked him that in a hundred years.',
+  ]};
+  if (s.quest === 'scout') return { lines:[
+    'Vex\'s gull came at dawn, Blade. Three words scratched on the band: COME AND SEE.',
+    'Rotwatch, on the Wilds shore. Whatever the fox saw, he would not write it down. Go and hear it standing up.',
+  ]};
+  if (s.quest === 'herald') return { lines:[
+    'The Root Shrine has woken, Blade — Vex\'s report saw to that. Its Herald keeps the far shore of the Wilds.',
+    'He was the first of the guard, before ever there was a crown. Cut him down... and Blade — LISTEN to what falls with him. I fear it will be a name we know.',
   ]};
   return { lines:['The Sigils wait, Blade. The grass still believes in you.'] };
 }
@@ -3698,8 +3813,31 @@ const PHASE_LINES = {
     ],
   },
 };
+/* ---- QUEST DIALOGUE (FF1 arc): when the chain's current objective is
+   a TALK to one of the settlement folk, that talk is a dedicated set —
+   the Hermit's First Garden tale (the 'bell' beat) and Scout Vex's
+   grave-watch report (the 'scout' beat, which wakes the Root Shrine).
+   The Hermit does NOT name the Emperor plainly: roots rarely accuse. */
+const HERMIT_QUEST_LINES = [
+  'So. The owl sends her sharpest question at last. Sit, Blade. Sit, and I will tell you of the FIRST GARDEN.',
+  'Before towns, before bells, Verdia\'s gardeners walked with one who was eldest — the FIRST GARDENER, keeper of the deep roots.',
+  'When the sickness rose from below, the Tree began to scream. You have never heard a tree scream, Blade. Pray you never do.',
+  'He heard it. And he did what no root asked of him: he took the sickness INTO HIMSELF, so the Tree would not have to.',
+  'A crown of it he wears now, they say — who "they" are, at my age, is mostly roots. If he still stands his watch, he stands it alone. A thousand years, alone.',
+  'Tell the owl this: the Rot is not a thing that CAME. It is a thing that was CARRIED. There is a difference, and the difference is the whole war.',
+];
+const VEX_QUEST_LINES = [
+  'Blade. Good. You get this report from my mouth, not a gull\'s.',
+  'Three nights past, I followed HIM — the crowned one — farther than any scout has lived to follow.',
+  'He did not hunt. He did not rage. He went to the ROOT SHRINE, on the far shore of this isle, and he stood there. All night. Standing guard.',
+  'Over something BURIED, Blade. Like a dog over a grave. And the stones have woken since — the shrine KNOWS he comes.',
+  'Whatever he guards, he guards it from us. Or for us. My report ends there. My nightmares file the rest.',
+];
 function dialogueSetFor(npcId){
   if (npcId === 'elder') return elderLines();   // Mirra's sets are quest-phased already — she carries the arc
+  const objNow = currentObjective();
+  if (npcId === 'hermit' && objNow && objNow.type === 'talk' && objNow.to === 'hermit') return { lines: HERMIT_QUEST_LINES };
+  if (npcId === 'vex' && objNow && objNow.type === 'talk' && objNow.to === 'vex') return { lines: VEX_QUEST_LINES };
   const ph = storyPhase();
   if (npcId === 'child'){
     // the sprout tale outranks small talk until it is done; after the
@@ -3752,8 +3890,14 @@ function finishDialogue(){
   const d = ses.dialogue; if (!d) return;
   const npc = d.npc;
   closeDialogueUI();   // clear the hook FIRST: a completed return can open a chapter card, which claims ses.dlgAdvance for itself
-  if (npc === 'elder'){ storyEvent('talk', { npc:'elder' }); storyEvent('return', { npc:'elder' }); }
-  if (npc === 'child'){ storyEvent('talk', { npc:'child' }); storyEvent('return', { npc:'child' }); }
+  /* EVERY conversation reports to the engine as both a 'talk' and a
+     'return' to that NPC; storyEvent only advances when the CURRENT
+     objective names this NPC with that type, so non-quest talk (the
+     Forge's patter, the Child's small talk) is a harmless no-op — and
+     quest talks to settlement folk (the Hermit's tale, Vex's report)
+     land exactly like the Elder's always have. */
+  storyEvent('talk', { npc });
+  storyEvent('return', { npc });
 }
 function openDialogueChoice(){
   const d = ses.dialogue; if (!d) return;
@@ -3935,6 +4079,15 @@ function guardianAlive(){ for (const s of world.slimes.values()) if (s.kind==='g
    finale is open — in solo those are the same blade). */
 function bossIsChaos(){ const o = currentObjective(); return !!o && o.type === 'emperorFinale'; }
 function shrineDone(key){ const st = prog().story; return !!st && st.shrinesDone.includes(key); }
+/* The ROOT SHRINE wakes (FF1 arc): inert stones until the 'scout' beat
+   is done — Vex's report is what wakes it — with one leniency for saves
+   that predate the arc: a Blade already carrying three Sigils wakes it
+   regardless ('the shrine wakes for a Blade carrying three Sigils').
+   Once the Herald has fallen (or the Cycle is complete) it stays woken. */
+function rootShrineAwake(){
+  const st = prog().story; if (!st) return false;
+  return st.complete || st.heraldDone || st.sigils >= 3 || questPast('scout');
+}
 /* HOST: raise the guardian bound to a shrine — ONE at a time, world-wide.
    HP scale: base x (1 + .20 x max(0, topLevel-8)) x (1 + .5 x cycles),
    topLevel read exactly like the Emperor's (strongest blade present). */
@@ -3976,6 +4129,7 @@ function spawnGuardian(shrine){
 function summonGuardian(shrine){
   const cfg = GUARDIANS[shrine], pos = SHRINE_POS[shrine];
   if (!cfg || !pos || guardianAlive()) return;
+  if (shrine === 'root' && !rootShrineAwake()) return;   // before the scout's report (and short of three Sigils) the Root Shrine is inert stones — its Herald cannot be called
   spawnPopFx(pos.x, pos.y - .05, cfg.color, 26, .03);
   for (let i=0;i<10;i++) ses.particles.push({ x:pos.x+rand(-.09,.09), y:pos.y+rand(-.02,.06), vx:rand(-.02,.02), vy:rand(-.16,-.06), life:1, color:cfg.color, r:rand(3,6) });
   capParticles();
@@ -4013,7 +4167,7 @@ function pokeBarrier(key){
    state; the 20Hz pos packets simply carry the sword's new home) — no
    netcode changes. A violet curtain fades over the jump, and the
    flavour line floats at the arrival. ---- */
-const SHRINE_NAMES = { meadow:'MEADOW SHRINE', grove:'GROVE SHRINE', wilds:'WILDS SHRINE' };
+const SHRINE_NAMES = { meadow:'MEADOW SHRINE', grove:'GROVE SHRINE', wilds:'WILDS SHRINE', root:'ROOT SHRINE' };
 function travelDestinations(fromKey){
   const dests = [{ label:'TOWN — THE PLAZA', x:TOWN.x, y:TOWN.y + .1 }];
   for (const key of Object.keys(SHRINE_POS)){
@@ -4071,6 +4225,11 @@ const ENDING_CARDS = [
   ['EPILOGUE', 'The Tree Blooms Again', [
     'Verdia drinks deep of clean rain. On every branch, buds open — gold, and green, and gold again.',
     'The gardeners wake gentle. The slimes remember their work. The meadow remembers its colour.',
+  ]],
+  ['EPILOGUE', 'Walked Before', [
+    'Elder Mirra watches the Blade a long moment, the way you watch a road you have seen in dreams.',
+    '"You have planted this garden before, Blade. More times than the stump has rings."',
+    '"This time — try to remember."',
   ]],
   ['SLIME SLASH', 'THE VERDANCE CYCLE', [
     'A game by Handler & the Raphaels.',
@@ -6189,6 +6348,7 @@ function emperorGlowImg(){
 const imgOk = im => !!(im && (im.naturalWidth || im.width));   // naturalWidth for Images; canvas tint variants (kingGreenImg) carry width only — both mean "pixels exist"
 function slimeSpriteImg(s){
   if (s.kind==='guardian' && s.guardian==='grove') return kingGreenImg();   // THORN REGENT: the King's sprite, green-washed at runtime
+  if (s.kind==='guardian' && s.guardian==='root') return SLIME_IMGS.king;   // ROOT HERALD: king-bodied, unwashed — his identity is the antler crown + banner cape drawn over it (drawHeraldGear)
   return (s.kind==='king' || s.kind==='boss') ? SLIME_IMGS.king : s.kind==='metal' ? SLIME_IMGS.metal : SLIME_IMGS[COLOR2IMG[s.color]||'pink'];
 }
 /* Rendered-size factor over the hitbox radius: the Emperor 1.3x (never
@@ -6424,8 +6584,8 @@ function paintSlimeSprite(s, t, baseR, g, faceK){
   // faceK scales ONLY the face's alpha: the ghost pass passes 1 (face
   // inherits the caller's .38, same as the body); the normal pass passes
   // s._faceFade (.38 when this slime is ghosted — see drawEntities).
-  if (s.kind !== 'king' && s.kind !== 'boss' && !(s.kind==='guardian' && s.guardian==='grove')){
-    // (the Thorn Regent is skipped too: it wears the King's sprite, whose face is baked in)
+  if (s.kind !== 'king' && s.kind !== 'boss' && !(s.kind==='guardian' && (s.guardian==='grove' || s.guardian==='root'))){
+    // (the Thorn Regent and the Root Herald are skipped too: they wear the King's sprite, whose face is baked in)
     if (faceK !== undefined && faceK < 1){ ctx.save(); ctx.globalAlpha *= faceK; drawSlimeFace(s, t, g); ctx.restore(); }
     else drawSlimeFace(s, t, g);
   }
@@ -6436,6 +6596,7 @@ function paintSlimeSprite(s, t, baseR, g, faceK){
   if (s.kind === 'guardian' && s.guardian === 'grove') drawRegentGear(s, t, g);
   else if (s.kind === 'boss') drawEmperorGear(s, t, g);
   else if (s.kind === 'guardian' && s.guardian === 'wilds') drawColossusGear(s, t, g);
+  else if (s.kind === 'guardian' && s.guardian === 'root') drawHeraldGear(s, t, g);
   ctx.restore();
   return true;
 }
@@ -6542,6 +6703,62 @@ function drawColossusGear(s, t, g){
     capParticles();
   }
 }
+/* ROOT HERALD: an antler crown of living roots over the baked crown,
+   and a tattered war-banner worn as a cape — the colours of a court
+   that drowned a thousand years ago. All drawn shapes, no files. */
+function drawHeraldGear(s, t, g){
+  const dw = g.dw, dh = g.dh;
+  const sway = Math.sin(t / 520 + s.seed * 9) * dw * .018;
+  // the banner cape FIRST: cloth from the shoulders, hanging past the
+  // body's hem in tatters, swaying a breath behind the hop
+  ctx.fillStyle = '#6e2f3f';
+  ctx.beginPath();
+  ctx.moveTo(-dw * .34, -dh * .52);
+  ctx.lineTo(dw * .34, -dh * .52);
+  ctx.lineTo(dw * .30 + sway, dh * .05);
+  ctx.lineTo(dw * .16 + sway, -dh * .03);   // the tattered hem: notches bitten by a thousand years
+  ctx.lineTo(dw * .05 + sway, dh * .07);
+  ctx.lineTo(-dw * .08 + sway, -dh * .02);
+  ctx.lineTo(-dw * .20 + sway, dh * .06);
+  ctx.lineTo(-dw * .30 + sway, -dh * .04);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(46,20,32,.55)';   // rot-dark patches on the cloth
+  ctx.fillRect(-dw * .18 + sway * .5, -dh * .30, dw * .13, dh * .16);
+  ctx.fillRect(dw * .10 + sway * .5, -dh * .42, dw * .10, dh * .12);
+  ctx.strokeStyle = '#8a5a3a'; ctx.lineWidth = Math.max(1.5, dw * .014);   // the banner's frayed gold trim, what is left of it
+  ctx.beginPath(); ctx.moveTo(-dw * .34, -dh * .52); ctx.lineTo(dw * .34, -dh * .52); ctx.stroke();
+  // the antler crown: a root band riding above the baked crown, three
+  // beams a side, every beam forking into tines — grown, not forged
+  ctx.strokeStyle = '#5a4030'; ctx.lineCap = 'round';
+  ctx.lineWidth = Math.max(2, dw * .040);
+  ctx.beginPath(); ctx.ellipse(0, -dh * .84, dw * .30, dw * .30 * .38, 0, Math.PI * 1.08, Math.PI * 1.92); ctx.stroke();
+  for (const side of [-1, 1]){
+    for (let b = 0; b < 3; b++){
+      const bx = side * dw * (.10 + b * .11), by = -dh * (.88 + b * .015);
+      const tx = side * dw * (.20 + b * .16), ty = -dh * (1.06 + (b === 1 ? .09 : 0));
+      ctx.lineWidth = Math.max(1.8, dw * (.034 - b * .006));
+      ctx.beginPath(); ctx.moveTo(bx, by);
+      ctx.quadraticCurveTo(bx + side * dw * .05, by - dh * .10, tx, ty);
+      ctx.stroke();
+      // two tines fork off each beam
+      for (const f of [.45, .75]){
+        const px = bx + (tx - bx) * f, py = by + (ty - by) * f;
+        ctx.lineWidth = Math.max(1.2, dw * .016);
+        ctx.beginPath(); ctx.moveTo(px, py);
+        ctx.lineTo(px + side * dw * .05, py - dh * .085);
+        ctx.stroke();
+      }
+    }
+  }
+  // rot motes shake loose from the antlers, as the Regent sheds leaves
+  for (let i = 0; i < 2; i++){
+    const cyc = ((t / 3100 + hash01(s.seed * 17.3 + i * 4.77)) % 1 + 1) % 1;
+    const lx = (hash01(s.seed * 9.1 + i * 6.1) - .5) * dw * 1.05, ly = -dh * 1.02 + cyc * dh * .8;
+    ctx.save(); ctx.globalAlpha *= (1 - cyc) * .8;
+    ctx.fillStyle = '#7b4fa6'; ctx.fillRect(lx - dw * .02, ly - dw * .02, dw * .04, dw * .04);
+    ctx.restore();
+  }
+}
 function drawVideoSlime(s,t,baseR){
   const g = slimeSpriteGeom(s, t, baseR);
   if (!g) return false;
@@ -6597,6 +6814,7 @@ const DECOR = (()=>{
           Math.hypot(x-HOSPITAL_POS.x, y-HOSPITAL_POS.y) < .27) continue;
       const sh = SHRINE_BY_ZONE[I.zone];
       if (sh && Math.hypot(x-sh.x, y-sh.y) < .30) continue;
+      if (Math.hypot(x-SHRINE_POS.root.x, y-SHRINE_POS.root.y) < .30) continue;   // the Root Shrine keeps the same .30u clearing as its sisters (it shares the Wilds zone with the Wilds Shrine, so it is checked by name)
       if (segDist(x, y, BRIDGE_A).d < .30 || segDist(x, y, BRIDGE_B).d < .30) continue;   // causeways stay walkable
       return { x, y };
     }
@@ -7706,7 +7924,73 @@ function drawBarrier(b, t){
   ctx.lineTo(x + px*BRIDGE_W*.52*u, y + py*BRIDGE_W*.52*u - .13*u);
   ctx.stroke();
 }
+/* The ROOT SHRINE (FF1 arc): no sprite was ever carved for it — a ring
+   of weathered stones on the Wilds' far shore, two banner poles with a
+   drowned court's colours, and rot roots crawling out of the ring into
+   the grass. Before the scout's report (and short of three Sigils) it
+   is INERT: no crystal, banners limp and dark. Once woken, a violet
+   crystal burns in the ring and the banners stir; once its Herald has
+   fallen it glows like any won shrine. */
+function drawRootShrine(t){
+  const u = UNIT(), pos = SHRINE_POS.root;
+  const x = NX(pos.x), yBot = NY(pos.y) + .10*u;
+  const awake = rootShrineAwake(), done = shrineDone('root');
+  ctx.fillStyle = 'rgba(38,32,40,.18)';
+  ctx.beginPath(); ctx.ellipse(x, NY(pos.y) + .085*u, .24*u, .065*u, 0, 0, 7); ctx.fill();
+  // rot roots crawling out of the ring — dark violet strokes on the ground
+  ctx.strokeStyle = '#3d2b52'; ctx.lineCap = 'round';
+  for (let i = 0; i < 4; i++){
+    const a = i / 4 * Math.PI * 2 + .6, bx = x + Math.cos(a) * .13*u, by = yBot - .02*u + Math.sin(a) * .035*u;
+    ctx.lineWidth = Math.max(2, .012*u);
+    ctx.beginPath(); ctx.moveTo(bx, by);
+    ctx.quadraticCurveTo(bx + Math.cos(a) * .07*u, by + Math.sin(a) * .02*u + 2, bx + Math.cos(a) * .13*u, by + Math.sin(a) * .03*u + 3);
+    ctx.stroke();
+  }
+  // banner poles behind the ring, the Herald's colours on them
+  for (const side of [-1, 1]){
+    const px = x + side * .185*u, pTop = yBot - .36*u;
+    ctx.strokeStyle = '#4a3826'; ctx.lineWidth = Math.max(2, .014*u);
+    ctx.beginPath(); ctx.moveTo(px, yBot - .02*u); ctx.lineTo(px, pTop); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(px, pTop); ctx.lineTo(px - side * .075*u, pTop); ctx.stroke();   // crossbar pointing inward
+    // the banner cloth: awake it stirs; inert it hangs limp and dark
+    const flut = awake ? Math.sin(t / 480 + side * 2.1) * .012*u : 0;
+    ctx.fillStyle = awake ? '#7a3b4f' : '#453640';
+    ctx.beginPath();
+    ctx.moveTo(px - side * .075*u, pTop);
+    ctx.lineTo(px, pTop);
+    ctx.lineTo(px + flut, pTop + .17*u);
+    ctx.lineTo(px - side * .028*u + flut, pTop + .125*u);   // the tattered notch
+    ctx.lineTo(px - side * .075*u + flut, pTop + .165*u);
+    ctx.closePath(); ctx.fill();
+  }
+  // the weathered stone ring
+  ctx.fillStyle = '#6f7477';
+  for (let i = 0; i < 7; i++){ const a = i / 7 * Math.PI * 2; ctx.beginPath(); ctx.ellipse(x + Math.cos(a) * .17*u, yBot - .02*u + Math.sin(a) * .045*u, .030*u, .020*u, 0, 0, 7); ctx.fill(); }
+  if (awake){
+    if (done){   // the won glow, in the Herald's violet
+      const gs = .30*u * (1 + .07 * Math.sin(t / 700));
+      const ag = ctx.createRadialGradient(x, yBot - .20*u, 2, x, yBot - .20*u, gs);
+      ag.addColorStop(0, GUARDIANS.root.aura + '.38)'); ag.addColorStop(1, GUARDIANS.root.aura + '0)');
+      ctx.fillStyle = ag; ctx.beginPath(); ctx.arc(x, yBot - .20*u, gs, 0, 7); ctx.fill();
+    }
+    const pulse = 1 + .08 * Math.sin(t / 620), cy = yBot - .20*u;
+    ctx.fillStyle = GUARDIANS.root.color;
+    ctx.beginPath(); ctx.moveTo(x, cy - .075*u * pulse); ctx.lineTo(x + .05*u, cy); ctx.lineTo(x, cy + .075*u * pulse); ctx.lineTo(x - .05*u, cy); ctx.closePath(); ctx.fill();
+    if (done){
+      ctx.save(); ctx.globalAlpha = .5 + .2 * Math.sin(t / 700);
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.moveTo(x, cy - .035*u); ctx.lineTo(x + .020*u, cy); ctx.lineTo(x, cy + .035*u); ctx.lineTo(x - .020*u, cy); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+  } else {
+    // inert: a dark unlit stone where the crystal will burn
+    ctx.fillStyle = '#565b5e';
+    const cy = yBot - .20*u;
+    ctx.beginPath(); ctx.moveTo(x, cy - .065*u); ctx.lineTo(x + .043*u, cy); ctx.lineTo(x, cy + .065*u); ctx.lineTo(x - .043*u, cy); ctx.closePath(); ctx.fill();
+  }
+}
 function drawShrine(key, t){
+  if (key === 'root') return drawRootShrine(t);
   const u = UNIT(), pos = SHRINE_POS[key];
   const x = NX(pos.x), yBot = NY(pos.y) + .10*u;
   ctx.fillStyle = 'rgba(38,32,40,.18)';
