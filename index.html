@@ -487,6 +487,9 @@
     background:radial-gradient(ellipse at center, transparent 30%, rgba(30,70,20,.45) 100%);
     padding:20px;
   }
+  .verTag { font-family:"Press Start 2P",monospace; font-size:8px; }
+  #titleVer { position:absolute; right:12px; bottom:10px; color:rgba(255,255,255,.8); pointer-events:none; }
+  #pauseVer { color:#97754a; text-align:center; margin-top:10px; }
   #logo {
     font-family:"Press Start 2P",monospace; font-size:min(10vw,52px); color:#fff; text-align:center; line-height:1.3;
     -webkit-text-stroke:2px #3c7a27; text-shadow:4px 4px 0 #3c7a27, 8px 8px 0 rgba(0,0,0,.25);
@@ -723,6 +726,7 @@
     <button class="pbtn" id="soundBtn">SOUND: ON</button>
     <button class="pbtn" id="restartBtn">RESET SAVE</button>
     <div class="pcontrols">Drag to slash · Click / Tap or SPACE = Weapon Skill · Keys 1-7 = weapons · F / K = Sphere Grid · V = weapon skill · Q / E / R / T = skills · Z / X / C = items · B = bank / shop / inn · Esc = pause</div>
+    <div id="pauseVer" class="verTag"></div>
   </div>
 </div>
 <div id="bankPanel" class="hidden panelWrap">
@@ -829,11 +833,14 @@
   <button id="howtoBtn" class="px-btn">HOW TO PLAY <span id="howtoChev">▼</span></button>
   <button id="titleReset" class="hidden">RESET SAVE</button>
   <div id="howto" class="hidden">Move mouse / drag finger to swing your sword through slimes.<br>Tap or click to use your WEAPON SKILL (unlock it on the Sphere grid). Sphere Points come from level-ups, bounties, Kings (+1), Emperors (+3) and the Bank exchange (price rises per purchase) — spend them on the SPHERE GRID for stats, passives, active skills and every weapon's skill path.<br>There is only ONE world — send the link to friends and they drop straight into it with you. No rooms, no codes, no sign-up.<br>B — BANK / SHOP / INN (in town)</div>
+  <div id="titleVer" class="verTag"></div>
 </div>
 
 <script type="module">
 import { joinRoom, selfId } from 'https://cdn.jsdelivr.net/npm/trystero@0.21.6/nostr/+esm';
 import { createStore } from 'https://cdn.jsdelivr.net/npm/zustand@5.1.0/vanilla/+esm';
+
+const GAME_VERSION = '0.0.1';   // shown small on the title screen + pause menu
 
 /* ============================================================ utils */
 const $ = s => document.querySelector(s);
@@ -843,6 +850,9 @@ const dist2 = (x1,y1,x2,y2)=>{const dx=x2-x1,dy=y2-y1;return dx*dx+dy*dy;};
 const hashHue = s => { let h=0; for (const c of s) h=(h*31+c.charCodeAt(0))>>>0; return h%360; };
 const cleanName = s => (s||'').replace(/[<>&"'`]/g,'').trim().slice(0,12) || 'Knight';
 const esc = s => s.replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+$('#titleVer').textContent = 'v' + GAME_VERSION;
+$('#pauseVer').textContent = 'v' + GAME_VERSION;
 
 /* ============================================================ audio */
 let AC=null;   // audio context handle (mute state lives in progress.muted)
