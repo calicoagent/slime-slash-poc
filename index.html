@@ -952,7 +952,7 @@
       <div class="pcontrols" id="storyProphecy"></div>
     </div>
     <div id="menuTab-map" class="menuTab hidden">
-      <div class="menuHead">THE THREE ISLES</div>
+      <div class="menuHead">THE ARCHIPELAGO</div>
       <canvas id="worldMap" width="520" height="520"></canvas>
       <div class="pcontrols">The pulsing gold diamond is your current objective. A purple tick bars a locked crossing. Won shrines glow — stand at one to travel the Sigil path.</div>
     </div>
@@ -1265,15 +1265,15 @@ const GEMS = {
   diamond:{ name:'Diamond',   col:'#b2ebf2' },
 };
 const freshGems = () => ({ emerald:0, topaz:0, sapphire:0, ruby:0, amethyst:0, diamond:0 });
-const ZONE_NAMES = ['meadow','grove','wilds'];   // index = zoneOf()
+const ZONE_NAMES = ['meadow','grove','wilds','treasure'];   // index = zoneOf()
 /* Ore node types (index is what travels in the world payload). drops are
    [gemKey, weight]; chunks = pickaxe hits the rock survives. */
 const NODE_TYPES = [
   { name:'Mossy Boulder', zones:['meadow'],        drops:[['emerald',70],['topaz',30]],                    chunks:4, crystals:['emerald','topaz'] },
   { name:'River Rock',    zones:['grove'],         drops:[['sapphire',60],['emerald',40]],                 chunks:4, crystals:['sapphire','emerald'] },
   { name:'Sunstone',      zones:['grove','meadow'],drops:[['topaz',70],['sapphire',15],['ruby',15]],      chunks:5, crystals:['topaz','sapphire'] },
-  { name:'Crimson Crag',  zones:['wilds'],         drops:[['ruby',65],['amethyst',20],['topaz',15]],       chunks:5, crystals:['ruby','amethyst'] },
-  { name:'Void Geode',    zones:['wilds'],         drops:[['amethyst',60],['diamond',25],['ruby',15]],    chunks:6, crystals:['amethyst','diamond'] },
+  { name:'Crimson Crag',  zones:['wilds','treasure'], drops:[['ruby',65],['amethyst',20],['topaz',15]],    chunks:5, crystals:['ruby','amethyst'] },
+  { name:'Void Geode',    zones:['wilds','treasure'], drops:[['amethyst',60],['diamond',25],['ruby',15]], chunks:6, crystals:['amethyst','diamond'] },
 ];
 const NODE_WEIGHTS = [4,3,2,2,1];   // spawn weights per NODE_TYPES index
 /* Forge recipes (weapon index -> cost) and promotion costs (target level ->
@@ -1376,7 +1376,7 @@ function resize(){ const nd=Math.min(2,devicePixelRatio||1); if (W===innerWidth 
 addEventListener('resize',resize); resize();
 /* The world is WORLD x WORLD units — much bigger than one screen.
    1 unit ≈ one screenful. The camera (cam = top-left, world coords) follows your sword. */
-const WORLD = 24.0;
+const WORLD = 32.0;
 /* ============================================================ ARCHIPELAGO
    Handler's order (2026-11-08): 'We live on an island. There are 3 islands
    total. Islands are story gated.' The old single radial world (town at
@@ -1388,24 +1388,38 @@ const WORLD = 24.0;
    SCALE-UP (Handler, 2026-11-08): 'at least half the Final Fantasy I
    world map.' FF1's overworld is 256x256 tiles = 65,536; at our tile of
    0.125u (8 per unit) the old 6u world was 48x48 = 2,304 tiles (3.5%).
-   WORLD 24u = 192x192 = 36,864 tiles = 56% of FF1. Only world GEOMETRY
-   scaled: the isles, the sand rim and the bridge width grew; every
+   WORLD 24u = 192x192 = 36,864 tiles = 56% of FF1.
+   SCALE-UP 2 (Handler, 2026-11-09): the bar IS Final Fantasy I — map
+   size AND story. WORLD 32u = 256x256 tiles = 65,536 = 100% of FF1's
+   overworld. The three isles grew and pulled apart (real sea between
+   them), and two small ISLETS joined the chart as pure geography:
+   TREASURE (zone 3, king-haunted, ore-bearing) and HERMIT (zone 1,
+   a sanctuary — nothing spawns there). Both are SEA-LOCKED this pass:
+   landRegion prices them above every access level, so the player can
+   never stand on — or be projected onto — either one; a later story
+   beat teaches the crossing. Only world GEOMETRY scaled again: every
    gameplay constant — entity radii, reach, interact ranges, speeds,
    TOWN_R and the town group's internal layout (a compact village on a
    big isle) — is exactly what it was.
    TOWN_R is 1.02, not the old 1.30: the town group spans <= .86u from its
    centre (bank/shop corners), NPC wander <= .55u, so 1.02 covers the
-   whole town with margin and leaves Isle 1 a real meadow to hunt in. */
+   whole town with margin and leaves Isle 1 a real meadow to hunt in.
+   ISLE ORDER IS LOAD-BEARING: a slime's home binding stores its ZONE
+   and the island clamp reads ISLES[zone] — so the spawnable isles keep
+   index == zone (Verdant 0, Grove 1, Wilds 2, Treasure 3) and the
+   spawnless Hermit rides last. */
 const ISLES = [
-  { id:'verdant', cx:6.2,  cy:12.3, r:5.5, zone:0 },   // VERDANT ISLE — start; town + Meadow shrine
-  { id:'grove',   cx:17.3, cy:6.8,  r:4.9, zone:1 },   // GROVE ISLE — grove strength (x1.8 HP / x1.7 loot)
-  { id:'wilds',   cx:17.7, cy:18.3, r:5.7, zone:2 },   // WILDS ISLE — wilds strength (x3.2 / x2.8); the Emperor's home
+  { id:'verdant', name:'VERDANT ISLE',   cx:8.2,  cy:16.4, r:7.2, zone:0 },   // start; town + Meadow shrine
+  { id:'grove',   name:'GROVE ISLE',     cx:23.0, cy:9.0,  r:6.4, zone:1 },   // grove strength (x1.8 HP / x1.7 loot)
+  { id:'wilds',   name:'WILDS ISLE',     cx:23.6, cy:24.4, r:7.4, zone:2 },   // wilds strength (x3.2 / x2.8); the Emperor's home
+  { id:'treasure', name:'TREASURE ISLET', cx:14.8, cy:5.2,  r:1.3, zone:3 },   // sea-locked rock: wilds-tier spawns, kings, a rich ore cluster
+  { id:'hermit',  name:'HERMIT ISLET',   cx:15.6, cy:26.8, r:1.5, zone:1, noSpawn:true },   // sea-locked sanctuary: decor only, nothing spawns
 ];
 const TOWN = { x: ISLES[0].cx, y: ISLES[0].cy };        // the town group moved as one to Isle 1's centre
 const SHORE = .45;                                      // sand rim width inside each isle's rim (scaled with the isles)
 const BRIDGE_W = .5;                                    // walkable width of a bridge strip
-const ISLE_SPAWN_W = [.35, .28, .37];                   // host population split across the isles — by land area (r^2 = 30.25 / 24.01 / 32.49)
-const ISLE_NODE_W = [.2, .35, .45];                     // ore nodes: Isle 1 fewest, Isle 3 most
+const ISLE_SPAWN_W = [.35, .27, .37, .01];              // host population split — by land area (r^2 = 51.84 / 40.96 / 54.76 / 1.69), indexed as ISLES[0..3]; the Hermit takes no spawns
+const ISLE_NODE_W = [.2, .35, .45, .15];                // ore nodes by ZONE: Isle 1 fewest, Isle 3 most, Treasure (zone 3) a small rich share
 /* A bridge strip runs rim-to-rim along the line between two isle centres.
    Its ROT BARRIER stands at the FAR rim (x2,y2): you may walk the whole
    causeway, but the far isle's disc itself is what the gate locks. */
@@ -1419,23 +1433,28 @@ const BARRIERS = [
   { key:'A', seg:BRIDGE_A, x:BRIDGE_A.x2, y:BRIDGE_A.y2, isle:1, line:'The Rot holds this crossing. Earn the Meadow Sigil.' },
   { key:'B', seg:BRIDGE_B, x:BRIDGE_B.x2, y:BRIDGE_B.y2, isle:2, line:'The Rot holds this crossing. Earn the Grove Sigil.' },
 ];
-function isleAt(x, y){ for (let i=0;i<3;i++){ const I = ISLES[i]; if (Math.hypot(x-I.cx, y-I.cy) <= I.r) return i; } return -1; }
-function nearestIsle(x, y){ let bi = 0, bd = 1e9; for (let i=0;i<3;i++){ const I = ISLES[i]; const d = Math.hypot(x-I.cx, y-I.cy) - I.r; if (d < bd){ bd = d; bi = i; } } return bi; }
+function isleAt(x, y){ for (let i=0;i<ISLES.length;i++){ const I = ISLES[i]; if (Math.hypot(x-I.cx, y-I.cy) <= I.r) return i; } return -1; }
+function nearestIsle(x, y){ let bi = 0, bd = 1e9; for (let i=0;i<ISLES.length;i++){ const I = ISLES[i]; const d = Math.hypot(x-I.cx, y-I.cy) - I.r; if (d < bd){ bd = d; bi = i; } } return bi; }
 function segDist(px, py, s){
   const dx = s.x2 - s.x1, dy = s.y2 - s.y1, L2 = dx*dx + dy*dy;
   let t = L2 ? ((px - s.x1)*dx + (py - s.y1)*dy)/L2 : 0; t = Math.max(0, Math.min(1, t));
   const qx = s.x1 + dx*t, qy = s.y1 + dy*t;
   return { d: Math.hypot(px - qx, py - qy), t, qx, qy };
 }
-/* Land classification: an isle disc carries its own gate level (0/1/2);
-   bridge A carries Isle 1's level (0), bridge B carries Isle 2's (1) —
-   the gate itself is the FAR isle's disc edge, exactly where its barrier
-   stands. null = open water. */
+/* Land classification: an isle disc carries its own gate level in `lvl`
+   (its index: 0/1/2 for the story isles — the islets sit at 3/4, above
+   every access level, so they are SEA-LOCKED: land for painting and for
+   the wildlife that lives there, never standable by the player) and its
+   strength tier in `zone` (an isle's zone need not equal its index —
+   the Hermit is a zone-1 sanctuary at index 4). Bridge A carries Isle
+   1's level (0), bridge B carries Isle 2's (1) — the gate itself is the
+   FAR isle's disc edge, exactly where its barrier stands. null = open
+   water. */
 function landRegion(x, y){
   const i = isleAt(x, y);
-  if (i >= 0) return { lvl:i, isle:i };
-  if (segDist(x, y, BRIDGE_A).d <= BRIDGE_W/2) return { lvl:0, bridge:'A' };
-  if (segDist(x, y, BRIDGE_B).d <= BRIDGE_W/2) return { lvl:1, bridge:'B' };
+  if (i >= 0) return { lvl:i, isle:i, zone:ISLES[i].zone };
+  if (segDist(x, y, BRIDGE_A).d <= BRIDGE_W/2) return { lvl:0, bridge:'A', zone:0 };
+  if (segDist(x, y, BRIDGE_B).d <= BRIDGE_W/2) return { lvl:1, bridge:'B', zone:1 };
   return null;
 }
 function onLand(x, y){ return landRegion(x, y) !== null; }
@@ -1749,8 +1768,8 @@ const SPROUT_QUEST = { id:'sprouts', chapter:'SIDE TALE', title:'Three Lost Spro
    ~.65r out). DECOR keeps .30u off each shrine. */
 const SHRINE_POS = {
   meadow: { x: TOWN.x + 4.6, y: TOWN.y },
-  grove:  { x: ISLES[1].cx - 2.48, y: ISLES[1].cy + 1.52 },
-  wilds:  { x: ISLES[2].cx + 3.01, y: ISLES[2].cy - 2.21 },
+  grove:  { x: ISLES[1].cx - 3.24, y: ISLES[1].cy + 1.99 },   // the old bearing at ~.60r, rescaled to r 6.4
+  wilds:  { x: ISLES[2].cx + 3.91, y: ISLES[2].cy - 2.87 },   // the old bearing at ~.65r, rescaled to r 7.4
 };
 /* Guardian configs: base HP scales in spawnGuardian by
    (1 + .20 x max(0, topLevel-8)) x (1 + .5 x story.cycles) — the same
@@ -2024,11 +2043,12 @@ const ZONES = [
   { name:'VERDANT ISLE', hp:1,   mul:1,   blurb:'gentle hunting grounds' },
   { name:'GROVE ISLE',   hp:1.8, mul:1.7, blurb:'stronger slimes, richer loot' },
   { name:'WILDS ISLE',   hp:3.2, mul:2.8, blurb:'deadly, but the richest hunting' },
+  { name:'TREASURE ISLET', hp:3.2, mul:2.8, blurb:'a king-haunted rock in the open sea' },
 ];
 function zoneOf(x,y){
   const r = landRegion(x, y);
-  if (r) return r.lvl;   // isle disc: its own zone; a bridge strip: the NEAR isle's zone (you have not crossed until the far disc)
-  return nearestIsle(x, y);
+  if (r) return r.zone;   // isle disc: its own zone; a bridge strip: the NEAR isle's zone (you have not crossed until the far disc)
+  return ISLES[nearestIsle(x, y)].zone;   // open water reads as its nearest shore's tier
 }
 /* Highest level among EVERY connected blade (mine + peers) — the same
    read the Emperor and the guardians scale from, in one place. */
@@ -2041,8 +2061,8 @@ function pickKind(zone=0){
   let tot = 0;
   const ws = SLIME_KINDS.map(k=>{
     let w = k.weight;
-    if (k.kind==='metal') w = zone===2 ? 4 : 3;   // rare everywhere, a touch less rare in the Wilds (plus the host's 60s guarantee in hostTick)
-    if (zone===2){ if (k.kind==='king' || k.kind==='tank') w *= 2; if (k.kind==='baby') w *= .5; }
+    if (k.kind==='metal') w = zone>=2 ? 4 : 3;   // rare everywhere, a touch less rare in the Wilds (plus the host's 60s guarantee in hostTick)
+    if (zone>=2){ if (k.kind==='king' || k.kind==='tank') w *= 2; if (k.kind==='baby') w *= .5; }   // zone 3 (Treasure Islet) rolls wilds-tier too — kings included, off the new-player path
     tot += w; return w;
   });
   let r = Math.random()*tot;
@@ -2080,10 +2100,11 @@ function spawnSlime(opts={}){
         sx = c.x + Math.cos(a)*d; sy = c.y + Math.sin(a)*d;
       } else {
         let wi = Math.random(), ii = 0;
-        while (ii < 2 && wi > ISLE_SPAWN_W[ii]){ wi -= ISLE_SPAWN_W[ii]; ii++; }
+        while (ii < ISLE_SPAWN_W.length - 1 && wi > ISLE_SPAWN_W[ii]){ wi -= ISLE_SPAWN_W[ii]; ii++; }
         const p = sampleIsle(ISLES[ii]); sx = p.x; sy = p.y; anchor = ISLES[ii];
       }
-      if (isleAt(sx,sy) >= 0 && !inTown(sx,sy) && !nearShrine(sx,sy)) break;   // inside an isle's disc — never on a bridge strip or in the sea
+      const ci = isleAt(sx, sy);
+      if (ci >= 0 && !ISLES[ci].noSpawn && !inTown(sx,sy) && !nearShrine(sx,sy)) break;   // inside a spawnable isle's disc — never on a bridge strip, in the sea, or on the spawnless Hermit
       if (tries===5){
         // FALLBACK: the anchor isle's rim ring, on the anchor's bearing.
         /* ANCHOR BUG (Batch D hunt): an ISLE anchor carries its centre
@@ -2273,7 +2294,7 @@ function hostTick(now,dt){
     }
     s.squish = Math.max(0, s.squish - dt/160); s.flash = Math.max(0, s.flash - dt/120);
   }
-  const target = Math.min(460, 380 + world.peers.size*20);   // scaled with the world (was 80 + peers*8, cap 120, in the 6u world)
+  const target = Math.min(620, 520 + world.peers.size*25);   // scaled with the world (was 80 + peers*8, cap 120, in the 6u world; 380 + peers*20, cap 460, at 24u)
   if (world.slimes.size < target){
     // spawn probability rescaled by dt: a flat .55/frame trickle would
     // refill the world twice as fast at 120Hz as at 60Hz
@@ -2504,7 +2525,7 @@ function hostTick(now,dt){
      with the land). A depleted node's replacement waits on the respawn
      queue (20-40s); with an empty queue (fresh world, host migration)
      top up immediately. ---- */
-  if (world.nodes.size < 44){
+  if (world.nodes.size < 72){
     if (world.nodeRespawnAt.length){
       world.nodeRespawnAt.sort((a,b)=>a-b);
       if (now >= world.nodeRespawnAt[0] && spawnNode()) world.nodeRespawnAt.shift();
@@ -2521,7 +2542,7 @@ function spawnNode(){
   let r = Math.random()*tot, t = 0;
   for (let i=0;i<NODE_WEIGHTS.length;i++){ if ((r -= NODE_WEIGHTS[i]) <= 0){ t = i; break; } }
   const type = NODE_TYPES[t];
-  const cands = ISLES.filter(I => type.zones.includes(ZONE_NAMES[I.zone]));
+  const cands = ISLES.filter(I => !I.noSpawn && type.zones.includes(ZONE_NAMES[I.zone]));   // the Hermit's zone (1 = 'grove') must not make it a node candidate — nothing spawns there
   if (!cands.length) return false;
   let wtot = 0; for (const I of cands) wtot += ISLE_NODE_W[I.zone];
   let wr = Math.random()*wtot, isle = cands[cands.length-1];
@@ -5510,8 +5531,8 @@ document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState
 function drawMinimap(){
   const c = $('#minimap'); if (!c || !ses.started) return;
   const g = c.getContext('2d'), S2 = c.width / WORLD;
-  /* ARCHIPELAGO MAP: open sea, three isles (sand rim + grass heart), the
-     two causeways as planks, a rot tick on a locked bridge's far rim. */
+  /* ARCHIPELAGO MAP: open sea, every landmass (sand rim + grass heart),
+     the two causeways as planks, a rot tick on a locked bridge's far rim. */
   g.fillStyle = '#14616e'; g.fillRect(0,0,c.width,c.height);
   for (const s of [BRIDGE_A, BRIDGE_B]){
     g.strokeStyle = '#b08954'; g.lineWidth = Math.max(2, BRIDGE_W*S2*.8);
@@ -5560,7 +5581,7 @@ function drawMinimap(){
 }
 
 /* ============================================================ world map (MAP tab)
-   The full 24u chart in the menu: same visual language as the minimap,
+   The full 32u chart in the menu: same visual language as the minimap,
    at menu scale, with the isles NAMED. The static geometry (sea, isles,
    causeways, town, shrine stones) is painted ONCE into an offscreen
    cache (a render cache, not state — the geometry never changes);
@@ -5579,15 +5600,21 @@ function buildWorldMapBase(S){
     g.strokeStyle = '#b08954'; g.lineWidth = Math.max(3, BRIDGE_W*S2*.8);
     g.beginPath(); g.moveTo(s.x1*S2, s.y1*S2); g.lineTo(s.x2*S2, s.y2*S2); g.stroke();
   }
-  const ISLE_NAMES = ['VERDANT ISLE', 'GROVE ISLE', 'WILDS ISLE'];
-  ISLES.forEach((I, i) => {
+  ISLES.forEach((I) => {
     g.fillStyle = '#e8d49a';
     g.beginPath(); g.arc(I.cx*S2, I.cy*S2, I.r*S2, 0, 7); g.fill();
     g.fillStyle = '#79c25f';
     g.beginPath(); g.arc(I.cx*S2, I.cy*S2, (I.r - SHORE)*S2, 0, 7); g.fill();
-    g.font = '11px "Press Start 2P", monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillStyle = '#2e5b27';
-    g.fillText(ISLE_NAMES[i], I.cx*S2, (I.cy + I.r*.68)*S2);
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    if (I.r >= 2){   // a main isle's name rides inside its grass heart
+      g.font = '11px "Press Start 2P", monospace';
+      g.fillStyle = '#2e5b27';
+      g.fillText(I.name, I.cx*S2, (I.cy + I.r*.68)*S2);
+    } else {   // an islet is too small to hold its name — label the sea just south of it
+      g.font = '7px "Press Start 2P", monospace';
+      g.fillStyle = '#dff3e2';
+      g.fillText(I.name, I.cx*S2, (I.cy + I.r + .55)*S2);
+    }
   });
   // town: sandy disc + the three building dots, as on the minimap
   g.fillStyle = '#ecd9a2';
@@ -6271,7 +6298,7 @@ function drawVideoSlime(s,t,baseR){
 }
 
 /* ============================================================ drawing */
-const FLOWERS = Array.from({length:15600},(_,i)=>({x:(Math.sin(i*127.1)*.5+.5)*WORLD, y:(Math.cos(i*311.7)*.5+.5)*WORLD, c:['#fff','#ffd1e8','#fff3a0'][i%3], s:2+(i%3)}));   // x12 with the world (draw loop skips the sea)
+const FLOWERS = Array.from({length:27800},(_,i)=>({x:(Math.sin(i*127.1)*.5+.5)*WORLD, y:(Math.cos(i*311.7)*.5+.5)*WORLD, c:['#fff','#ffd1e8','#fff3a0'][i%3], s:2+(i%3)}));   // scaled with world area (15,600 at 24u, x~1.78 at 32u; draw loop skips the sea)
 /* Deterministic world dressing (seeded RNG, same for every player): trees,
    rocks and ponds scattered over the world, kept off the spawn-centre clearing.
    Visual only — no collision. */
@@ -6281,23 +6308,23 @@ function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.im
    buildings. The DECOR IIFE below builds each cluster's props around
    its centre; updatePoiNotices floats the name on first approach. */
 const POIS = [
-  { id:'ruins',    name:'RUINED CIRCLE',   x:3.6,  y:9.9,  isle:0 },
-  { id:'flowers',  name:'FLOWER GROVE',    x:8.3,  y:15.4, isle:0 },
-  { id:'wayside',  name:'WAYSIDE REST',    x:8.52, y:12.54, isle:0 },   // Batch D: halfway stone on the town -> Meadow Shrine path (its float is the corridor's name tag)
-  { id:'camp',     name:'HERMIT CAMP',     x:19.7, y:4.6,  isle:1 },
-  { id:'shrooms',  name:'MUSHROOM RING',   x:15.7, y:10.0, isle:1 },
-  { id:'stones',   name:'STANDING STONES', x:14.6, y:15.4, isle:2 },
-  { id:'deadwood', name:'THE DEADWOOD',    x:20.3, y:21.0, isle:2 },
+  { id:'ruins',    name:'RUINED CIRCLE',   x:4.80,  y:13.26, isle:0 },
+  { id:'flowers',  name:'FLOWER GROVE',    x:10.95, y:20.46, isle:0 },
+  { id:'wayside',  name:'WAYSIDE REST',    x:10.52, y:16.64, isle:0 },   // Batch D: halfway stone on the town -> Meadow Shrine path (its float is the corridor's name tag); Scale-up 2 kept the town-relative offset — town (8.2,16.4), shrine 4.6u east
+  { id:'camp',     name:'HERMIT CAMP',     x:26.13, y:6.13,  isle:1 },
+  { id:'shrooms',  name:'MUSHROOM RING',   x:20.91, y:13.18, isle:1 },
+  { id:'stones',   name:'STANDING STONES', x:19.58, y:20.64, isle:2 },
+  { id:'deadwood', name:'THE DEADWOOD',    x:26.97, y:27.91, isle:2 },
 ];
 const DECOR = (()=>{
   const rng = mulberry32(20261107);
   const items = [];
   /* ARCHIPELAGO: decor is placed PER ISLE, inside the disc, clear of the
      town disc + buildings (Isle 1), each isle's shrine (.30u), and the
-     bridge landings. Counts are the old world's totals x12 (84 ponds /
-     768 trees / 408 rocks), split by isle size, for the 24u world; Isle 1
+     bridge landings. Counts were the old world's totals x12 (84 ponds /
+     768 trees / 408 rocks) for the 24u world, x~1.8 again for 32u; Isle 1
      keeps ponds (one hosts the pond sproutling). */
-  const SHRINE_BY_ZONE = { 0:SHRINE_POS.meadow, 1:SHRINE_POS.grove, 2:SHRINE_POS.wilds };
+  const SHRINE_BY_ZONE = { 0:SHRINE_POS.meadow, 1:SHRINE_POS.grove, 2:SHRINE_POS.wilds };   // zones 3+ have no shrine — place() guards the lookup
   const place = I => {
     for (let i=0;i<60;i++){
       const a = rng()*Math.PI*2, d = Math.sqrt(rng()) * (I.r - .20);
@@ -6307,22 +6334,30 @@ const DECOR = (()=>{
           Math.hypot(x-SHOP_POS.x, y-SHOP_POS.y) < .27 ||
           Math.hypot(x-HOSPITAL_POS.x, y-HOSPITAL_POS.y) < .27) continue;
       const sh = SHRINE_BY_ZONE[I.zone];
-      if (Math.hypot(x-sh.x, y-sh.y) < .30) continue;
+      if (sh && Math.hypot(x-sh.x, y-sh.y) < .30) continue;
       if (segDist(x, y, BRIDGE_A).d < .30 || segDist(x, y, BRIDGE_B).d < .30) continue;   // causeways stay walkable
       return { x, y };
     }
     return null;
   };
   const scatter = (I, n, mk) => { for (let i=0;i<n;i++){ const p = place(I); if (p) items.push(mk(p)); } };
-  scatter(ISLES[0], 24, p => ({ t:'pond', x:p.x, y:p.y, r:.17 + rng()*.12 }));
-  scatter(ISLES[1], 24, p => ({ t:'pond', x:p.x, y:p.y, r:.17 + rng()*.12 }));
-  scatter(ISLES[2], 36, p => ({ t:'pond', x:p.x, y:p.y, r:.17 + rng()*.12 }));
-  scatter(ISLES[0], 264, p => ({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }));
-  scatter(ISLES[1], 228, p => ({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }));
-  scatter(ISLES[2], 276, p => ({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }));
-  scatter(ISLES[0], 144, p => ({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }));
-  scatter(ISLES[1], 120, p => ({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }));
-  scatter(ISLES[2], 144, p => ({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }));
+  /* Scale-up 2 counts: the 24u totals x~1.8 for the 32u world, plus a
+     dressing for the two islets (geography only — no POIs there yet). */
+  scatter(ISLES[0], 43, p => ({ t:'pond', x:p.x, y:p.y, r:.17 + rng()*.12 }));
+  scatter(ISLES[1], 43, p => ({ t:'pond', x:p.x, y:p.y, r:.17 + rng()*.12 }));
+  scatter(ISLES[2], 65, p => ({ t:'pond', x:p.x, y:p.y, r:.17 + rng()*.12 }));
+  scatter(ISLES[0], 475, p => ({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }));
+  scatter(ISLES[1], 410, p => ({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }));
+  scatter(ISLES[2], 497, p => ({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }));
+  scatter(ISLES[0], 259, p => ({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }));
+  scatter(ISLES[1], 216, p => ({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }));
+  scatter(ISLES[2], 259, p => ({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }));
+  scatter(ISLES[3], 1, p => ({ t:'pond', x:p.x, y:p.y, r:.17 + rng()*.12 }));   // Treasure: one pond on the rock
+  scatter(ISLES[3], 5, p => ({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }));
+  scatter(ISLES[3], 14, p => ({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }));   // Treasure: bare and rocky
+  scatter(ISLES[4], 1, p => ({ t:'pond', x:p.x, y:p.y, r:.17 + rng()*.12 }));   // Hermit: a quiet pond
+  scatter(ISLES[4], 12, p => ({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }));
+  scatter(ISLES[4], 8, p => ({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }));
   /* POND RIMS (Batch C): every pond pre-computes its shore dressing —
      stones, reed clumps and bare sand patches at seeded angles/radii —
      so drawPonds can break the sprite's uniform tan ring with zero
@@ -6428,8 +6463,8 @@ const TUFTS = (()=>{
   const rng = mulberry32(20261108);
   const items = [];
   let guard = 0;
-  while (items.length < 5040 && guard++ < 40000){   // x12 tufts with the world
-    // archipelago: tufts grow on LAND only — sample inside a random isle
+  while (items.length < 9000 && guard++ < 80000){   // tufts scale with world area (5,040 at 24u, x~1.78 at 32u)
+    // archipelago: tufts grow on LAND only — sample inside a random MAIN isle (the islets stay bare rock and quiet grass)
     const I = ISLES[Math.floor(rng()*3)];
     const a = rng()*Math.PI*2, d = Math.sqrt(rng()) * (I.r - .06);
     const x = I.cx + Math.cos(a)*d, y = I.cy + Math.sin(a)*d;
@@ -6904,11 +6939,12 @@ function drawNode(n, t){
 /* ============================================================ ambient life (Batch C)
    Fixed, pre-computed citizen pools — every position is a deterministic
    function of the clock, so there is NO per-frame allocation and nothing
-   to sync or persist. Counts are capped by construction: 16 gulls,
-   84 fireflies, 130 petal motes, 30 ripple spots. All view-culled. */
+   to sync or persist. Counts are capped by construction: 24 gulls,
+   126 fireflies, 195 petal motes, 50 ripple spots (10 per landmass).
+   All view-culled. (Pools +50% in scale-up 2 for the 32u sea.) */
 const GULLS = (()=>{
   const rng = mulberry32(20261111), arr = [];
-  for (let i = 0; i < 16; i++){
+  for (let i = 0; i < 24; i++){
     const I = ISLES[i % 3], ca = rng() * Math.PI * 2, cd = I.r + .55 + rng() * .5;
     arr.push({ cx:I.cx + Math.cos(ca) * cd, cy:I.cy + Math.sin(ca) * cd * .8, r:.30 + rng() * .35, sp:(rng() < .5 ? -1 : 1) * (.25 + rng() * .3), ph:rng() * 7, s:.8 + rng() * .5 });
   }
@@ -6916,7 +6952,7 @@ const GULLS = (()=>{
 })();
 const FIREFLIES = (()=>{
   const rng = mulberry32(20261112), arr = [], I = ISLES[1];
-  for (let i = 0; i < 84; i++){
+  for (let i = 0; i < 126; i++){
     const a = rng() * Math.PI * 2, d = Math.sqrt(rng()) * I.r * .88;
     arr.push({ x:I.cx + Math.cos(a) * d, y:I.cy + Math.sin(a) * d, ph:rng() * 7 });
   }
@@ -6924,7 +6960,7 @@ const FIREFLIES = (()=>{
 })();
 const PETAL_MOTES = (()=>{
   const rng = mulberry32(20261113), arr = [], I = ISLES[0];
-  for (let i = 0; i < 130; i++){
+  for (let i = 0; i < 195; i++){
     const a = rng() * Math.PI * 2, d = Math.sqrt(rng()) * (I.r - .1);
     arr.push({ x:I.cx + Math.cos(a) * d, y:I.cy + Math.sin(a) * d, ph:rng() * 7, c: rng() < .6 ? '#ffd9e8' : '#fff3f6' });
   }
@@ -7005,7 +7041,7 @@ function drawField(t){
   }
   {
     const wss = Math.max(2, Math.round(u*.004));
-    for (let i=0;i<2400;i++){   // sea glints, scaled to the bigger sea
+    for (let i=0;i<4270;i++){   // sea glints, scaled with sea area (2,400 at 24u)
       const wx = hash01(i*1.93)*WORLD, wy = hash01(i*4.37)*WORLD;
       if (wx < ses.cam.x-.05 || wx > ses.cam.x+vw+.05 || wy < ses.cam.y-.05 || wy > ses.cam.y+vh+.05) continue;
       if (onLand(wx, wy)) continue;   // glints belong to the sea
@@ -7134,7 +7170,7 @@ function drawField(t){
      squares scattered over Isle 1's disc, view-culled like the flowers. */
   if (prog().story && prog().story.complete){
     const bss = Math.max(2, Math.round(u*.004)), I0 = ISLES[0];
-    for (let i=0;i<800;i++){   // bloom speckles over Isle 1's (now much bigger) disc
+    for (let i=0;i<1400;i++){   // bloom speckles over Isle 1's disc, scaled with its area (800 at r5.5)
       const ba = hash01(i*3.17)*Math.PI*2, br = Math.sqrt(hash01(i*7.71)) * (I0.r - .05);
       const wx = I0.cx + Math.cos(ba)*br, wy = I0.cy + Math.sin(ba)*br;
       if (wx < ses.cam.x-.05 || wx > ses.cam.x+vw+.05 || wy < ses.cam.y-.05 || wy > ses.cam.y+vh+.05) continue;
