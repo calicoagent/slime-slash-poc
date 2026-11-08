@@ -1174,29 +1174,35 @@ function resize(){ const nd=Math.min(2,devicePixelRatio||1); if (W===innerWidth 
 addEventListener('resize',resize); resize();
 /* The world is WORLD x WORLD units — much bigger than one screen.
    1 unit ≈ one screenful. The camera (cam = top-left, world coords) follows your sword. */
-const WORLD = 6.0;
+const WORLD = 24.0;
 /* ============================================================ ARCHIPELAGO
    Handler's order (2026-11-08): 'We live on an island. There are 3 islands
    total. Islands are story gated.' The old single radial world (town at
-   the centre, zone rings) is now THREE ISLES in the same 6x6 sea, joined
-   by two wooden bridges, each bridge ROT-BARRIERED until the story opens
-   it. Land = the three discs + the bridge strips; everything else is
-   water — the player cannot enter it (shore-slide clamp in updatePointer)
-   and slimes are bound to their home isle (host sim clamp).
+   the centre, zone rings) is now THREE ISLES in one sea, joined by two
+   wooden bridges, each bridge ROT-BARRIERED until the story opens it.
+   Land = the three discs + the bridge strips; everything else is water
+   — the player cannot enter it (shore-slide clamp in updatePointer) and
+   slimes are bound to their home isle (host sim clamp).
+   SCALE-UP (Handler, 2026-11-08): 'at least half the Final Fantasy I
+   world map.' FF1's overworld is 256x256 tiles = 65,536; at our tile of
+   0.125u (8 per unit) the old 6u world was 48x48 = 2,304 tiles (3.5%).
+   WORLD 24u = 192x192 = 36,864 tiles = 56% of FF1. Only world GEOMETRY
+   scaled: the isles, the sand rim and the bridge width grew; every
+   gameplay constant — entity radii, reach, interact ranges, speeds,
+   TOWN_R and the town group's internal layout (a compact village on a
+   big isle) — is exactly what it was.
    TOWN_R is 1.02, not the old 1.30: the town group spans <= .86u from its
-   centre (bank/shop corners), NPC wander <= .55u, so 1.02 still covers
-   the whole town with margin — and it frees Isle 1 a real meadow ring
-   (slimes live at >= TOWN_R+.12 = 1.14, land runs to 1.38) instead of the
-   old disc swallowing the entire isle. */
+   centre (bank/shop corners), NPC wander <= .55u, so 1.02 covers the
+   whole town with margin and leaves Isle 1 a real meadow to hunt in. */
 const ISLES = [
-  { id:'verdant', cx:1.55, cy:3.05, r:1.38, zone:0 },   // VERDANT ISLE — start; town + Meadow shrine
-  { id:'grove',   cx:4.35, cy:1.70, r:1.22, zone:1 },   // GROVE ISLE — grove strength (x1.8 HP / x1.7 loot)
-  { id:'wilds',   cx:4.45, cy:4.55, r:1.42, zone:2 },   // WILDS ISLE — wilds strength (x3.2 / x2.8); the Emperor's home
+  { id:'verdant', cx:6.2,  cy:12.3, r:5.5, zone:0 },   // VERDANT ISLE — start; town + Meadow shrine
+  { id:'grove',   cx:17.3, cy:6.8,  r:4.9, zone:1 },   // GROVE ISLE — grove strength (x1.8 HP / x1.7 loot)
+  { id:'wilds',   cx:17.7, cy:18.3, r:5.7, zone:2 },   // WILDS ISLE — wilds strength (x3.2 / x2.8); the Emperor's home
 ];
 const TOWN = { x: ISLES[0].cx, y: ISLES[0].cy };        // the town group moved as one to Isle 1's centre
-const SHORE = .12;                                      // sand rim width inside each isle's rim
-const BRIDGE_W = .34;                                   // walkable width of a bridge strip
-const ISLE_SPAWN_W = [.5, .3, .2];                      // host population split across the isles
+const SHORE = .45;                                      // sand rim width inside each isle's rim (scaled with the isles)
+const BRIDGE_W = .5;                                    // walkable width of a bridge strip
+const ISLE_SPAWN_W = [.35, .28, .37];                   // host population split across the isles — by land area (r^2 = 30.25 / 24.01 / 32.49)
 const ISLE_NODE_W = [.2, .35, .45];                     // ore nodes: Isle 1 fewest, Isle 3 most
 /* A bridge strip runs rim-to-rim along the line between two isle centres.
    Its ROT BARRIER stands at the FAR rim (x2,y2): you may walk the whole
@@ -1526,15 +1532,15 @@ const SPROUT_QUEST = { id:'sprouts', chapter:'SIDE TALE', title:'Three Lost Spro
   rewards:{ coins:120, relic:'sprout' } };
 /* ---- stage 4: shrines + guardians (static data; runtime lives in the
    world slice, story progress in progress.story). ARCHIPELAGO: one
-   shrine per isle. Meadow 1.18u east of the town centre — just outside
-   TOWN_R, on Isle 1's east rim (the Warden is BOUND to its shrine,
-   exempt from the town clamp, and its ground is contested: see
-   damagePlayer). Grove on Isle 2's west side, Wilds on Isle 3's north
-   side. DECOR keeps .30u off each shrine. */
+   shrine per isle. Meadow 4.6u east of the town centre — outside TOWN_R,
+   on Isle 1's east side (the Warden is BOUND to its shrine, exempt from
+   the town clamp, and its ground is contested: see damagePlayer). Grove
+   and Wilds keep their pre-scale-up bearings on their isles (~.60r /
+   ~.65r out). DECOR keeps .30u off each shrine. */
 const SHRINE_POS = {
-  meadow: { x: TOWN.x + 1.18, y: TOWN.y },
-  grove:  { x: ISLES[1].cx - .62, y: ISLES[1].cy + .38 },
-  wilds:  { x: ISLES[2].cx + .55, y: ISLES[2].cy - .75 },
+  meadow: { x: TOWN.x + 4.6, y: TOWN.y },
+  grove:  { x: ISLES[1].cx - 2.48, y: ISLES[1].cy + 1.52 },
+  wilds:  { x: ISLES[2].cx + 3.01, y: ISLES[2].cy - 2.21 },
 };
 /* Guardian configs: base HP scales in spawnGuardian by
    (1 + .20 x max(0, topLevel-8)) x (1 + .5 x story.cycles) — the same
@@ -1829,7 +1835,7 @@ function spawnSlime(opts={}){
     /* ARCHIPELAGO SPAWNS: every wild spawn lands ON LAND and outside the
        town disc (in EITHER branch). ~60% near a random player — which
        weights spawns to the islands players are actually on — the rest on
-       an isle picked by the population split (ISLE_SPAWN_W 50/30/20). */
+       an isle picked by the population split (ISLE_SPAWN_W, land-area weights). */
     const inTown = (x,y) => dist2(x,y,TOWN.x,TOWN.y) < (TOWN_R+.10)*(TOWN_R+.10);
     let anchor = null;
     for (let tries=0; tries<6; tries++){
@@ -2007,7 +2013,7 @@ function hostTick(now,dt){
     }
     s.squish = Math.max(0, s.squish - dt/160); s.flash = Math.max(0, s.flash - dt/120);
   }
-  const target = Math.min(120, 80 + world.peers.size*8);
+  const target = Math.min(460, 380 + world.peers.size*20);   // scaled with the world (was 80 + peers*8, cap 120, in the 6u world)
   if (world.slimes.size < target){
     // spawn probability rescaled by dt: a flat .55/frame trickle would
     // refill the world twice as fast at 120Hz as at 60Hz
@@ -2234,10 +2240,11 @@ function hostTick(now,dt){
     world.hitPruneAt = now;
     for (const [k, at] of world.hitClaimsAt) if (now - at > 1000) world.hitClaimsAt.delete(k);
   }
-  /* ---- ore nodes: keep 12 in the world. A depleted node's replacement
-     waits on the respawn queue (20-40s); with an empty queue (fresh world,
-     host migration) top up immediately. ---- */
-  if (world.nodes.size < 12){
+  /* ---- ore nodes: keep 44 in the world (12 in the old 6u world — scaled
+     with the land). A depleted node's replacement waits on the respawn
+     queue (20-40s); with an empty queue (fresh world, host migration)
+     top up immediately. ---- */
+  if (world.nodes.size < 44){
     if (world.nodeRespawnAt.length){
       world.nodeRespawnAt.sort((a,b)=>a-b);
       if (now >= world.nodeRespawnAt[0] && spawnNode()) world.nodeRespawnAt.shift();
@@ -5532,7 +5539,7 @@ function drawVideoSlime(s,t,baseR){
 }
 
 /* ============================================================ drawing */
-const FLOWERS = Array.from({length:1300},(_,i)=>({x:(Math.sin(i*127.1)*.5+.5)*WORLD, y:(Math.cos(i*311.7)*.5+.5)*WORLD, c:['#fff','#ffd1e8','#fff3a0'][i%3], s:2+(i%3)}));
+const FLOWERS = Array.from({length:15600},(_,i)=>({x:(Math.sin(i*127.1)*.5+.5)*WORLD, y:(Math.cos(i*311.7)*.5+.5)*WORLD, c:['#fff','#ffd1e8','#fff3a0'][i%3], s:2+(i%3)}));   // x12 with the world (draw loop skips the sea)
 /* Deterministic world dressing (seeded RNG, same for every player): trees,
    rocks and ponds scattered over the world, kept off the spawn-centre clearing.
    Visual only — no collision. */
@@ -5542,12 +5549,12 @@ const DECOR = (()=>{
   const items = [];
   /* ARCHIPELAGO: decor is placed PER ISLE, inside the disc, clear of the
      town disc + buildings (Isle 1), each isle's shrine (.30u), and the
-     bridge landings. Counts match the old world's totals (7 ponds /
-     64 trees / 34 rocks), split by isle size; Isle 1 keeps 2 ponds (one
-     hosts the pond sproutling). */
+     bridge landings. Counts are the old world's totals x12 (84 ponds /
+     768 trees / 408 rocks), split by isle size, for the 24u world; Isle 1
+     keeps ponds (one hosts the pond sproutling). */
   const SHRINE_BY_ZONE = { 0:SHRINE_POS.meadow, 1:SHRINE_POS.grove, 2:SHRINE_POS.wilds };
   const place = I => {
-    for (let i=0;i<40;i++){
+    for (let i=0;i<60;i++){
       const a = rng()*Math.PI*2, d = Math.sqrt(rng()) * (I.r - .20);
       const x = I.cx + Math.cos(a)*d, y = I.cy + Math.sin(a)*d;
       if (Math.hypot(x-TOWN.x, y-TOWN.y) < TOWN_R + .06) continue;
@@ -5562,15 +5569,15 @@ const DECOR = (()=>{
     return null;
   };
   const scatter = (I, n, mk) => { for (let i=0;i<n;i++){ const p = place(I); if (p) items.push(mk(p)); } };
-  scatter(ISLES[0], 2, p => ({ t:'pond', x:p.x, y:p.y, r:.17 + rng()*.12 }));
-  scatter(ISLES[1], 2, p => ({ t:'pond', x:p.x, y:p.y, r:.17 + rng()*.12 }));
-  scatter(ISLES[2], 3, p => ({ t:'pond', x:p.x, y:p.y, r:.17 + rng()*.12 }));
-  scatter(ISLES[0], 22, p => ({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }));
-  scatter(ISLES[1], 19, p => ({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }));
-  scatter(ISLES[2], 23, p => ({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }));
-  scatter(ISLES[0], 12, p => ({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }));
-  scatter(ISLES[1], 10, p => ({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }));
-  scatter(ISLES[2], 12, p => ({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }));
+  scatter(ISLES[0], 24, p => ({ t:'pond', x:p.x, y:p.y, r:.17 + rng()*.12 }));
+  scatter(ISLES[1], 24, p => ({ t:'pond', x:p.x, y:p.y, r:.17 + rng()*.12 }));
+  scatter(ISLES[2], 36, p => ({ t:'pond', x:p.x, y:p.y, r:.17 + rng()*.12 }));
+  scatter(ISLES[0], 264, p => ({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }));
+  scatter(ISLES[1], 228, p => ({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }));
+  scatter(ISLES[2], 276, p => ({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }));
+  scatter(ISLES[0], 144, p => ({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }));
+  scatter(ISLES[1], 120, p => ({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }));
+  scatter(ISLES[2], 144, p => ({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }));
   return items;
 })();
 /* The three LOST SPROUTLINGS (stage 4 side tale): fixed scenic spots
@@ -5601,7 +5608,7 @@ const TUFTS = (()=>{
   const rng = mulberry32(20261108);
   const items = [];
   let guard = 0;
-  while (items.length < 420 && guard++ < 8000){
+  while (items.length < 5040 && guard++ < 40000){   // x12 tufts with the world
     // archipelago: tufts grow on LAND only — sample inside a random isle
     const I = ISLES[Math.floor(rng()*3)];
     const a = rng()*Math.PI*2, d = Math.sqrt(rng()) * (I.r - .06);
@@ -5796,7 +5803,7 @@ function drawField(t){
   }
   {
     const wss = Math.max(2, Math.round(u*.004));
-    for (let i=0;i<260;i++){
+    for (let i=0;i<2400;i++){   // sea glints, scaled to the bigger sea
       const wx = hash01(i*1.93)*WORLD, wy = hash01(i*4.37)*WORLD;
       if (wx < ses.cam.x-.05 || wx > ses.cam.x+vw+.05 || wy < ses.cam.y-.05 || wy > ses.cam.y+vh+.05) continue;
       if (onLand(wx, wy)) continue;   // glints belong to the sea
@@ -5913,7 +5920,7 @@ function drawField(t){
      squares scattered over Isle 1's disc, view-culled like the flowers. */
   if (prog().story && prog().story.complete){
     const bss = Math.max(2, Math.round(u*.004)), I0 = ISLES[0];
-    for (let i=0;i<150;i++){
+    for (let i=0;i<800;i++){   // bloom speckles over Isle 1's (now much bigger) disc
       const ba = hash01(i*3.17)*Math.PI*2, br = Math.sqrt(hash01(i*7.71)) * (I0.r - .05);
       const wx = I0.cx + Math.cos(ba)*br, wy = I0.cy + Math.sin(ba)*br;
       if (wx < ses.cam.x-.05 || wx > ses.cam.x+vw+.05 || wy < ses.cam.y-.05 || wy > ses.cam.y+vh+.05) continue;
@@ -6530,8 +6537,8 @@ function drawEntities(t){
   }
   // slime anchor = ground contact (y + r*.8) -- NOT the hop-lifted sprite,
   // so a jumping slime never changes depth order mid-hop
-  /* VIEW CULL: the world holds ~80-120 slimes but a phone view is ~1.8x1u
-     of a 6x6u world. Every slime used to be fully drawn (shadow, sprite,
+  /* VIEW CULL: the world holds ~380-460 slimes but a phone view is ~1.8x1u
+     of a 24x24u world. Every slime used to be fully drawn (shadow, sprite,
      ~15 face path ops, aura, marks) and face-fade-tested against every
      occluder EACH FRAME, on screen or not. Only slimes whose generous
      visual box (r*4 + .3u: covers hop lift, HP bar, ELITE tag, elite
