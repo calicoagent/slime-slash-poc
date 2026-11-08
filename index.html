@@ -22,13 +22,13 @@
   /* ---------- pixel-art design system ---------- */
   .px-panel {
     background:#fff6df; border:3px solid #3a2b23; border-radius:0;
-    box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 5px 5px 0 rgba(0,0,0,.30);
+    box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 5px 5px 0 rgba(38,32,40,.30);
   }
   .px-btn {
     font-family:"Press Start 2P",monospace; border:3px solid #3a2b23; border-radius:0;
-    box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
+    box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(38,32,40,.35);
   }
-  .px-btn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
+  .px-btn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(38,32,40,.35); }
   .px-btn:disabled { filter:grayscale(.6); opacity:.6; }
 
   /* ---------- pixel game UI ---------- */
@@ -36,7 +36,7 @@
     position:fixed; z-index:20; pointer-events:none; display:flex; align-items:center; gap:8px;
     background:#fff6df; border:3px solid #3a2b23; border-radius:0;
     padding:6px 16px 6px 8px; color:#3a2b23; font-size:26px; line-height:1;
-    box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 4px 4px 0 rgba(0,0,0,.30);
+    box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 4px 4px 0 rgba(38,32,40,.30);
   }
   .badge svg { width:28px; height:28px; flex:none; }
   #coinBadge { top:max(14px, env(safe-area-inset-top)); left:max(14px, env(safe-area-inset-left)); }
@@ -46,15 +46,15 @@
   #lvlBadge { top:100px; left:max(14px, env(safe-area-inset-left)); font-size:21px; padding:5px 14px 5px 10px; flex-direction:column; align-items:stretch; gap:3px; border-radius:0; }
   #kills { font-size:17px !important; }
   #xpTrack { width:130px; height:12px; background:#e4d3ac; border:2px solid #3a2b23; border-radius:0; overflow:hidden; }
-  #xpFill { height:100%; width:0%; background-color:#ff9a2e; background-image:repeating-linear-gradient(90deg, rgba(0,0,0,0) 0 6px, rgba(0,0,0,.18) 6px 8px); transition:width .3s; }
+  #xpFill { height:100%; width:0%; background-color:#ff9a2e; background-image:repeating-linear-gradient(90deg, rgba(38,32,40,0) 0 6px, rgba(38,32,40,.18) 6px 8px); transition:width .3s; }
   /* HP/MP numbers live ON the bars (Handler: 'Hp Mp etc can overlay on
      the bar') — the #hpText/#mpText spans sit inside their tracks, centred,
      white with a dark outline so they read on filled AND empty segments.
      The old separate text rows are gone: the stat panel loses two lines. */
   #hpTrack { position:relative; width:130px; height:16px; background:#e8c9c9; border:2px solid #3a2b23; border-radius:0; overflow:hidden; }
-  #hpFill { height:100%; width:100%; background-color:#e5484d; background-image:repeating-linear-gradient(90deg, rgba(0,0,0,0) 0 6px, rgba(0,0,0,.18) 6px 8px); transition:width .25s; }
+  #hpFill { height:100%; width:100%; background-color:#e5484d; background-image:repeating-linear-gradient(90deg, rgba(38,32,40,0) 0 6px, rgba(38,32,40,.18) 6px 8px); transition:width .25s; }
   #mpTrack { position:relative; width:130px; height:16px; background:#c9d8e8; border:2px solid #3a2b23; border-radius:0; overflow:hidden; }
-  #mpFill { height:100%; width:100%; background-color:#2e7de1; background-image:repeating-linear-gradient(90deg, rgba(0,0,0,0) 0 6px, rgba(0,0,0,.18) 6px 8px); transition:width .25s; }
+  #mpFill { height:100%; width:100%; background-color:#2e7de1; background-image:repeating-linear-gradient(90deg, rgba(38,32,40,0) 0 6px, rgba(38,32,40,.18) 6px 8px); transition:width .25s; }
   #hpText, #mpText {
     position:absolute; inset:0; z-index:1; display:flex; align-items:center; justify-content:center;
     font-size:14px; font-weight:700; line-height:1; color:#fff; pointer-events:none;
@@ -81,10 +81,10 @@
   .wcard {
     width:82px; padding:8px 4px 6px; text-align:center; cursor:pointer; position:relative; flex:none; pointer-events:auto;
     background:#fff6df; border:3px solid #3a2b23; border-radius:0;
-    box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(0,0,0,.30); transition:transform .08s;
+    box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(38,32,40,.30); transition:transform .08s;
   }
-  .wcard:active { transform:translate(2px,2px); box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 1px 1px 0 rgba(0,0,0,.30); }
-  .wcard.sel { background:#ffe9a8; border-color:#ffb52e; transform:translateY(-4px); box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 5px 0 rgba(0,0,0,.30); }
+  .wcard:active { transform:translate(2px,2px); box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 1px 1px 0 rgba(38,32,40,.30); }
+  .wcard.sel { background:#ffe9a8; border-color:#ffb52e; transform:translateY(-4px); box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 5px 0 rgba(38,32,40,.30); }
   .wcard.locked { filter:grayscale(.9); opacity:.65; }
   .wcard svg { width:34px; height:34px; }
   .wcard .wn { font-family:"Press Start 2P",monospace; font-size:7px; color:#3a2b23; line-height:1.3; white-space:nowrap; }
@@ -102,22 +102,22 @@
     cursor:pointer;
     background:#ffd94d; border:3px solid #3a2b23; border-radius:0; color:#3a2b23;
     font-family:"Press Start 2P",monospace; font-size:11px; padding:12px 14px;
-    box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
+    box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(38,32,40,.35);
   }
-  #menuBtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
+  #menuBtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(38,32,40,.35); }
   #shareBtn {
     position:fixed; z-index:21; bottom:14px; left:14px; cursor:pointer;
     background:#4dabff; border:3px solid #3a2b23; border-radius:0; color:#fff;
     font-family:"Press Start 2P",monospace; font-size:10px; padding:12px 12px;
-    box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
+    box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(38,32,40,.35);
   }
-  #shareBtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
+  #shareBtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(38,32,40,.35); }
 
   /* forge popup */
   #forge {
     position:fixed; z-index:30; bottom:calc(var(--dockH, 123px) + 10px); right:14px; width:290px;
     background:#fff6df; border:3px solid #3a2b23; border-radius:0; padding:16px;
-    box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 5px 5px 0 rgba(0,0,0,.30);
+    box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 5px 5px 0 rgba(38,32,40,.30);
     animation:pop .18s cubic-bezier(.2,2.2,.4,1);
   }
   @keyframes pop { from { transform:scale(.7) translateY(20px); opacity:0; } }
@@ -129,9 +129,9 @@
   .upg button {
     font-family:"Press Start 2P",monospace; font-size:9px; cursor:pointer; white-space:nowrap;
     background:#ffd94d; border:3px solid #3a2b23; border-radius:0; padding:8px 9px; color:#3a2b23;
-    box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35);
+    box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(38,32,40,.35);
   }
-  .upg button:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
+  .upg button:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(38,32,40,.35); }
   .upg button:disabled { filter:grayscale(.6); opacity:.6; cursor:default; }
 
   /* ---------- NOTIFICATIONS — Sonner-style stack, pixel plates ----------
@@ -155,7 +155,7 @@
     background:#fff6df; color:#3a2b23; font-family:"Press Start 2P",monospace;
     font-size:11px; line-height:1.55; padding:9px 16px; max-width:100%; box-sizing:border-box;
     overflow-wrap:break-word;
-    box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 4px 4px 0 rgba(0,0,0,.30);
+    box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 4px 4px 0 rgba(38,32,40,.30);
     transition:transform .26s cubic-bezier(.2,1.4,.4,1), opacity .26s ease;
   }
   .toastN .tsub { display:block; font-family:"VT323",monospace; font-size:17px; line-height:1.25; color:#97754a; margin-top:2px; }
@@ -180,9 +180,9 @@
     max-width:300px; cursor:pointer; pointer-events:auto;
     background:#fff6df; border:3px solid #3a2b23; border-radius:0;
     padding:6px 12px 7px; color:#3a2b23;
-    box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 4px 4px 0 rgba(0,0,0,.30);
+    box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 4px 4px 0 rgba(38,32,40,.30);
   }
-  #questCard:active { transform:translate(2px,2px); box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 1px 1px 0 rgba(0,0,0,.30); }
+  #questCard:active { transform:translate(2px,2px); box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 1px 1px 0 rgba(38,32,40,.30); }
   #questTag { font-family:"Press Start 2P",monospace; font-size:8px; color:#2e7d32; letter-spacing:1px; }
   #questTitle { font-family:"Press Start 2P",monospace; font-size:10px; line-height:1.5; color:#3a2b23; margin-top:3px; }
   #questObj { font-family:"VT323",monospace; font-size:17px; line-height:1.2; color:#7a5c38; margin-top:2px; }
@@ -195,7 +195,7 @@
   .chapterPlate {
     background:#1b2450; color:#e8e4da; border:4px solid #0d1130; max-width:520px; width:100%;
     padding:30px 30px 20px; text-align:center;
-    box-shadow:inset 0 0 0 2px rgba(255,255,255,.14), 6px 6px 0 rgba(0,0,0,.45);
+    box-shadow:inset 0 0 0 2px rgba(255,255,255,.14), 6px 6px 0 rgba(38,32,40,.45);
   }
   #chChapter { font-family:"Press Start 2P",monospace; font-size:11px; color:#3ddc84; letter-spacing:2px; }
   #chTitle { font-family:"Press Start 2P",monospace; font-size:19px; line-height:1.5; color:#ffd94d; margin:14px 0 18px; }
@@ -203,7 +203,7 @@
   #chHint { font-family:"Press Start 2P",monospace; font-size:8px; color:#8e9cc9; margin-top:14px; animation:chPulse 1.6s ease-in-out infinite; }
   @keyframes chPulse { 0%,100% { opacity:.45; } 50% { opacity:1; } }
   /* STORY tab rows */
-  .storyRow { border:3px solid #3a2b23; background:#fff6df; padding:9px 12px; margin-bottom:8px; box-shadow:3px 3px 0 rgba(0,0,0,.22); }
+  .storyRow { border:3px solid #3a2b23; background:#fff6df; padding:9px 12px; margin-bottom:8px; box-shadow:3px 3px 0 rgba(38,32,40,.22); }
   .storyRow .sChap { font-family:"Press Start 2P",monospace; font-size:8px; color:#2e7d32; }
   .storyRow .sTitle { font-family:"Press Start 2P",monospace; font-size:11px; line-height:1.5; margin:3px 0; }
   .storyRow .sBody { font-family:"VT323",monospace; font-size:17px; line-height:1.25; color:#7a5c38; }
@@ -214,7 +214,7 @@
   #bubble {
     position:fixed; z-index:25; pointer-events:none; background:#fff; color:#3a2b23; font-size:20px; font-weight:700;
     padding:6px 14px; border:3px solid #3a2b23; border-radius:0; transform:translate(-50%,-130%);
-    box-shadow:3px 3px 0 rgba(0,0,0,.30); white-space:nowrap;
+    box-shadow:3px 3px 0 rgba(38,32,40,.30); white-space:nowrap;
   }
   #bubble:after { content:""; position:absolute; left:50%; bottom:-10px; transform:translateX(-50%); border:6px solid transparent; border-top:8px solid #3a2b23; border-bottom:0; }
   /* NPC dialogue: one in-world comic speech bubble, anchored by JS above
@@ -223,7 +223,7 @@
   #npcBubble {
     position:fixed; z-index:35; width:min(78vw,340px); transform:translate(-50%,calc(-100% - 12px));
     background:#fff; color:#3a2b23; border:3px solid #3a2b23; border-radius:0;
-    box-shadow:4px 4px 0 rgba(0,0,0,.30); padding:12px 14px 10px; cursor:pointer;
+    box-shadow:4px 4px 0 rgba(38,32,40,.30); padding:12px 14px 10px; cursor:pointer;
     font-family:"VT323",monospace; font-size:21px; line-height:1.22;
   }
   #npcBubble:after { content:""; position:absolute; left:50%; bottom:-11px; transform:translateX(-50%); border:6px solid transparent; border-top:8px solid #3a2b23; border-bottom:0; }
@@ -242,9 +242,9 @@
   .dlgChoice {
     flex:1; font-family:"Press Start 2P",monospace; font-size:8px; line-height:1.45; cursor:pointer;
     background:#fff6df; color:#3a2b23; border:3px solid #3a2b23; border-radius:0; padding:9px 6px;
-    box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35);
+    box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(38,32,40,.35);
   }
-  .dlgChoice:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
+  .dlgChoice:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(38,32,40,.35); }
 
   /* ---------- polish pass: combo / hint / pause ----------
      (the BOUNTY readout lives in the menu's MORE tab now — #bountyText /
@@ -255,7 +255,7 @@
     position:fixed; z-index:22; bottom:108px; right:calc(50% + 118px);
     background:#ff8a2e; color:#fff; border:3px solid #3a2b23; border-radius:0;
     padding:10px 16px; font-family:"Press Start 2P",monospace; font-size:14px; white-space:nowrap; pointer-events:none;
-    box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
+    box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(38,32,40,.35);
   }
   #comboBadge.fire { background:#e5484d; }
   #comboBadge.pop2 { animation:comboPop .22s cubic-bezier(.2,2.2,.4,1); }
@@ -264,22 +264,22 @@
     position:fixed; z-index:23; bottom:calc(var(--dockH, 123px) + 10px); left:50%; transform:translateX(-50%);
     background:#fff; color:#3a2b23; border:3px solid #3a2b23; border-radius:0;
     padding:9px 16px; font-family:"Press Start 2P",monospace; font-size:10px; line-height:1.7; white-space:nowrap; pointer-events:none;
-    box-shadow:4px 4px 0 rgba(0,0,0,.30); animation:hintBob 1s ease-in-out infinite;
+    box-shadow:4px 4px 0 rgba(38,32,40,.30); animation:hintBob 1s ease-in-out infinite;
   }
   @keyframes hintBob { 0%,100% { transform:translateX(-50%) translateY(0); } 50% { transform:translateX(-50%) translateY(-5px); } }
   #pauseBtn {
     position:fixed; z-index:21; left:14px; bottom:400px; width:46px; height:46px; border-radius:0;
     background:#fff6df; border:3px solid #3a2b23; color:#3a2b23; cursor:pointer;
-    font-family:"Press Start 2P",monospace; font-size:12px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
+    font-family:"Press Start 2P",monospace; font-size:12px; box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(38,32,40,.35);
   }
-  #pauseBtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
+  #pauseBtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(38,32,40,.35); }
   #pauseMenu {
     position:fixed; inset:0; z-index:45; background:rgba(20,40,15,.55);
     display:flex; align-items:center; justify-content:center;
   }
   .pauseCard {
     background:#fff6df; border:3px solid #3a2b23; border-radius:0; padding:26px 30px;
-    box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 5px 5px 0 rgba(0,0,0,.30);
+    box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 5px 5px 0 rgba(38,32,40,.30);
     display:flex; flex-direction:column; gap:12px; width:min(92vw,340px); text-align:center;
     animation:pop .18s cubic-bezier(.2,2.2,.4,1);
   }
@@ -287,10 +287,10 @@
   .pbtn {
     font-family:"Press Start 2P",monospace; font-size:11px; line-height:1.5; cursor:pointer;
     background:#ffd94d; border:3px solid #3a2b23; border-radius:0; padding:12px 10px; color:#3a2b23;
-    box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
+    box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(38,32,40,.35);
   }
-  .pbtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
-  .pbtn.main { background:#57d93d; color:#fff; text-shadow:2px 2px 0 rgba(0,0,0,.25); }
+  .pbtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(38,32,40,.35); }
+  .pbtn.main { background:#57d93d; color:#fff; text-shadow:2px 2px 0 rgba(38,32,40,.25); }
   .pcontrols { color:#97754a; font-size:17px; line-height:1.35; }
   /* chunky key-cap chip (game grammar): the E / TAP caps on the interact
      prompt and on panel primary buttons */
@@ -298,14 +298,14 @@
     display:inline-block; font-family:"Press Start 2P",monospace; font-size:.82em; line-height:1;
     background:#3a2b23; color:#ffd94d; border:2px solid #3a2b23; border-radius:0;
     padding:3px 6px 4px; margin-right:8px; vertical-align:2px;
-    box-shadow:inset -2px -2px 0 rgba(255,255,255,.22), inset 2px 2px 0 rgba(0,0,0,.35), 2px 2px 0 rgba(0,0,0,.30);
+    box-shadow:inset -2px -2px 0 rgba(255,255,255,.22), inset 2px 2px 0 rgba(38,32,40,.35), 2px 2px 0 rgba(38,32,40,.30);
   }
   /* primary panel buttons carry a small E cap (purely visual — the panel
      focus system below is what E actually confirms) */
   .echip::after {
     content:'E'; display:inline-block; font-family:"Press Start 2P",monospace; font-size:8px; line-height:1;
     background:#3a2b23; color:#ffd94d; padding:3px 5px 4px; margin-left:9px; vertical-align:2px;
-    box-shadow:inset -2px -2px 0 rgba(255,255,255,.22), inset 2px 2px 0 rgba(0,0,0,.35), 2px 2px 0 rgba(0,0,0,.30);
+    box-shadow:inset -2px -2px 0 rgba(255,255,255,.22), inset 2px 2px 0 rgba(38,32,40,.35), 2px 2px 0 rgba(38,32,40,.30);
   }
   /* keyboard focus ring for building panels: gold, chunky, unmissable —
      NOT the browser default outline */
@@ -314,11 +314,11 @@
     /* PHONE HUD: the play field comes first. Every HUD piece shrinks, hugs
        the edges, and lets touches pass through — only real buttons eat taps. */
     .badge { pointer-events:none; }
-    #coinBadge { top:max(8px, env(safe-area-inset-top)); left:8px; font-size:20px; padding:3px 10px 3px 5px; border-width:3px; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(0,0,0,.30); }
+    #coinBadge { top:max(8px, env(safe-area-inset-top)); left:8px; font-size:20px; padding:3px 10px 3px 5px; border-width:3px; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(38,32,40,.30); }
     #coinBadge svg { width:19px; height:19px; }
-    #lvlBadge { top:50px; left:8px; font-size:17px; padding:4px 10px; border-width:3px; border-radius:0; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(0,0,0,.30); }
+    #lvlBadge { top:50px; left:8px; font-size:17px; padding:4px 10px; border-width:3px; border-radius:0; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(38,32,40,.30); }
     #xpTrack { width:84px; height:9px; }
-    #peerBadge { top:max(8px, env(safe-area-inset-top)); right:8px; font-size:17px; padding:4px 10px; border-width:3px; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(0,0,0,.30); }
+    #peerBadge { top:max(8px, env(safe-area-inset-top)); right:8px; font-size:17px; padding:4px 10px; border-width:3px; box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(38,32,40,.30); }
     #hpTrack { width:84px; height:14px; }
     #hpText { font-size:14px; }
     #mpTrack { width:84px; height:14px; }
@@ -331,7 +331,7 @@
     #bountyText { font-size:16px; line-height:1.2; }
     #bountyProg { font-size:14px; margin-top:1px; }
     #minimap { width:74px; height:74px; left:8px; bottom:calc(var(--dockH, 92px) + 10px); border-width:3px; border-radius:0; pointer-events:none; }
-    #pauseBtn { left:auto; right:8px; top:94px; bottom:auto; width:36px; height:36px; font-size:10px; border-width:3px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
+    #pauseBtn { left:auto; right:8px; top:94px; bottom:auto; width:36px; height:36px; font-size:10px; border-width:3px; box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(38,32,40,.35); }
     #rackDock { padding-bottom:max(8px, env(safe-area-inset-bottom)); }
     #rackBtns { margin:0 8px 6px 0; gap:6px; }
     #rackTab { font-size:8px; padding:7px 10px; }
@@ -344,7 +344,7 @@
     .wcard .wlv { font-size:11px; }
     .wcard .wl { font-size:12px; padding:1px 5px; top:-8px; right:-6px; }
     .wcard .key { font-size:7px; padding:1px 4px; top:-8px; left:-6px; }
-    #menuBtn { font-size:8px; padding:9px 10px; border-width:3px; border-radius:0; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
+    #menuBtn { font-size:8px; padding:9px 10px; border-width:3px; border-radius:0; box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(38,32,40,.35); }
     #actives { bottom:calc(var(--dockH, 92px) + 8px); right:8px; gap:8px; }
     #wSkillBtn { width:auto; max-width:40vw; font-size:7px; }
     .abtn { width:48px; height:48px; font-size:7px; border-width:3px; }
@@ -353,7 +353,7 @@
        badge bottom sits 21px clear of them — its pop animation dips
        ~11px at worst (scale overshoot + -2deg corner), never covering
        the chips (only toasts may cover other UI) */
-    #comboBadge { right:auto; left:8px; bottom:calc(var(--dockH, 92px) + 192px); font-size:9px; padding:7px 10px; border-width:3px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35); }
+    #comboBadge { right:auto; left:8px; bottom:calc(var(--dockH, 92px) + 192px); font-size:9px; padding:7px 10px; border-width:3px; box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(38,32,40,.35); }
     #hint { bottom:calc(var(--dockH, 92px) + 12px); font-size:8px; max-width:72vw; white-space:normal; text-align:center; padding:7px 10px; }
   }
 
@@ -370,20 +370,20 @@
   #bossBar {
     position:fixed; z-index:24; top:max(12px, env(safe-area-inset-top)); left:50%; transform:translateX(-50%);
     width:min(46vw,520px); background:#40121d; border:3px solid #ffd94d; border-radius:0;
-    padding:5px 10px; box-shadow:5px 5px 0 rgba(0,0,0,.35); pointer-events:none;
+    padding:5px 10px; box-shadow:5px 5px 0 rgba(38,32,40,.35); pointer-events:none;
     display:flex; align-items:center; gap:10px;
   }
   #bossBar b { font-family:"Press Start 2P",monospace; color:#ffd94d; font-size:10px; white-space:nowrap; line-height:1.3; }
   #bossTrack { flex:1; height:12px; background:#2a0a12; border:2px solid #ffd94d; border-radius:0; overflow:hidden; position:relative; }
-  #bossHp { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:"Press Start 2P",monospace; font-size:8px; line-height:1; color:#fff; text-shadow:1px 1px 0 rgba(0,0,0,.7); pointer-events:none; }
-  #bossFill { height:100%; width:100%; background-color:#e5484d; background-image:repeating-linear-gradient(90deg, rgba(0,0,0,0) 0 6px, rgba(0,0,0,.18) 6px 8px); transition:width .25s; }
+  #bossHp { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:"Press Start 2P",monospace; font-size:8px; line-height:1; color:#fff; text-shadow:1px 1px 0 rgba(38,32,40,.7); pointer-events:none; }
+  #bossFill { height:100%; width:100%; background-color:#e5484d; background-image:repeating-linear-gradient(90deg, rgba(38,32,40,0) 0 6px, rgba(38,32,40,.18) 6px 8px); transition:width .25s; }
   #interactPrompt {
     position:fixed; z-index:23; bottom:calc(var(--dockH, 123px) + 10px); left:50%; transform:translateX(-50%);
     font-family:"Press Start 2P",monospace; font-size:11px; cursor:pointer;
     background:#ffd94d; color:#3a2b23; border:3px solid #3a2b23; border-radius:0;
-    padding:11px 20px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
+    padding:11px 20px; box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(38,32,40,.35);
   }
-  #interactPrompt:active { transform:translateX(-50%) translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
+  #interactPrompt:active { transform:translateX(-50%) translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(38,32,40,.35); }
   /* z-index 40: the items row sits ABOVE world-space labels/prompts
      (an INN sign once covered the BOMB button) and below modal panels.
      The row lives in the bottom-left cluster: left-aligned with the
@@ -393,7 +393,7 @@
   #items { position:fixed; left:max(14px, env(safe-area-inset-left)); bottom:216px; z-index:40; display:flex; flex-direction:row; gap:10px; pointer-events:none; }
   .ibtn {
     position:relative; width:52px; min-height:52px; border-radius:0; cursor:pointer; touch-action:manipulation; pointer-events:auto;
-    border:3px solid #3a2b23; background:#fff6df; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
+    border:3px solid #3a2b23; background:#fff6df; box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(38,32,40,.35);
     display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; padding:3px;
   }
   .ibtn svg { width:26px; height:26px; }
@@ -402,7 +402,7 @@
      throbs in hard pixel steps (no smooth glow) until it's used */
   @keyframes potionPanic { 0%,49% { transform:scale(1); filter:brightness(1); } 50%,100% { transform:scale(1.13); filter:brightness(1.4); } }
   .ibtn.panic { animation:potionPanic .5s steps(1,end) infinite; border-color:#e5484d; }
-  .ibtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
+  .ibtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(38,32,40,.35); }
   .ibtn .cnt {
     position:absolute; top:-7px; right:-7px; min-width:22px; height:22px; padding:0 5px;
     background:#3a2b23; color:#ffd94d; border-radius:0;
@@ -426,9 +426,9 @@
   .mtab {
     flex:1 1 auto; font-family:"Press Start 2P",monospace; font-size:9px; cursor:pointer; line-height:1.4;
     padding:10px 6px; background:#e8e2d2; color:#3a2b23; border:3px solid #b8a888; border-radius:0;
-    box-shadow:inset -3px -3px 0 rgba(0,0,0,.12), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.25);
+    box-shadow:inset -3px -3px 0 rgba(38,32,40,.12), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(38,32,40,.25);
   }
-  .mtab:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.12), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.25); }
+  .mtab:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(38,32,40,.12), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(38,32,40,.25); }
   .mtab.on { background:#3a2b23; color:#ffd94d; border-color:#3a2b23; }
   .menuHead { font-family:"Press Start 2P",monospace; font-size:10px; color:#5b3a1e; margin:16px 0 8px; }
   .menuHead:first-child { margin-top:0; }
@@ -462,9 +462,9 @@
   .shopRow button {
     font-family:"Press Start 2P",monospace; font-size:9px; cursor:pointer; white-space:nowrap;
     background:#ffd94d; border:3px solid #3a2b23; border-radius:0; padding:8px 9px; color:#3a2b23;
-    box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35);
+    box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(38,32,40,.35);
   }
-  .shopRow button:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
+  .shopRow button:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(38,32,40,.35); }
   .shopRow button:disabled { filter:grayscale(.6); opacity:.6; cursor:default; }
 
   /* ---------- sphere grid ---------- */
@@ -482,7 +482,7 @@
   #sphereBoard {
     position:relative; width:100%; aspect-ratio:1;
     border:4px solid #0d1030; border-radius:0;
-    box-shadow:6px 6px 0 rgba(0,0,0,.30);
+    box-shadow:6px 6px 0 rgba(38,32,40,.30);
     overflow:auto; background:#10142e;
     scrollbar-width:thin; scrollbar-color:#ffd94d #10142e;
     touch-action:none; user-select:none; -webkit-user-select:none;
@@ -494,9 +494,9 @@
     font-family:"Press Start 2P",monospace; font-size:11px; cursor:pointer; pointer-events:auto;
     min-width:40px; height:40px; padding:0 8px; color:#3a2b23; background:#ffd94d;
     border:3px solid #0d1030; border-radius:0;
-    box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35);
+    box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(38,32,40,.35);
   }
-  .szbtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
+  .szbtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(38,32,40,.35); }
   #szPct { font-size:9px; min-width:62px; }
   #sphereLines { position:absolute; inset:0; width:100%; height:100%; }
   .snode {
@@ -504,9 +504,9 @@
     border:3px solid rgba(255,255,255,.35); background:#39406e; color:#cfd8ff;
     font-family:"Press Start 2P",monospace; font-size:clamp(6px,2vw,8px); cursor:pointer; z-index:2;
     display:flex; align-items:center; justify-content:center;
-    box-shadow:2px 2px 0 rgba(0,0,0,.45); transition:transform .12s;
+    box-shadow:2px 2px 0 rgba(38,32,40,.45); transition:transform .12s;
   }
-  .snode small { position:absolute; bottom:-15px; font-family:"VT323",monospace; font-size:13px; color:#ffe9bd; text-shadow:1px 1px 0 #000; white-space:nowrap; }
+  .snode small { position:absolute; bottom:-15px; font-family:"VT323",monospace; font-size:13px; color:#ffe9bd; text-shadow:1px 1px 0 #33262e; white-space:nowrap; }
   .snode.avail { border-color:#ffd94d; color:#fff; animation:nodePulse 1.2s ease-in-out infinite; }
   @keyframes nodePulse { 0%,100% { box-shadow:0 0 0 0 rgba(255,217,77,.55);} 50% { box-shadow:0 0 0 9px rgba(255,217,77,0);} }
   .snode.owned { color:#fff; border-color:#fff; }
@@ -518,15 +518,15 @@
   #nodeCard p { color:#7a5c33; font-size:18px; margin:3px 0 8px; line-height:1.3; }
   #nodeCard button {
     font-family:"Press Start 2P",monospace; font-size:10px; cursor:pointer; width:100%;
-    background:#ffd94d; border:3px solid #3a2b23; border-radius:0; padding:9px; color:#3a2b23; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35);
+    background:#ffd94d; border:3px solid #3a2b23; border-radius:0; padding:9px; color:#3a2b23; box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(38,32,40,.35);
   }
-  #nodeCard button:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
+  #nodeCard button:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(38,32,40,.35); }
   #nodeCard button:disabled { filter:grayscale(.6); opacity:.55; cursor:default; }
 
   #minimap {
     position:fixed; left:max(14px, env(safe-area-inset-left)); bottom:86px; z-index:19; width:124px; height:124px; pointer-events:none;
     border:3px solid #3a2b23; border-radius:0; background:#79c25f;
-    box-shadow:4px 4px 0 rgba(0,0,0,.30);
+    box-shadow:4px 4px 0 rgba(38,32,40,.30);
   }
 
   /* ---------- active skill buttons ---------- */
@@ -535,12 +535,12 @@
   .abtn {
     position:relative; width:58px; height:58px; border-radius:0; cursor:pointer; overflow:hidden;
     border:3px solid #3a2b23; background:#fff6df; color:#3a2b23;
-    font-family:"Press Start 2P",monospace; font-size:8px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
+    font-family:"Press Start 2P",monospace; font-size:8px; box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(38,32,40,.35);
     display:flex; flex-direction:column; align-items:center; justify-content:center; line-height:1.4;
   }
   .abtn .k { font-family:"VT323",monospace; font-size:13px; color:#97754a; line-height:1.1; }
   .abtn .cdov { position:absolute; left:0; right:0; bottom:0; background:rgba(30,30,60,.45); pointer-events:none; }
-  .abtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
+  .abtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(38,32,40,.35); }
 
   /* ---------- weapon skill button + skill tree ---------- */
   /* soul gem panel bits (now the menu's GEMS tab) */
@@ -563,13 +563,13 @@
   #wSkillBtn {
     position:relative; width:auto; max-width:40vw; min-height:44px; padding:6px 10px; border-radius:0; cursor:pointer; overflow:hidden;
     border:3px solid #3a2b23; background:#fff6df; color:#3a2b23;
-    font-family:"Press Start 2P",monospace; font-size:8px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(0,0,0,.35);
+    font-family:"Press Start 2P",monospace; font-size:8px; box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(38,32,40,.35);
     display:flex; flex-direction:column; align-items:center; justify-content:center; line-height:1.5;
   }
   #wSkillBtn .k { font-family:"VT323",monospace; font-size:14px; color:#97754a; line-height:1.1; }
   #wSkillBtn .cdov { position:absolute; left:0; right:0; bottom:0; background:rgba(30,30,60,.45); pointer-events:none; }
   #wSkillBtn.off { filter:grayscale(.85); opacity:.6; }
-  #wSkillBtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
+  #wSkillBtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(38,32,40,.35); }
   /* ---------- title screen ---------- */
   #title {
     position:fixed; inset:0; z-index:50; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px;
@@ -581,15 +581,15 @@
   #pauseVer { color:#97754a; text-align:center; margin-top:10px; }
   #logo {
     font-family:"Press Start 2P",monospace; font-size:min(10vw,52px); color:#fff; text-align:center; line-height:1.3;
-    -webkit-text-stroke:2px #3c7a27; text-shadow:4px 4px 0 #3c7a27, 8px 8px 0 rgba(0,0,0,.25);
+    -webkit-text-stroke:2px #3c7a27; text-shadow:4px 4px 0 #3c7a27, 8px 8px 0 rgba(38,32,40,.25);
     animation:bob 2.2s ease-in-out infinite;
   }
-  #logo .slash { color:#ffd94d; -webkit-text-stroke:2px #8a5a12; text-shadow:4px 4px 0 #8a5a12, 8px 8px 0 rgba(0,0,0,.2); }
+  #logo .slash { color:#ffd94d; -webkit-text-stroke:2px #8a5a12; text-shadow:4px 4px 0 #8a5a12, 8px 8px 0 rgba(38,32,40,.2); }
   @keyframes bob { 0%,100% { transform:rotate(-1.5deg) translateY(0); } 50% { transform:rotate(1.5deg) translateY(-10px); } }
-  #tagline { color:#fff; font-size:min(6vw,28px); text-shadow:2px 2px 0 rgba(0,0,0,.35); text-align:center; line-height:1.2; }
+  #tagline { color:#fff; font-size:min(6vw,28px); text-shadow:2px 2px 0 rgba(38,32,40,.35); text-align:center; line-height:1.2; }
   .sign {
     background:#a06a35; border:3px solid #3a2b23; border-radius:0; padding:14px 20px;
-    box-shadow:inset 0 0 0 2px rgba(255,255,255,.15), 5px 5px 0 rgba(0,0,0,.30);
+    box-shadow:inset 0 0 0 2px rgba(255,255,255,.15), 5px 5px 0 rgba(38,32,40,.30);
     display:flex; flex-direction:column; gap:10px; width:min(92vw,380px);
   }
   .sign label { font-family:"Press Start 2P",monospace; color:#ffe9bd; font-size:9px; line-height:1.6; }
@@ -604,12 +604,12 @@
   #playBtn {
     font-family:"Press Start 2P",monospace; font-size:20px; color:#fff; cursor:pointer;
     background:#46c22c; border:3px solid #3a2b23; border-radius:0;
-    padding:16px 52px; box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 4px 4px 0 rgba(0,0,0,.35);
+    padding:16px 52px; box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 4px 4px 0 rgba(38,32,40,.35);
     animation:pulse 1.4s ease-in-out infinite;
   }
   @keyframes pulse { 0%,100% { transform:scale(1); } 50% { transform:scale(1.05); } }
-  #playBtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
-  #howto { color:#fff; font-size:20px; text-shadow:2px 2px 0 rgba(0,0,0,.4); text-align:center; max-width:520px; line-height:1.35; background:rgba(24,30,18,.78); border:3px solid #3a2b23; box-shadow:4px 4px 0 rgba(30,45,20,.55); padding:12px 16px; margin-bottom:auto; }
+  #playBtn:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(38,32,40,.35); }
+  #howto { color:#fff; font-size:20px; text-shadow:2px 2px 0 rgba(38,32,40,.4); text-align:center; max-width:520px; line-height:1.35; background:rgba(24,30,18,.78); border:3px solid #3a2b23; box-shadow:4px 4px 0 rgba(30,45,20,.55); padding:12px 16px; margin-bottom:auto; }
   #howtoBtn { font-size:11px; color:#3a2b23; background:#fff6df; padding:11px 24px; cursor:pointer; }
   /* auto margins keep the centred column centred when it fits, and
      top-anchored + scrollable (never clipped) when the open HOW TO
@@ -5523,7 +5523,7 @@ function drawVideoSlime(s,t,baseR){
   // boosted on the pale town plaza, where .16 black washes out on the sand
   ctx.save();
   ctx.globalAlpha = (Math.hypot(s.x-TOWN.x, s.y-TOWN.y) < TOWN_R ? .27 : .16) * (1 - g.liftN*.35);
-  ctx.fillStyle = '#000';
+  ctx.fillStyle = '#262028';
   ctx.beginPath(); ctx.ellipse(g.gx, g.gy - baseR*.06, g.dw*.40*(1 - g.liftN*.22), baseR*.20, 0, 0, 7); ctx.fill();
   ctx.restore();
   if (s.elite) drawEliteAura(g.gx, g.gy - baseR*.06, baseR, s.seed, t);   // aura pools on the ground (shadow anchor), sprite hops inside it
@@ -5685,7 +5685,7 @@ function drawTree(d, t){
   if (imgOk(img)){   // pixel tree sprite, bottom-anchored on the spot
     const w = .36*u*d.s, h = w * img.naturalHeight/img.naturalWidth;
     // ground shadow (the sprite path had none — only the vector fallback did)
-    ctx.fillStyle = 'rgba(0,0,0,.18)';
+    ctx.fillStyle = 'rgba(38,32,40,.18)';
     ctx.beginPath(); ctx.ellipse(x, y + .045*u, w*.27, w*.075, 0, 0, 7); ctx.fill();
     ctx.save();
     ctx.translate(x, y + .03*u);                 // pivot at the ground anchor (the sprite's bottom edge)
@@ -5696,7 +5696,7 @@ function drawTree(d, t){
   }
   // vector fallback: brown trunk + layered green canopy
   const s = d.s, tw = .016*u*s, th = .05*u*s, cr = .085*u*s;
-  ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.beginPath(); ctx.ellipse(x, y+th*.4, cr*.9, cr*.28, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(38,32,40,.18)'; ctx.beginPath(); ctx.ellipse(x, y+th*.4, cr*.9, cr*.28, 0, 0, 7); ctx.fill();
   ctx.fillStyle = '#7a4d16'; ctx.fillRect(x-tw/2, y-th, tw, th);
   ctx.fillStyle = '#2e7d32'; ctx.beginPath(); ctx.arc(x, y-th-cr*.55, cr, 0, 7); ctx.fill();
   ctx.fillStyle = '#43a047';
@@ -5710,7 +5710,7 @@ function drawRock(d){
   if (imgOk(img)){   // pixel boulder, centred on the spot
     const w = .17*u*d.s, h = w * img.naturalHeight/img.naturalWidth;
     // ground shadow (the sprite path had none)
-    ctx.fillStyle = 'rgba(0,0,0,.18)';
+    ctx.fillStyle = 'rgba(38,32,40,.18)';
     ctx.beginPath(); ctx.ellipse(x, y + h*.36, w*.40, w*.11, 0, 0, 7); ctx.fill();
     ctx.drawImage(img, x-w/2, y-h/2, w, h);
     return;
@@ -5736,11 +5736,11 @@ function drawNode(n, t){
   const w = .21*u, h = imgOk(img) ? w * img.naturalHeight/img.naturalWidth : .16*u;
   const type = NODE_TYPES[n.t] || NODE_TYPES[0];
   const seed = seedForId(n.id);
-  // ground shadow — same flat recipe as drawRock (rgba(0,0,0,.18) ellipse
+  // ground shadow — same flat recipe as drawRock (rgba(38,32,40,.18) ellipse
   // at the base); the node path had none, so ore rocks floated while decor
   // boulders sat grounded. Drawn BEFORE the shake transform on purpose:
   // ground shadows don't wobble.
-  ctx.fillStyle = 'rgba(0,0,0,.18)';
+  ctx.fillStyle = 'rgba(38,32,40,.18)';
   ctx.beginPath(); ctx.ellipse(NX(n.x), NY(n.y) + .075*u, w*.40, w*.11, 0, 0, 7); ctx.fill();
   ctx.save();
   ctx.translate(NX(n.x) + dx*u, NY(n.y) + .07*u);   // origin at the rock's base (matches its y-sort anchor)
@@ -5813,7 +5813,7 @@ function drawField(t){
     const ang = Math.atan2(y2-y1, x2-x1), len = Math.hypot(x2-x1, y2-y1), wdt = BRIDGE_W*u;
     ctx.save(); ctx.translate(x1, y1); ctx.rotate(ang);
     ctx.fillStyle = '#a06a35'; ctx.fillRect(0, -wdt/2, len, wdt);
-    ctx.fillStyle = 'rgba(0,0,0,.13)';
+    ctx.fillStyle = 'rgba(38,32,40,.13)';
     for (let d = .05*u; d < len; d += .11*u) ctx.fillRect(d, -wdt/2, 2, wdt);   // plank seams
     ctx.fillStyle = '#7a4d16';
     ctx.fillRect(0, -wdt/2 - 2, len, 5); ctx.fillRect(0, wdt/2 - 3, len, 5);   // twin rails
@@ -5881,7 +5881,7 @@ function drawField(t){
     ctx.fillStyle = '#ecd9a2';
     ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.fill();
     // soft edge shadow just outside the disc: grounds the plaza on the grass
-    ctx.strokeStyle = 'rgba(0,0,0,.10)'; ctx.lineWidth = Math.max(2, .016*u);
+    ctx.strokeStyle = 'rgba(38,32,40,.10)'; ctx.lineWidth = Math.max(2, .016*u);
     ctx.beginPath(); ctx.arc(cx, cy, R + .009*u, 0, 7); ctx.stroke();
     const cell = .06, ss = Math.max(2, Math.round(u*.0035));   // speckle square ~2-4px
     const gx0 = Math.max(0, Math.floor((TOWN.x - TOWN_R)/cell)), gx1 = Math.min(WORLD/cell, Math.ceil((TOWN.x + TOWN_R)/cell));
@@ -5929,13 +5929,13 @@ function drawBuildings(only){
   const u = UNIT();
   const pad = (bx, by)=>{
     // ground shadow FIRST: same flat recipe as the tree shadow
-    // (rgba(0,0,0,.18) ellipse), sized a touch wider than the pad and
+    // (rgba(38,32,40,.18) ellipse), sized a touch wider than the pad and
     // offset down so a dark rim grounds the building on the plaza
-    ctx.fillStyle = 'rgba(0,0,0,.18)';
+    ctx.fillStyle = 'rgba(38,32,40,.18)';
     ctx.beginPath(); ctx.ellipse(NX(bx), NY(by)+.175*u, .265*u, .082*u, 0, 0, 7); ctx.fill();
     ctx.fillStyle = '#e8d9ae';
     ctx.beginPath(); ctx.ellipse(NX(bx), NY(by)+.14*u, .25*u, .105*u, 0, 0, 7); ctx.fill();
-    ctx.fillStyle = 'rgba(0,0,0,.10)';
+    ctx.fillStyle = 'rgba(38,32,40,.10)';
     ctx.beginPath(); ctx.ellipse(NX(bx), NY(by)+.155*u, .21*u, .075*u, 0, 0, 7); ctx.fill();
   };
   const sign = (x, y, text, bg, fg)=>{
@@ -6005,7 +6005,7 @@ function drawBuildings(only){
     ctx.save();
     roundRect(ax, ay, aw, ah, 5); ctx.clip();
     for (let i=0;i<8;i++){ ctx.fillStyle = i%2 ? '#fff8e7' : '#e5484d'; ctx.fillRect(ax + i*aw/8, ay, aw/8+1, ah); }
-    ctx.fillStyle = 'rgba(0,0,0,.08)'; ctx.fillRect(ax, ay+ah*.7, aw, ah*.3);
+    ctx.fillStyle = 'rgba(38,32,40,.08)'; ctx.fillRect(ax, ay+ah*.7, aw, ah*.3);
     ctx.restore();
     ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 3; roundRect(ax, ay, aw, ah, 5); ctx.stroke();
     sign(x, y-.155*u, 'SHOP', '#c0392b', '#ffffff');
@@ -6046,7 +6046,7 @@ function drawNPC(e, t){
   const def = e.def, u = UNIT();
   const x = NX(e.x), groundY = NY(e.y), bob = npcBobPx(def, t);
   const hPx = def.h * u, wPx = hPx * 512 / 688;
-  ctx.fillStyle = 'rgba(0,0,0,.18)';
+  ctx.fillStyle = 'rgba(38,32,40,.18)';
   ctx.beginPath(); ctx.ellipse(x, groundY + 3, wPx * .30, Math.max(3, hPx * .045), 0, 0, 7); ctx.fill();
   const img = NPC_IMGS[def.id];
   if (imgOk(img)){
@@ -6090,7 +6090,7 @@ function drawBarrier(b, t){
   const u = UNIT();
   const x = NX(b.x), y = NY(b.y);
   const px = -b.seg.uy, py = b.seg.ux;   // unit perpendicular to the strip
-  ctx.fillStyle = 'rgba(0,0,0,.18)';
+  ctx.fillStyle = 'rgba(38,32,40,.18)';
   ctx.beginPath(); ctx.ellipse(x, y + .03*u, BRIDGE_W*.62*u, .05*u, 0, 0, 7); ctx.fill();
   const strands = 7;
   for (let i=0;i<strands;i++){
@@ -6119,7 +6119,7 @@ function drawBarrier(b, t){
 function drawShrine(key, t){
   const u = UNIT(), pos = SHRINE_POS[key];
   const x = NX(pos.x), yBot = NY(pos.y) + .10*u;
-  ctx.fillStyle = 'rgba(0,0,0,.18)';
+  ctx.fillStyle = 'rgba(38,32,40,.18)';
   ctx.beginPath(); ctx.ellipse(x, NY(pos.y) + .085*u, .24*u, .065*u, 0, 0, 7); ctx.fill();
   const img = SHRINE_IMGS[key];
   const w = .46*u, h = imgOk(img) ? w * img.naturalHeight/img.naturalWidth : .46*u;
@@ -6159,7 +6159,7 @@ function drawSprout(sp, t){
   const ag = ctx.createRadialGradient(x, groundY - .03*u, 2, x, groundY - .03*u, gs);
   ag.addColorStop(0, 'rgba(150,255,140,.40)'); ag.addColorStop(1, 'rgba(150,255,140,0)');
   ctx.fillStyle = ag; ctx.beginPath(); ctx.arc(x, groundY - .03*u, gs, 0, 7); ctx.fill();
-  ctx.fillStyle = 'rgba(0,0,0,.18)';
+  ctx.fillStyle = 'rgba(38,32,40,.18)';
   ctx.beginPath(); ctx.ellipse(x, groundY + 2, .035*u, .010*u, 0, 0, 7); ctx.fill();
   if (imgOk(SPROUT_IMG)){
     const w = .085*u;
@@ -6393,7 +6393,7 @@ function drawSlime(s,t){
   if (s.elite) drawEliteAura(x, y + rY, baseR, s.seed, t);   // aura under the body, at its ground contact
   // ground shadow (the vector fallback had none — the sprite path does);
   // same plaza boost as drawVideoSlime: pale sand needs a darker shadow
-  ctx.fillStyle = 'rgba(0,0,0,' + (Math.hypot(s.x-TOWN.x, s.y-TOWN.y) < TOWN_R ? .27 : .16) + ')';
+  ctx.fillStyle = 'rgba(38,32,40,' + (Math.hypot(s.x-TOWN.x, s.y-TOWN.y) < TOWN_R ? .27 : .16) + ')';
   ctx.beginPath(); ctx.ellipse(x, y + rY*.82, rX*.85, rY*.26, 0, 0, 7); ctx.fill();
   ctx.save(); ctx.translate(x,y);
   // body
