@@ -365,6 +365,18 @@
     position:fixed; inset:0; z-index:38; pointer-events:none;
     background:rgba(229,57,53,0);
   }
+  /* shrine fast-travel fade (Batch B): a brief deep-violet curtain (never
+     true black — the art law) while the Sigil path moves the sword */
+  #travelFade {
+    position:fixed; inset:0; z-index:60; pointer-events:none;
+    background:#241536; opacity:0; transition:opacity .18s ease;
+  }
+  /* world map (MAP tab): the canvas carries its own chunky frame */
+  #worldMap {
+    width:100%; height:auto; display:block; margin:2px auto 6px;
+    border:3px solid #5b3a1e; box-shadow:0 3px 0 rgba(38,32,40,.45);
+    background:#14616e;
+  }
   /* boss bar is a SLIM STRIP, not a billboard: name inline-left, the
      track flexes to fill, HP number rides inside the track as before */
   #bossBar {
@@ -827,6 +839,7 @@
   </div>
 </div>
 <div id="dmgFlash"></div>
+<div id="travelFade"></div>
 <div id="toaster"></div>
 <div id="bubble" class="hidden"></div>
 <div id="npcBubble" class="hidden">
@@ -886,6 +899,15 @@
     <button class="pbtn" id="hospCloseBtn">CLOSE</button>
   </div>
 </div>
+<div id="travelPanel" class="hidden panelWrap">
+  <div class="pauseCard px-panel" style="width:min(94vw,410px)">
+    <div class="sheetHead"><span class="sheetTitle">THE SIGIL PATH</span><button class="pbtn" id="travelSheetClose">CLOSE</button></div>
+    <h2>THE SIGIL PATH</h2>
+    <div class="pcontrols">The won Sigils remember the road. Step through their light.</div>
+    <div id="travelRows"></div>
+    <button class="pbtn" id="travelCloseBtn">CLOSE</button>
+  </div>
+</div>
 <div id="menuPanel" class="hidden panelWrap">
   <div class="pauseCard px-panel" style="width:min(94vw,560px);max-height:88dvh;overflow-y:auto">
     <div class="sheetHead"><span class="sheetTitle">MENU</span><button class="pbtn" id="menuSheetClose">CLOSE</button></div>
@@ -895,6 +917,7 @@
       <button class="mtab" data-tab="sphere">SPHERE</button>
       <button class="mtab" data-tab="gems">GEMS</button>
       <button class="mtab" data-tab="story">STORY</button>
+      <button class="mtab" data-tab="map">MAP</button>
       <button class="mtab" data-tab="more">MORE</button>
     </div>
     <div id="menuTab-inventory" class="menuTab">
@@ -927,6 +950,11 @@
       <div id="storyList"></div>
       <div class="menuHead">THE PROPHECY</div>
       <div class="pcontrols" id="storyProphecy"></div>
+    </div>
+    <div id="menuTab-map" class="menuTab hidden">
+      <div class="menuHead">THE THREE ISLES</div>
+      <canvas id="worldMap" width="520" height="520"></canvas>
+      <div class="pcontrols">The pulsing gold diamond is your current objective. A purple tick bars a locked crossing. Won shrines glow — stand at one to travel the Sigil path.</div>
     </div>
     <div id="menuTab-more" class="menuTab hidden">
       <div class="menuHead">BOUNTY</div>
@@ -1559,6 +1587,8 @@ const freshSession = () => ({
   nearBuilding: null,        // 'bank' | 'shop' | 'hospital' | null — drives the interact prompt
   nearNpc: null,             // NPC id currently winning the interact prompt (session only)
   nearShrine: null,          // shrine key currently winning the interact prompt (stage 4; session only)
+  nearTravel: null,          // WON shrine key winning the prompt as a fast-travel departure (Batch B; session only)
+  travelFrom: null,          // shrine key the open travel panel departs from (Batch B; session only)
   nearSprout: null,          // sproutling id currently winning the interact prompt (stage 4; session only)
   nearBarrier: null,         // rot barrier key ('A'|'B') currently winning the interact prompt (archipelago; session only)
   crossedIsles: {},          // isles whose first-crossing float has fired this session (archipelago; session only)
@@ -3066,6 +3096,46 @@ function objectiveProgressText(){
   if (obj.type === 'guardian') return 'Sigils ' + s.sigils + ' / 3';
   return '';
 }
+/* WHERE the current objective lives in the world — the one answer the
+   minimap diamond, the MAP screen's pulse and the screen-edge pointer
+   all read (Batch B: navigation for EVERY objective type, not just
+   shrines). Chain objectives with a place: guardian -> its shrine,
+   talk/return -> the NPC (the Child wanders — read live), finale ->
+   the living Emperor, else Wilds Isle where he wakes. Counted kills
+   have no place (the fight is wherever you stand). When the chain
+   offers no place, the SIDE TALE does: the next unfound sproutling, or
+   the Child once all three are found. null = nothing to point at. */
+function objectiveTarget(){
+  const s = prog().story; if (!s || s.complete) return null;
+  const o = currentObjective();
+  if (o){
+    if (o.type === 'guardian'){ const p = SHRINE_POS[o.shrine]; if (p) return { x:p.x, y:p.y }; }
+    else if (o.type === 'talk' || o.type === 'return'){
+      const d = npcDef(o.to);
+      if (d){ const p = npcPositionAt(d, performance.now()); return { x:p.x, y:p.y }; }
+    }
+    else if (o.type === 'emperorFinale'){
+      const b = bossAt(performance.now());
+      if (b) return { x:b.x, y:b.y };
+      return { x:ISLES[2].cx, y:ISLES[2].cy };
+    }
+  }
+  if (s.quest !== 'prologue' && !s.sproutsDone){
+    if (s.sprouts >= 3){
+      const d = npcDef('child');
+      if (d){ const p = npcPositionAt(d, performance.now()); return { x:p.x, y:p.y }; }
+    } else {
+      let best = null, bd = Infinity;
+      for (const sp of SPROUT_SPOTS){
+        if (s.sproutsFound.includes(sp.id)) continue;
+        const dd = dist2(me.x, me.y, sp.x, sp.y);
+        if (dd < bd){ bd = dd; best = sp; }
+      }
+      if (best) return { x:best.x, y:best.y };
+    }
+  }
+  return null;
+}
 function storyEvent(type, data = {}){
   const s = prog().story; if (!s) return;
   /* side tale: sproutling pickups count any time after the prologue */
@@ -3526,7 +3596,7 @@ function damagePlayer(amount, now){
      here, so orb fire over town is harmless too). Enemies can't be in
      town at all, but the check stands on its own regardless. */
   if (!$('#bankPanel').classList.contains('hidden') || !$('#shopPanel').classList.contains('hidden') ||
-      !$('#hospitalPanel').classList.contains('hidden') || !$('#menuPanel').classList.contains('hidden') ||
+      !$('#hospitalPanel').classList.contains('hidden') || !$('#travelPanel').classList.contains('hidden') || !$('#menuPanel').classList.contains('hidden') ||
       !$('#chapterCard').classList.contains('hidden')) return;
   if (dist2(me.x, me.y, TOWN.x, TOWN.y) < TOWN_R*TOWN_R){
     /* CONTESTED SHRINE GROUND (stage 4): the Meadow Shrine stands on the
@@ -3638,6 +3708,60 @@ function pokeBarrier(key){
   spawnPopFx(b.x, b.y, '#7b4fa6', 14, .02);
   beep(140, .12, 'sawtooth', .07, -60);   // a low rot growl — no dedicated deny sfx exists
 }
+/* ---- SHRINE FAST-TRAVEL (Batch B): a WON shrine (its Guardian beaten —
+   story.shrinesDone) is a door on the Sigil path. Standing at one, E
+   opens the travel panel: destinations are the town plaza and every
+   OTHER won shrine. Locked and unwon shrines are neither destinations
+   nor doors. The move itself is session-local (position is session
+   state; the 20Hz pos packets simply carry the sword's new home) — no
+   netcode changes. A violet curtain fades over the jump, and the
+   flavour line floats at the arrival. ---- */
+const SHRINE_NAMES = { meadow:'MEADOW SHRINE', grove:'GROVE SHRINE', wilds:'WILDS SHRINE' };
+function travelDestinations(fromKey){
+  const dests = [{ label:'TOWN — THE PLAZA', x:TOWN.x, y:TOWN.y + .1 }];
+  for (const key of Object.keys(SHRINE_POS)){
+    if (key === fromKey || !shrineDone(key)) continue;
+    const p = SHRINE_POS[key];
+    dests.push({ label:SHRINE_NAMES[key], x:p.x, y:p.y + .18 });
+  }
+  return dests;
+}
+function openTravelPanel(fromKey){
+  ses.travelFrom = fromKey;
+  const rows = $('#travelRows'); rows.innerHTML = '';
+  travelDestinations(fromKey).forEach((d, i) => {
+    const b = document.createElement('button');
+    b.className = 'pbtn main' + (i === 0 ? ' echip' : '');   // the town road is the panel's primary: default focus + the E cap
+    b.textContent = d.label;
+    b.onclick = () => doTravel(d);
+    rows.appendChild(b);
+  });
+  showBuildingPanel('#travelPanel');
+  startPanelFocus($('#travelPanel'), rows.querySelector('button'));
+}
+function closeTravelPanel(){
+  hideBuildingPanel('#travelPanel');
+  ses.travelFrom = null;
+}
+function doTravel(dest){
+  closeTravelPanel();
+  const f = $('#travelFade');
+  f.style.opacity = '1';
+  playJingle('quest');
+  setTimeout(() => {
+    const now = performance.now();
+    me.x = dest.x; me.y = dest.y; me.px = me.x; me.py = me.y;
+    pinPtr(me.x, me.y, now);   // teleport: restart the pointer stream here, like a respawn
+    const vw = W/UNIT(), vh = H/UNIT();
+    ses.cam.x = clamp(me.x - vw/2, 0, Math.max(0, WORLD - vw));
+    ses.cam.y = clamp(me.y - vh/2, 0, Math.max(0, WORLD - vh));
+    me.trailBreak = true; ses.myTrail.length = 0;
+    spawnPopFx(me.x, me.y, '#ffd94d', 18, .02);
+    addFloat(me.x, me.y - .14, 'THE SIGILS REMEMBER THE ROAD', '#ffd94d', { big:true });
+    playJingle('sigil');
+    f.style.opacity = '0';
+  }, 200);
+}
 /* ---- the ending: three chapter cards in sequence. playEnding queues
    them; a watcher in frame() feeds the next card whenever the previous
    one closes (an open card owns ses.dlgAdvance, so the queue can never
@@ -3668,7 +3792,7 @@ const shrineSparkAt = {};   // render cache: won-shrine sparkle throttle, per sh
    FOCUSED button -> the building interact prompt -> Meteor Chop (E's
    original active, unchanged when no context applies). */
 function buildingPanelOpen(){
-  for (const sel of ['#bankPanel', '#shopPanel', '#hospitalPanel']){
+  for (const sel of ['#bankPanel', '#shopPanel', '#hospitalPanel', '#travelPanel']){
     const p = $(sel);
     if (p && !p.classList.contains('hidden')) return p;
   }
@@ -3704,6 +3828,7 @@ function interactPressed(){
     if (f && f.panel === panel && panel.contains(f.el) && !f.el.disabled) f.el.click();
     return true;   // a panel is up: E belongs to the panel, never to Meteor Chop
   }
+  if (ses.nearTravel){ openTravelPanel(ses.nearTravel); return true; }
   if (ses.nearShrine){ summonGuardian(ses.nearShrine); return true; }
   if (ses.nearSprout){ collectSprout(ses.nearSprout); return true; }
   if (ses.nearBarrier){ pokeBarrier(ses.nearBarrier); return true; }
@@ -3915,7 +4040,7 @@ function buyInn(id){
 }
 function updateInteract(){
   const pr = $('#interactPrompt');
-  if (!ses.started){ pr.classList.add('hidden'); ses.nearBuilding = null; ses.nearNpc = null; ses.nearShrine = null; ses.nearSprout = null; ses.nearBarrier = null; updateInteract._pr = null; return; }
+  if (!ses.started){ pr.classList.add('hidden'); ses.nearBuilding = null; ses.nearNpc = null; ses.nearShrine = null; ses.nearTravel = null; ses.nearSprout = null; ses.nearBarrier = null; updateInteract._pr = null; return; }
   const db = Math.sqrt(dist2(me.x,me.y,BANK_POS.x,BANK_POS.y));
   const ds = Math.sqrt(dist2(me.x,me.y,SHOP_POS.x,SHOP_POS.y));
   const dh = Math.sqrt(dist2(me.x,me.y,HOSPITAL_POS.x,HOSPITAL_POS.y));
@@ -3930,7 +4055,7 @@ function updateInteract(){
      the .34 radius rule applies unchanged. */
   const inTown = dist2(me.x, me.y, TOWN.x, TOWN.y) < TOWN_R*TOWN_R;
   const building = (inTown || nd < .34) ? nb : null;
-  const panelOpen = !$('#bankPanel').classList.contains('hidden') || !$('#shopPanel').classList.contains('hidden') || !$('#hospitalPanel').classList.contains('hidden');
+  const panelOpen = !$('#bankPanel').classList.contains('hidden') || !$('#shopPanel').classList.contains('hidden') || !$('#hospitalPanel').classList.contains('hidden') || !$('#travelPanel').classList.contains('hidden');
   /* NPCs compete for the same prompt: the nearest townsperson inside talk
      range (.6u — the same range that keeps a dialogue alive) wins over a
      building only when they are strictly NEARER than it. While a dialogue
@@ -3946,13 +4071,21 @@ function updateInteract(){
      SHRINE: only while the current quest objective targets it and no
      guardian stands. SPROUT: only while the side tale can still count
      it and this player has not gathered that one. */
-  let shrineId = null, shrineDist = Infinity, sproutId = null, sproutDist = Infinity, barrierId = null, barrierDist = Infinity;
+  let shrineId = null, shrineDist = Infinity, travelId = null, travelDist = Infinity, sproutId = null, sproutDist = Infinity, barrierId = null, barrierDist = Infinity;
   if (!ses.dialogue && !panelOpen){
     const objNow = currentObjective();
-    if (objNow && objNow.type === 'guardian' && !guardianAlive()){
-      const p = SHRINE_POS[objNow.shrine];
+    /* SHRINES wear two faces (Batch B): the one the quest points at is a
+       SUMMONING (until its guardian falls); a WON shrine (shrinesDone) is
+       a TRAVEL door. A shrine that is somehow both (New Cycle+: its
+       crystal still glows while the chain asks again) summons first —
+       the fight is the story; the road can wait. */
+    const summonKey = (objNow && objNow.type === 'guardian' && !guardianAlive()) ? objNow.shrine : null;
+    for (const key of Object.keys(SHRINE_POS)){
+      const p = SHRINE_POS[key];
       const d = Math.sqrt(dist2(me.x, me.y, p.x, p.y));
-      if (d <= .55){ shrineId = objNow.shrine; shrineDist = d; }
+      if (d > .55) continue;
+      if (key === summonKey){ shrineId = key; shrineDist = d; }
+      else if (shrineDone(key) && d < travelDist){ travelId = key; travelDist = d; }
     }
     const stNow = prog().story;
     if (stNow && stNow.quest !== 'prologue' && !stNow.sproutsDone && stNow.sprouts < 3){
@@ -3973,15 +4106,17 @@ function updateInteract(){
   let winKind = null, winId = null, winDist = Infinity;
   if (npcDist <= .6 && npcDist < winDist){ winKind = 'npc'; winId = npcId; winDist = npcDist; }
   if (shrineId && shrineDist < winDist){ winKind = 'shrine'; winId = shrineId; winDist = shrineDist; }
+  if (travelId && travelDist < winDist){ winKind = 'travel'; winId = travelId; winDist = travelDist; }
   if (sproutId && sproutDist < winDist){ winKind = 'sprout'; winId = sproutId; winDist = sproutDist; }
   if (barrierId && barrierDist < winDist){ winKind = 'barrier'; winId = barrierId; winDist = barrierDist; }
   const winBeatsBuilding = winKind && (!building || winDist < nd);
   const targetNpc = (winBeatsBuilding && winKind === 'npc') ? winId : null;
   ses.nearNpc = targetNpc;
   ses.nearShrine = (winBeatsBuilding && winKind === 'shrine') ? winId : null;
+  ses.nearTravel = (winBeatsBuilding && winKind === 'travel') ? winId : null;
   ses.nearSprout = (winBeatsBuilding && winKind === 'sprout') ? winId : null;
   ses.nearBarrier = (winBeatsBuilding && winKind === 'barrier') ? winId : null;
-  ses.nearBuilding = (targetNpc || ses.nearShrine || ses.nearSprout || ses.nearBarrier) ? null : building;
+  ses.nearBuilding = (targetNpc || ses.nearShrine || ses.nearTravel || ses.nearSprout || ses.nearBarrier) ? null : building;
   // change-only DOM writes: this runs EVERY frame, and re-setting the
   // same textContent replaces the text node (layout work) every time
   const prName = (ses.nearBuilding && !panelOpen && !ses.dialogue) ? (ses.nearBuilding==='bank' ? 'BANK' : ses.nearBuilding==='shop' ? 'SHOP' : 'INN') : null;
@@ -3992,6 +4127,7 @@ function updateInteract(){
   const npcDefNear = targetNpc ? npcDef(targetNpc) : null;
   const wantPr = targetNpc ? cap + '|NPC|' + targetNpc
     : ses.nearShrine ? cap + '|SHRINE|' + ses.nearShrine
+    : ses.nearTravel ? cap + '|TRAVEL|' + ses.nearTravel
     : ses.nearSprout ? cap + '|SPROUT|' + ses.nearSprout
     : ses.nearBarrier ? cap + '|BARRIER|' + ses.nearBarrier
     : (prName ? cap + '|' + prName : null);
@@ -3999,6 +4135,7 @@ function updateInteract(){
     updateInteract._pr = wantPr;
     if (targetNpc && npcDefNear){ pr.innerHTML = '<span class="keycap">' + cap + '</span>' + npcDefNear.name; pr.classList.remove('hidden'); }
     else if (ses.nearShrine){ pr.innerHTML = '<span class="keycap">' + cap + '</span>VERDANT SHRINE'; pr.classList.remove('hidden'); }
+    else if (ses.nearTravel){ pr.innerHTML = '<span class="keycap">' + cap + '</span>TRAVEL'; pr.classList.remove('hidden'); }
     else if (ses.nearSprout){ pr.innerHTML = '<span class="keycap">' + cap + '</span>LOST SPROUTLING'; pr.classList.remove('hidden'); }
     else if (ses.nearBarrier){ pr.innerHTML = '<span class="keycap">' + cap + '</span>ROT BARRIER'; pr.classList.remove('hidden'); }
     else if (prName){ pr.innerHTML = '<span class="keycap">' + cap + '</span>OPEN ' + prName; pr.classList.remove('hidden'); }
@@ -4014,6 +4151,11 @@ function updateInteract(){
     if (!$('#bankPanel').classList.contains('hidden') && db > .42) hideBuildingPanel('#bankPanel');
     if (!$('#shopPanel').classList.contains('hidden') && ds > .42) hideBuildingPanel('#shopPanel');
     if (!$('#hospitalPanel').classList.contains('hidden') && dh > .42) hideBuildingPanel('#hospitalPanel');
+  }
+  // the travel panel belongs to its shrine: wander off and the path closes
+  if (ses.travelFrom && !$('#travelPanel').classList.contains('hidden')){
+    const tp = SHRINE_POS[ses.travelFrom];
+    if (!tp || dist2(me.x, me.y, tp.x, tp.y) > .8*.8) closeTravelPanel();
   }
 }
 
@@ -4219,11 +4361,50 @@ function updatePointer(now){
      is somehow not standable (a stale save woke in the sea), project to
      the nearest shore. Combat reads the same committed segment, so hit
      tests/trail/speed all see the clamped path. */
+  const wantX = ex - me.x, wantY = ey - me.y;   // the intended displacement, captured before the clamp trims it (Batch B)
   if (!canStand(ex, ey)){
     if (canStand(ex, me.y)) ey = me.y;
     else if (canStand(me.x, ey)) ex = me.x;
     else if (canStand(me.x, me.y)){ ex = me.x; ey = me.y; }
     else { const p = projectToLand(ex, ey); ex = p.x; ey = p.y; }
+    /* TANGENTIAL BIAS (Batch B): axis-slide alone PINS on concave
+       shores — pushing diagonally into a bay whose both axis moves
+       leave land stops the blade dead, even with an opening (a bridge
+       mouth) a step along the coast. When the clamp ate most of the
+       intended move, drift gently toward the nearest such opening
+       within ~1.2u: the bridge mouths first, else the one shore tangent
+       that stays on land. The nudge is about half the intended step,
+       and its landing is re-checked with canStand — the clamp's
+       guarantee is untouched: the blade NEVER enters water. */
+    const gotX = ex - me.x, gotY = ey - me.y;
+    const wantL = Math.hypot(wantX, wantY), gotL = Math.hypot(gotX, gotY);
+    if (wantL > .004 && gotL < wantL * .8){
+      let bx = 0, by = 0, bd = 1.2;
+      for (const s of [BRIDGE_A, BRIDGE_B]){
+        const sd = segDist(me.x, me.y, s);
+        if (sd.d < bd){ bd = sd.d; bx = sd.qx - me.x; by = sd.qy - me.y; }
+      }
+      if (bd >= 1.2){
+        // no bridge mouth near: probe both shore tangents of the push
+        const il = 1 / wantL, tx = -wantY * il, ty = wantX * il;
+        const lOk = canStand(me.x + tx*.3, me.y + ty*.3), rOk = canStand(me.x - tx*.3, me.y - ty*.3);
+        if (lOk && !rOk){ bx = tx; by = ty; }
+        else if (rOk && !lOk){ bx = -tx; by = -ty; }
+      }
+      const bl = Math.hypot(bx, by);
+      if (bl > .001){
+        // capped hard: while pinned, the stream holds its target far
+        // away every frame, so an uncapped share of wantL would read as
+        // a teleport, not a drift — .05u/frame is a slide, not a jump
+        const step = Math.min(wantL * .55, .05);
+        const nx = me.x + bx/bl*step, ny = me.y + by/bl*step;
+        if (canStand(nx, ny)){ ex = nx; ey = ny; }
+        else {
+          const hx = me.x + bx/bl*step*.5, hy = me.y + by/bl*step*.5;
+          if (canStand(hx, hy)){ ex = hx; ey = hy; }
+        }
+      }
+    }
   }
   const prevX = me.x, prevY = me.y;
   me.px = prevX; me.py = prevY; me.x = ex; me.y = ey;
@@ -4296,6 +4477,7 @@ addEventListener('keydown', e=>{
   if (e.key==='Escape' && !$('#hospitalPanel').classList.contains('hidden')){ hideBuildingPanel('#hospitalPanel'); return; }
   if (e.key==='Escape' && !$('#bankPanel').classList.contains('hidden')){ hideBuildingPanel('#bankPanel'); return; }   // Esc closes the bank / shop like the inn and menu (it used to open PAUSE over them)
   if (e.key==='Escape' && !$('#shopPanel').classList.contains('hidden')){ hideBuildingPanel('#shopPanel'); return; }
+  if (e.key==='Escape' && !$('#travelPanel').classList.contains('hidden')){ closeTravelPanel(); return; }
   if (e.key==='Escape' || e.key==='p' || e.key==='P'){ togglePause(); return; }
   // dialogue choice navigation: the New Cycle+ options reuse the panel
   // focus keys + .kbfocus ring; E confirms via ses.dlgAdvance.
@@ -4499,7 +4681,7 @@ function equip(i){
    the menu is open on its tab; closeMenu hides ALL sections, so the
    legacy 'is X open?' checks scattered through damage/hints/pause
    stay true. */
-const MENU_SECTIONS = { inventory:'#menuTab-inventory', sphere:'#forge', gems:'#gemPanel', story:'#menuTab-story', more:'#menuTab-more' };
+const MENU_SECTIONS = { inventory:'#menuTab-inventory', sphere:'#forge', gems:'#gemPanel', story:'#menuTab-story', map:'#menuTab-map', more:'#menuTab-more' };
 function openMenu(tab){
   const wasOpen = !$('#menuPanel').classList.contains('hidden');
   if (!wasOpen){ $('#menuPanel').classList.remove('hidden'); playJingle('uiOpen'); }
@@ -4513,6 +4695,7 @@ function showMenuTab(tab, silent){
   if (tab === 'sphere'){ buildSphere(); act.markHint('sphere'); }
   if (tab === 'gems') buildGemPanel();
   if (tab === 'story') buildStoryTab();
+  if (tab === 'map') drawWorldMap(performance.now());
   if (tab === 'inventory') buildMenuInventory();
   if (tab === 'more') buildMenuMore();
   refreshHUD(); updateHint();
@@ -5146,7 +5329,7 @@ function resetRun(){
   act.resetProgress();   // progress back to a fresh character (level, coins, SP, unlocks, weapons, gems, items, hints, respawn) — name + settings kept
   me.gemRushUntil=0;
   me.hp=me.maxHp; me.mp=me.maxMp; me.wSkillCdUntil=0; me.shieldUntil=0;
-  hideBuildingPanel('#bankPanel'); hideBuildingPanel('#shopPanel'); hideBuildingPanel('#hospitalPanel'); closeMenu();
+  hideBuildingPanel('#bankPanel'); hideBuildingPanel('#shopPanel'); hideBuildingPanel('#hospitalPanel'); hideBuildingPanel('#travelPanel'); closeMenu();
   recalc();   // one shared unlock set (branch, weapon-path and cross nodes) — reset above; re-derive stats + clamp HP
   ses.combo=0; ses.comboUntil=0; updateComboBadge(false);
   if (world.scores[me.id]) world.scores[me.id].kills = 0;
@@ -5173,9 +5356,17 @@ function loadGame(){
   const p = prog();
   if (d.name) $('#nameIn').value = p.name;
   if (p.spawnAt){
-    // a respawn saved before the archipelago (or anywhere now under
-    // water / behind a gate) wakes on the nearest shore, not in the sea
-    const sp2 = canStand(p.spawnAt.x, p.spawnAt.y) ? p.spawnAt : projectToLand(p.spawnAt.x, p.spawnAt.y);
+    /* A STALE spawnAt (a pre-archipelago save, or a point now under water
+       / behind a gate) does NOT project to the nearest shore — a random
+       beach can sit 5u+ from town. It falls back to the INN DOOR, the
+       town respawn point (Batch B), and the correction is written back
+       so death()'s respawn lands there too. */
+    let sp2 = p.spawnAt;
+    if (!canStand(p.spawnAt.x, p.spawnAt.y)){
+      sp2 = { x: HOSPITAL_POS.x, y: HOSPITAL_POS.y - .28 };
+      act.patchProgress({ spawnAt: { x: sp2.x, y: sp2.y } });
+      saveGame();
+    }
     me.x = sp2.x; me.y = sp2.y; me.px = me.x; me.py = me.y;   // first spawn uses the saved respawn too
   }
   if (p.bounty) updateBountyUI();
@@ -5221,11 +5412,12 @@ function drawMinimap(){
   g.fillStyle = '#e5484d'; g.fillRect(SHOP_POS.x*S2-2.5, SHOP_POS.y*S2-2.5, 5, 5);
   g.fillStyle = '#ffffff'; g.fillRect(HOSPITAL_POS.x*S2-2.5, HOSPITAL_POS.y*S2-2.5, 5, 5);
   g.fillStyle = '#e5484d'; g.beginPath(); g.arc(HOSPITAL_POS.x*S2, HOSPITAL_POS.y*S2, 1.4, 0, 7); g.fill();
-  // current story target: the shrine the quest points at wears a gold diamond
+  // current story target: whatever the quest points at wears a gold
+  // diamond (Batch B: every objective type, via objectiveTarget())
   {
-    const o = currentObjective();
-    if (o && o.type === 'guardian'){
-      const p = SHRINE_POS[o.shrine], dx = p.x*S2, dy = p.y*S2, dr = 5.5;
+    const t = objectiveTarget();
+    if (t){
+      const dx = t.x*S2, dy = t.y*S2, dr = 5.5;
       g.fillStyle = '#ffd94d'; g.strokeStyle = '#5b3a1e'; g.lineWidth = 1.5;
       g.beginPath(); g.moveTo(dx, dy-dr); g.lineTo(dx+dr, dy); g.lineTo(dx, dy+dr); g.lineTo(dx-dr, dy); g.closePath(); g.fill(); g.stroke();
     }
@@ -5238,6 +5430,90 @@ function drawMinimap(){
   for (const p of world.peers.values()){ g.fillStyle = '#4dabff'; g.beginPath(); g.arc(p.x*S2, p.y*S2, 3, 0, 7); g.fill(); }
   g.fillStyle = '#fff'; g.strokeStyle = '#5b3a1e'; g.lineWidth = 2;
   g.beginPath(); g.arc(me.x*S2, me.y*S2, 4, 0, 7); g.fill(); g.stroke();
+}
+
+/* ============================================================ world map (MAP tab)
+   The full 24u chart in the menu: same visual language as the minimap,
+   at menu scale, with the isles NAMED. The static geometry (sea, isles,
+   causeways, town, shrine stones) is painted ONCE into an offscreen
+   cache (a render cache, not state — the geometry never changes);
+   everything that moves or depends on story state (locked ticks, won
+   glows, peers, the pulsing objective, the player arrow) is drawn per
+   refresh on top. */
+let worldMapBase = null;
+function buildWorldMapBase(S){
+  const bc = document.createElement('canvas'); bc.width = bc.height = S;
+  const g = bc.getContext('2d'), S2 = S / WORLD;
+  g.fillStyle = '#14616e'; g.fillRect(0, 0, S, S);
+  const rng = mulberry32(20261107);   // sea glints: sparse pale speckle, deterministic
+  g.fillStyle = 'rgba(255,255,255,.06)';
+  for (let i = 0; i < 340; i++) g.fillRect(Math.floor(rng()*S), Math.floor(rng()*S), 3, 2);
+  for (const s of [BRIDGE_A, BRIDGE_B]){
+    g.strokeStyle = '#b08954'; g.lineWidth = Math.max(3, BRIDGE_W*S2*.8);
+    g.beginPath(); g.moveTo(s.x1*S2, s.y1*S2); g.lineTo(s.x2*S2, s.y2*S2); g.stroke();
+  }
+  const ISLE_NAMES = ['VERDANT ISLE', 'GROVE ISLE', 'WILDS ISLE'];
+  ISLES.forEach((I, i) => {
+    g.fillStyle = '#e8d49a';
+    g.beginPath(); g.arc(I.cx*S2, I.cy*S2, I.r*S2, 0, 7); g.fill();
+    g.fillStyle = '#79c25f';
+    g.beginPath(); g.arc(I.cx*S2, I.cy*S2, (I.r - SHORE)*S2, 0, 7); g.fill();
+    g.font = '11px "Press Start 2P", monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = '#2e5b27';
+    g.fillText(ISLE_NAMES[i], I.cx*S2, (I.cy + I.r*.68)*S2);
+  });
+  // town: sandy disc + the three building dots, as on the minimap
+  g.fillStyle = '#ecd9a2';
+  g.beginPath(); g.arc(TOWN.x*S2, TOWN.y*S2, TOWN_R*S2, 0, 7); g.fill();
+  g.fillStyle = '#ffd94d'; g.fillRect(BANK_POS.x*S2-3, BANK_POS.y*S2-3, 6, 6);
+  g.fillStyle = '#e5484d'; g.fillRect(SHOP_POS.x*S2-3, SHOP_POS.y*S2-3, 6, 6);
+  g.fillStyle = '#ffffff'; g.fillRect(HOSPITAL_POS.x*S2-3, HOSPITAL_POS.y*S2-3, 6, 6);
+  g.fillStyle = '#e5484d'; g.beginPath(); g.arc(HOSPITAL_POS.x*S2, HOSPITAL_POS.y*S2, 1.6, 0, 7); g.fill();
+  g.font = '8px "Press Start 2P", monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = '#7a5a22'; g.fillText('TOWN', TOWN.x*S2, (TOWN.y - TOWN_R - .38)*S2);
+  // shrine stones: a small diamond in the guardian's colour at each shrine
+  for (const key of Object.keys(SHRINE_POS)){
+    const p = SHRINE_POS[key], dx = p.x*S2, dy = p.y*S2, dr = 6;
+    g.fillStyle = GUARDIANS[key].color; g.strokeStyle = '#5b3a1e'; g.lineWidth = 1.5;
+    g.beginPath(); g.moveTo(dx, dy-dr); g.lineTo(dx+dr, dy); g.lineTo(dx, dy+dr); g.lineTo(dx-dr, dy); g.closePath(); g.fill(); g.stroke();
+  }
+  return bc;
+}
+function drawWorldMap(now){
+  const c = $('#worldMap'); if (!c) return;
+  const S = c.width, S2 = S / WORLD, g = c.getContext('2d');
+  if (!worldMapBase) worldMapBase = buildWorldMapBase(S);
+  g.drawImage(worldMapBase, 0, 0);
+  // locked crossings: the rot tick on the far rim (dynamic — story state)
+  for (const b of BARRIERS){
+    if (bridgeOpen(b.isle + 1)) continue;
+    g.strokeStyle = '#7b4fa6'; g.lineWidth = 3;
+    const px = -b.seg.uy*(BRIDGE_W*S2*.55), py = b.seg.ux*(BRIDGE_W*S2*.55);
+    g.beginPath(); g.moveTo(b.x*S2 - px, b.y*S2 - py); g.lineTo(b.x*S2 + px, b.y*S2 + py); g.stroke();
+  }
+  // won shrines glow on the chart (flat layered discs — the pixel way)
+  for (const key of Object.keys(SHRINE_POS)){
+    if (!shrineDone(key)) continue;
+    const p = SHRINE_POS[key], dx = p.x*S2, dy = p.y*S2;
+    g.fillStyle = 'rgba(255,217,77,.25)'; g.beginPath(); g.arc(dx, dy, 15, 0, 7); g.fill();
+    g.fillStyle = 'rgba(255,217,77,.45)'; g.beginPath(); g.arc(dx, dy, 9, 0, 7); g.fill();
+    g.fillStyle = '#fff3b0'; g.beginPath(); g.arc(dx, dy, 3, 0, 7); g.fill();
+  }
+  for (const p of world.peers.values()){ g.fillStyle = '#4dabff'; g.beginPath(); g.arc(p.x*S2, p.y*S2, 3.5, 0, 7); g.fill(); }
+  // the current objective: a pulsing gold diamond
+  const t = objectiveTarget();
+  if (t){
+    const dx = t.x*S2, dy = t.y*S2, dr = 8 + 2.2*Math.sin(now/280);
+    g.fillStyle = '#ffd94d'; g.strokeStyle = '#5b3a1e'; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(dx, dy-dr); g.lineTo(dx+dr, dy); g.lineTo(dx, dy+dr); g.lineTo(dx-dr, dy); g.closePath(); g.fill(); g.stroke();
+    g.fillStyle = '#fff8e7'; g.beginPath(); g.arc(dx, dy, 2.2, 0, 7); g.fill();
+  }
+  // the player: a white arrow riding the blade's heading
+  const px = me.x*S2, py = me.y*S2;
+  g.save(); g.translate(px, py); g.rotate(me.angle);
+  g.fillStyle = '#fff'; g.strokeStyle = '#5b3a1e'; g.lineWidth = 2;
+  g.beginPath(); g.moveTo(11, 0); g.lineTo(-8, -6.5); g.lineTo(-8, 6.5); g.closePath(); g.fill(); g.stroke();
+  g.restore();
 }
 
 /* ============================================================ active skills */
@@ -5402,6 +5678,8 @@ $('#interactPrompt').addEventListener('pointerdown', e=>{
 $('#depBtn').onclick = ()=>{ act.patchProgress(p => ({ banked: p.banked + p.coins, coins: 0 })); sfx.buy(); updateBankPanel(); refreshHUD(); saveGame(); };   // a deposit must be on disk before the next death or tab kill
 $('#wdBtn').onclick = ()=>{ act.patchProgress(p => ({ coins: p.coins + p.banked, banked: 0 })); sfx.coin(); updateBankPanel(); refreshHUD(); saveGame(); };
 $('#buySpBtn').onclick = buySpherePoint;
+$('#travelCloseBtn').onclick = ()=>closeTravelPanel();
+$('#travelSheetClose').onclick = ()=>closeTravelPanel();
 $('#bankCloseBtn').onclick = ()=>hideBuildingPanel('#bankPanel');
 $('#shopCloseBtn').onclick = ()=>hideBuildingPanel('#shopPanel');
 $('#hospCloseBtn').onclick = ()=>hideBuildingPanel('#hospitalPanel');
@@ -6950,6 +7228,31 @@ function drawMetalArrow(now){
   ctx.fillStyle = '#dfe7ec'; ctx.fillText('METAL', 0, r + 5);
   ctx.restore();
 }
+/* Screen-edge pointer for the current OBJECTIVE (Batch B): the Metal
+   arrow's gold sibling — a chevron + diamond pinned to the viewport
+   edge toward whatever the quest points at (objectiveTarget()), with
+   NO text label: the diamond is the label. Hides the moment the target
+   is on screen, or when the story offers nothing to point at. */
+function drawObjectiveArrow(now){
+  if (!ses.started) return;
+  const t = objectiveTarget(); if (!t) return;
+  const u = UNIT(), vw = W/u, vh = H/u;
+  if (t.x >= ses.cam.x && t.x <= ses.cam.x + vw && t.y >= ses.cam.y && t.y <= ses.cam.y + vh) return;   // on screen: the world itself is the marker
+  const sx = NX(t.x), sy = NY(t.y), M = 34;
+  const cx = clamp(sx, M, W - M), cy = clamp(sy, M, H - M);
+  const a = Math.atan2(sy - H/2, sx - W/2);
+  const pulse = 1 + .15 * Math.sin(now * Math.PI * 2 / 500);
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(a);
+  ctx.fillStyle = '#ffd94d'; ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(21*pulse, 0); ctx.lineTo(8*pulse, -7); ctx.lineTo(8*pulse, 7); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.restore();
+  ctx.save(); ctx.translate(cx, cy);
+  const r = 12 * pulse;
+  ctx.fillStyle = '#ffd94d'; ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, -r); ctx.lineTo(r, 0); ctx.lineTo(0, r); ctx.lineTo(-r, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#fff8e7'; ctx.beginPath(); ctx.arc(0, 0, 2.4, 0, 7); ctx.fill();
+  ctx.restore();
+}
 function frame(now){
   requestAnimationFrame(frame);
   // NO frame skip (Handler: the 60 FPS gate felt like a fighting-game
@@ -7114,7 +7417,7 @@ function frame(now){
   // minimap at ~20Hz, not every frame: it is a navigation aid (50ms
   // cadence is invisible) and a full redraw is ~120 arc fills — at
   // 120Hz phone refresh that was 14k fills a second for a thumbnail.
-  if (now-ses.minimapAt>50){ ses.minimapAt=now; drawMinimap(); }
+  if (now-ses.minimapAt>50){ ses.minimapAt=now; drawMinimap(); if (ses.menuTab==='map' && !$('#menuPanel').classList.contains('hidden')) drawWorldMap(now); }
 
   // particles & rings & floats — drawn only once started (Batch A: the
   // title state shows the dimmed world only, no floats or FX)
@@ -7132,6 +7435,7 @@ function frame(now){
   for (const f of showFx ? ses.floats : []){ f.y-=dt*.00003; f.life-=dt/(f.big?1750:950); ctx.globalAlpha=Math.max(0,f.life); const fnt = '900 '+(f.size || (f.big?26:17))+'px "Baloo 2",sans-serif'; if (fnt !== lastFloatFont){ lastFloatFont = fnt; ctx.font = fnt; } ctx.lineWidth = (f.big || f.size>=20) ? 6 : 4; ctx.strokeStyle='rgba(60,40,10,.8)'; ctx.strokeText(f.text,NX(f.x),NY(f.y)); ctx.fillStyle=f.color; ctx.fillText(f.text,NX(f.x),NY(f.y)); ctx.globalAlpha=1; }
   if (showFx) drawDmgFloats(now);   // ISW glyph damage numbers, on their own timeline
   drawMetalArrow(now);   // edge locator for the guaranteed metal, while it lives off-screen
+  drawObjectiveArrow(now);   // edge pointer for the current story objective, while IT is off-screen
 
   // (boss orbs draw inside the y-sorted entity pass now — see drawOrb)
 
