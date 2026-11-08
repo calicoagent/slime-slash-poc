@@ -368,7 +368,13 @@
   /* boss bar is a SLIM STRIP, not a billboard: name inline-left, the
      track flexes to fill, HP number rides inside the track as before */
   #bossBar {
-    position:fixed; z-index:24; top:max(12px, env(safe-area-inset-top)); left:50%; transform:translateX(-50%);
+    /* BATCH A: the bar lives PERMANENTLY below the toast zone (the toast
+       stack owns the top strip; the awakening toast used to cover the
+       Emperor's HP). Measured stack geometry: a full 4-toast stack
+       bottoms at 133px (front toast up to ~87px + 3 x 12px peeks +
+       offsets), so 140px clears even the worst stack — the 64px first
+       guess only cleared a single short toast. Same on desktop/portrait. */
+    position:fixed; z-index:24; top:calc(env(safe-area-inset-top, 0px) + 140px); left:50%; transform:translateX(-50%);
     width:min(46vw,520px); background:#40121d; border:3px solid #ffd94d; border-radius:0;
     padding:5px 10px; box-shadow:5px 5px 0 rgba(38,32,40,.35); pointer-events:none;
     display:flex; align-items:center; gap:10px;
@@ -665,8 +671,8 @@
     #sphereWrap { width:min(92vw, 424px); }
     /* boss bar drops below the top badge row; the left badge column
        shifts down while a boss is up (body.boss-on) so nothing overlaps */
-    #bossBar { top:calc(env(safe-area-inset-top) + 46px); width:min(76vw, 520px); }
-    body.boss-on #lvlBadge { top:104px; }
+    #bossBar { top:calc(env(safe-area-inset-top, 0px) + 140px); width:min(76vw, 520px); }
+    body.boss-on #lvlBadge { top:198px; }
   }
 
   /* ---------- urgent mobile fix: HUD shrink (<=640px only) ----------
@@ -1007,6 +1013,169 @@ const sfx = {
   die:  ()=>{ [392,330,262,196].forEach((f,i)=>setTimeout(()=>beep(f,.22,'triangle',.12,-40), i*130)); },
 };
 Object.defineProperty(sfx, 'muted', { get:()=>prog().muted, set:v=>{ act.patchProgress({ muted: !!v }); } });
+
+/* ============================================================ procedural BGM + jingles (Batch A)
+   A WebAudio lookahead scheduler (25ms timer, ~0.14s of notes scheduled
+   ahead) playing precomputed chiptune note tables — no audio files. The
+   scheduler runs on a timer, NOT in an audio callback, and the tables
+   below are built once at load: stepping a track allocates nothing but
+   the oscillator/gain nodes WebAudio requires per note. All gains are
+   LOW — the music sits under the sfx. Track choice: a live boss-class
+   fight (Emperor or shrine guardian) -> BOSS; the player inside the
+   town disc -> TOWN; anywhere else -> FIELD. Starts on the PLAY gesture,
+   crossfades ~0.5s on change (0.25 down + 0.25 up), obeys
+   progress.muted, and pauses while the tab is hidden. */
+const NOTE_HZ = m => 440 * Math.pow(2, (m - 69) / 12);
+const MUSIC_GAIN = .8;   // master music gain (per-voice gains below are the real levels)
+/* 32 sixteenth-note loops (2 bars). null = rest. bass fires sparsely. */
+const MUSIC_TRACKS = {
+  town:  { bpm:72,  stepDur:60/72/4,  hatEvery:8, hatOff:4, hatGain:.006,
+    mel: [72,0,69,0,67,0,64,0, 67,0,69,0,72,0,76,0, 74,0,72,0,69,0,67,0, 69,0,67,0,64,0,0,0],
+    bas: [48,0,0,0,0,0,0,0, 45,0,0,0,0,0,0,0, 41,0,0,0,0,0,0,0, 43,0,0,0,0,0,0,0] },
+  field: { bpm:96,  stepDur:60/96/4,  hatEvery:4, hatOff:2, hatGain:.010,
+    mel: [72,0,76,0,79,0,76,0, 81,0,79,0,76,0,74,0, 72,0,76,0,79,0,81,0, 84,0,81,0,79,0,76,0],
+    bas: [48,0,0,0,43,0,0,0, 45,0,0,0,41,0,0,0, 48,0,0,0,43,0,0,0, 45,0,0,0,43,0,0,0] },
+  boss:  { bpm:120, stepDur:60/120/4, hatEvery:2, hatOff:0, hatGain:.013,
+    mel: [62,0,0,62,0,65,0,0, 64,0,0,64,0,61,0,0, 62,0,0,62,0,69,0,68, 65,0,64,0,61,0,0,0],
+    bas: [38,0,0,0,0,0,0,0, 38,0,0,0,0,0,0,0, 36,0,0,0,0,0,0,0, 37,0,0,0,0,0,0,0] },
+};
+function ensureAC(){
+  if (!AC){ try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){ AC = null; } }
+  if (AC && AC.state === 'suspended') AC.resume();
+  return AC;
+}
+/* one enveloped tone at an absolute time — the single voice primitive
+   shared by the BGM scheduler and every jingle */
+function toneAt(freq, t, dur, type, gain, dest, slideTo){
+  if (!AC || prog().muted) return;
+  try {
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.type = type; o.frequency.setValueAtTime(Math.max(30, freq), t);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(30, slideTo), t + dur);
+    g.gain.setValueAtTime(.0001, t);
+    g.gain.linearRampToValueAtTime(gain, t + .012);
+    g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    o.connect(g); g.connect(dest || AC.destination);
+    o.start(t); o.stop(t + dur + .02);
+  } catch(e){}
+}
+function ensureNoiseBuf(){
+  const m = ses.music;
+  if (!m.noiseBuf && AC){
+    try {
+      m.noiseBuf = AC.createBuffer(1, Math.floor(AC.sampleRate * .5), AC.sampleRate);
+      const d = m.noiseBuf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    } catch(e){ m.noiseBuf = null; }
+  }
+  return m.noiseBuf;
+}
+function noiseAt(t, dur, gain, dest){
+  if (!AC || prog().muted || !ensureNoiseBuf()) return;
+  try {
+    const src = AC.createBufferSource(); src.buffer = ses.music.noiseBuf;
+    const f = AC.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 6200;
+    const g = AC.createGain();
+    g.gain.setValueAtTime(gain, t);
+    g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    src.connect(f); f.connect(g); g.connect(dest || AC.destination);
+    src.start(t); src.stop(t + dur + .02);
+  } catch(e){}
+}
+function desiredMusicTrack(){
+  if (!ses.started) return null;
+  if (guardianAlive() || bossAt(performance.now())) return 'boss';
+  if (Math.hypot(me.x - TOWN.x, me.y - TOWN.y) <= TOWN_R) return 'town';
+  return 'field';
+}
+function scheduleMusicStep(tr, step, t){
+  const m = ses.music;
+  const mel = tr.mel[step];
+  if (mel) toneAt(NOTE_HZ(mel), t, tr.stepDur * 1.8, 'square', .026, m.gain);
+  const bas = tr.bas[step];
+  if (bas) toneAt(NOTE_HZ(bas), t, tr.stepDur * 3.6, 'triangle', .048, m.gain);
+  if (step % tr.hatEvery === tr.hatOff) noiseAt(t, .03, tr.hatGain, m.gain);
+}
+function musicTick(){
+  const m = ses.music;
+  if (!m.started || !AC) return;
+  if (document.hidden || prog().muted){
+    if (!m.silenced){
+      m.silenced = true;
+      if (m.gain){ try { m.gain.gain.cancelScheduledValues(AC.currentTime); m.gain.gain.setValueAtTime(0, AC.currentTime); } catch(e){} }
+      m.nextAt = 0;
+    }
+    return;
+  }
+  if (m.silenced){
+    m.silenced = false;
+    if (m.track && m.gain){ try { m.gain.gain.setTargetAtTime(MUSIC_GAIN, AC.currentTime, .08); } catch(e){} }
+    m.nextAt = AC.currentTime + .05;
+  }
+  if (AC.state === 'suspended') AC.resume();
+  const want = desiredMusicTrack();
+  if (want && want !== m.track && want !== m.pending && m.gain){
+    m.pending = want; m.switchAt = AC.currentTime + .25;   // fade out .25s, swap, fade in .25s
+    try { m.gain.gain.cancelScheduledValues(AC.currentTime); m.gain.gain.setValueAtTime(m.gain.gain.value, AC.currentTime); m.gain.gain.linearRampToValueAtTime(0, m.switchAt); } catch(e){}
+  }
+  if (m.pending){
+    if (AC.currentTime < m.switchAt) return;
+    m.track = m.pending; m.pending = null; m.step = 0; m.nextAt = AC.currentTime + .03;
+    try { m.gain.gain.setValueAtTime(0, AC.currentTime); m.gain.gain.linearRampToValueAtTime(MUSIC_GAIN, AC.currentTime + .25); } catch(e){}
+  }
+  if (!m.track) return;
+  const tr = MUSIC_TRACKS[m.track];
+  if (!m.nextAt || m.nextAt < AC.currentTime - .25) m.nextAt = AC.currentTime + .05;
+  while (m.nextAt < AC.currentTime + .14){
+    scheduleMusicStep(tr, m.step, m.nextAt);
+    m.step = (m.step + 1) % 32;
+    m.nextAt += tr.stepDur;
+  }
+}
+function startMusic(){
+  const m = ses.music;
+  if (m.started){ if (AC && AC.state === 'suspended') AC.resume(); return; }
+  if (!ensureAC()) return;
+  try {
+    m.gain = AC.createGain(); m.gain.gain.value = 0; m.gain.connect(AC.destination);
+    ensureNoiseBuf();
+    m.started = true;
+    m.track = desiredMusicTrack() || 'town';
+    m.step = 0; m.nextAt = AC.currentTime + .06;
+    if (!prog().muted) m.gain.gain.linearRampToValueAtTime(MUSIC_GAIN, AC.currentTime + .5);
+    else m.silenced = true;
+    m.timer = setInterval(musicTick, 25);
+  } catch(e){}
+}
+document.addEventListener('visibilitychange', () => {
+  const m = ses.music;
+  if (!document.hidden && m.started){ m.nextAt = 0; if (AC && AC.state === 'suspended') AC.resume(); }
+});
+/* ---- story + UI jingles, played through the same tone/noise engine ---- */
+const JINGLE_NOTES = {
+  quest:   [523.25, 659.25, 783.99, 1046.50],              // rising 4-note: quest complete
+  sigil:   [392.00, 523.25, 659.25, 783.99, 1046.50, 1318.51],   // bigger 6-note: a Verdant Sigil
+  chapter: [1046.50, 1567.98],                             // soft two-note chime: chapter card
+};
+function playJingle(kind){
+  if (prog().muted || !ensureAC()) return;
+  const t = AC.currentTime + .02;
+  if (kind === 'quest' || kind === 'sigil'){
+    const notes = JINGLE_NOTES[kind], gap = kind === 'sigil' ? .10 : .085;
+    notes.forEach((f, i) => toneAt(f, t + i * gap, .20, 'triangle', kind === 'sigil' ? .11 : .10));
+  } else if (kind === 'guardian'){
+    toneAt(82.41, t, .55, 'sawtooth', .045, null, 164.81);   // low swell up an octave
+    toneAt(55.00, t, .55, 'triangle', .07);
+    noiseAt(t + .40, .12, .07);                              // the hit it lands on
+    toneAt(196.00, t + .40, .16, 'square', .06);
+  } else if (kind === 'chapter'){
+    JINGLE_NOTES.chapter.forEach((f, i) => toneAt(f, t + i * .11, .30, 'sine', i ? .035 : .05));
+  } else if (kind === 'uiOpen'){
+    toneAt(660, t, .028, 'square', .012);
+  } else if (kind === 'uiClose'){
+    toneAt(520, t, .028, 'square', .012);
+  }
+}
 
 /* ---- Isekai Slime World combat FX (ported from bon5co/isekai-slime-world,
    client-phaser combatFx/actors): sampled hit sounds, glyph damage numbers,
@@ -1377,6 +1546,10 @@ const freshSession = () => ({
   hitPruneAt: 0,             // last me.lastHitAt prune (was localHitCheck._prune)
   lastTingAt: 0,             // metal 'ting' sound throttle
   lastPickToastAt: 0,        // 'NEED THE PICKAXE' toast throttle
+  // procedural BGM state (Batch A): started on the PLAY gesture; the
+  // lookahead scheduler + crossfade bookkeeping live here (session only,
+  // never persisted — mute itself stays in progress.muted)
+  music: { started:false, track:null, pending:null, switchAt:0, step:0, nextAt:0, timer:0, gain:null, noiseBuf:null, silenced:false },
   // local FX + player projectiles (client-local, never networked)
   particles: [], floats: [], popRings: [],
   dmgFloats: [], dmgCue: 0,  // floating damage numbers; dmgCue = rotating stack counter so simultaneous numbers don't merge
@@ -1750,11 +1923,18 @@ const KING_BAR_RANGE = 1.0;   // a Slime King's floating HP bar renders only whe
    deterministic function of time (same trick as hopPhase: every client
    computes the same spot from the same clock, zero sync, no state). x/y
    are GROUND anchors (the feet); h is the sprite height in world units. */
+/* BATCH A resize: adults draw at h .24u (was .365 — the owl stood ~1.8x
+   a King slime's .20u). `head` is the VISIBLE figure height inside the
+   shared 512x688 canvas and scales with h, so every consumer follows
+   automatically: the name plate and dialogue-bubble anchor ride `head`,
+   the shadow and sprite width ride `h`. The Child keeps the same canvas
+   scale; its figure occupies ~60% of the canvas, so its visible height
+   (.134u) stays ~60% of an adult's (.224u). */
 const NPC_DEFS = [
-  { id:'elder', name:'ELDER MIRRA', x:TOWN.x,       y:TOWN.y - .15,            h:.365, head:.340, robe:'#557d3c', skin:'#e8b08a', hair:'#cfd4d1' },
-  { id:'forge', name:'FORGE',       x:SHOP_POS.x - .28, y:SHOP_POS.y + .16,     h:.365, head:.340, robe:'#8a5a2b', skin:'#8a5a3b', hair:'#263238' },
-  { id:'pike',  name:'WARDEN PIKE', x:HOSPITAL_POS.x + .29, y:HOSPITAL_POS.y + .10, h:.365, head:.340, robe:'#6f7f8c', skin:'#d9a37e', hair:'#aeb6ba' },
-  { id:'child', name:'THE CHILD',   x:TOWN.x - .42, y:TOWN.y + .05,            h:.365, head:.204, robe:'#5d9440', skin:'#f0bd93', hair:'#6d4527' },
+  { id:'elder', name:'ELDER MIRRA', x:TOWN.x,       y:TOWN.y - .15,            h:.240, head:.224, robe:'#557d3c', skin:'#e8b08a', hair:'#cfd4d1' },
+  { id:'forge', name:'FORGE',       x:SHOP_POS.x - .28, y:SHOP_POS.y + .16,     h:.240, head:.224, robe:'#8a5a2b', skin:'#8a5a3b', hair:'#263238' },
+  { id:'pike',  name:'WARDEN PIKE', x:HOSPITAL_POS.x + .29, y:HOSPITAL_POS.y + .10, h:.240, head:.224, robe:'#6f7f8c', skin:'#d9a37e', hair:'#aeb6ba' },
+  { id:'child', name:'THE CHILD',   x:TOWN.x - .42, y:TOWN.y + .05,            h:.240, head:.134, robe:'#5d9440', skin:'#f0bd93', hair:'#6d4527' },
 ];
 const CHILD_WAYPOINTS = [
   { x:TOWN.x - .42, y:TOWN.y + .05 }, { x:TOWN.x - .16, y:TOWN.y + .36 },
@@ -2924,7 +3104,10 @@ function storyEvent(type, data = {}){
   } else if ((obj.type === 'talk' || obj.type === 'return') && type === obj.type && data.npc === obj.to){
     advanced = true;
   }
-  if (advanced) advanceStoryObjective();
+  if (advanced){
+    if (obj.type === 'guardian') playJingle('sigil');   // the Sigil wakes the moment its guardian falls — before the return trip completes the quest
+    advanceStoryObjective();
+  }
   else if (obj.type === 'killCount' || obj.type === 'killKind') saveGame();   // counted progress is an event: persist it
   updateQuestTracker();
 }
@@ -2938,7 +3121,7 @@ function grantQuestRewards(q, label){
   if (r.sp) bits.push('+' + r.sp + ' SP');
   if (r.relic && RELICS[r.relic]) bits.push('RELIC: ' + RELICS[r.relic].name);
   notify(label + ' — ' + q.title.toUpperCase(), { type:'story', sub: bits.join(' · ') });
-  sfx.lvl();
+  playJingle('quest');
 }
 function advanceStoryObjective(){
   const s = prog().story, q = questById(s.quest); if (!q) return;
@@ -2997,11 +3180,12 @@ function updateQuestTracker(){
   if (updateQuestTracker._t !== title){ updateQuestTracker._t = title; $('#questTitle').textContent = title; }
   if (updateQuestTracker._o !== obj){ updateQuestTracker._o = obj; $('#questObj').textContent = obj; }
 }
-$('#questCard').onclick = () => { openMenu('story'); beep(600, .05, 'triangle', .06); };
+$('#questCard').onclick = () => { openMenu('story'); };   // openMenu plays the UI tick
 /* ---- chapter cards: full-screen narration plates. While a card is open
    ses.dlgAdvance points at advanceChapterCard, so the E dispatcher's
    first priority (and taps on the plate) walk the lines. ---- */
 function showChapterCard(numeral, title, lines){
+  playJingle('chapter');
   ses.chapterCard = { lines: (lines && lines.length) ? [...lines] : [''], i: 0 };
   $('#chChapter').textContent = numeral;
   $('#chTitle').textContent = title;
@@ -3429,7 +3613,7 @@ function summonGuardian(shrine){
   for (let i=0;i<10;i++) ses.particles.push({ x:pos.x+rand(-.09,.09), y:pos.y+rand(-.02,.06), vx:rand(-.02,.02), vy:rand(-.16,-.06), life:1, color:cfg.color, r:rand(3,6) });
   capParticles();
   addFloat(pos.x, pos.y - .26, 'THE ' + cfg.name + ' AWAKENS!', '#ffd94d', { big:true });
-  sfx.lvl();
+  playJingle('guardian');
   if (world.isHost) spawnGuardian(shrine);
   else if (world.sendBoss){ try { world.sendBoss({ p:'wake', shrine, x:+pos.x.toFixed(3), y:+pos.y.toFixed(3) }); } catch(e){} }
 }
@@ -3527,8 +3711,14 @@ function interactPressed(){
   if (ses.nearBuilding){ openBuilding(ses.nearBuilding); return true; }
   return false;
 }
-function openBank(){ $('#bankPanel').classList.remove('hidden'); updateBankPanel(); startPanelFocus($('#bankPanel'), $('#depBtn')); }
-function openShop(){ $('#shopPanel').classList.remove('hidden'); buildShopRows(); startPanelFocus($('#shopPanel'), document.querySelector('#shopRows button')); }
+/* Panel open/close UI ticks (Batch A): building panels open and close
+   through these two helpers so the tiny click blip fires exactly once
+   per transition, whichever path (CLOSE button, Esc, backdrop tap,
+   walk-away, run reset) took it. */
+function showBuildingPanel(sel){ const el = $(sel); if (el.classList.contains('hidden')){ el.classList.remove('hidden'); playJingle('uiOpen'); } }
+function hideBuildingPanel(sel){ const el = (typeof sel === 'string') ? $(sel) : sel; if (el && !el.classList.contains('hidden')){ el.classList.add('hidden'); playJingle('uiClose'); } }
+function openBank(){ showBuildingPanel('#bankPanel'); updateBankPanel(); startPanelFocus($('#bankPanel'), $('#depBtn')); }
+function openShop(){ showBuildingPanel('#shopPanel'); buildShopRows(); startPanelFocus($('#shopPanel'), document.querySelector('#shopRows button')); }
 /* Bank SP exchange — ESCALATING price (Handler: SP comes from farming the
    Emperor, 'or increasingly more expensive'): the Nth lifetime purchase
    costs round(300 * 1.5^N). spBuys persists in the save. Kings grant +1 SP
@@ -3663,7 +3853,7 @@ function buyItem(id){
   updateShopPanel(); refreshHUD(); saveGame();
 }
 /* ============================================================ THE INN: sleep to full, or sleep & save your respawn */
-function openHospital(){ $('#hospitalPanel').classList.remove('hidden'); buildHospitalRows(); startPanelFocus($('#hospitalPanel'), document.querySelector('#hospRows button')); }
+function openHospital(){ showBuildingPanel('#hospitalPanel'); buildHospitalRows(); startPanelFocus($('#hospitalPanel'), document.querySelector('#hospRows button')); }
 function fullHealPrice(){ return Math.max(15, Math.ceil((me.maxHp - me.hp) * .8)); }
 function sleepSavePrice(){ return (me.hp < me.maxHp ? fullHealPrice() : 0) + 25; }   // heal (if hurt) + 25c flat for the respawn
 function updateHospitalRows(){
@@ -3821,9 +4011,9 @@ function updateInteract(){
   // walk away (> .42 units — outside the .34 interact radius) and the panel
   // closes itself; inside town you are never 'away', so panels stay open
   if (!inTown){
-    if (!$('#bankPanel').classList.contains('hidden') && db > .42) $('#bankPanel').classList.add('hidden');
-    if (!$('#shopPanel').classList.contains('hidden') && ds > .42) $('#shopPanel').classList.add('hidden');
-    if (!$('#hospitalPanel').classList.contains('hidden') && dh > .42) $('#hospitalPanel').classList.add('hidden');
+    if (!$('#bankPanel').classList.contains('hidden') && db > .42) hideBuildingPanel('#bankPanel');
+    if (!$('#shopPanel').classList.contains('hidden') && ds > .42) hideBuildingPanel('#shopPanel');
+    if (!$('#hospitalPanel').classList.contains('hidden') && dh > .42) hideBuildingPanel('#hospitalPanel');
   }
 }
 
@@ -4103,9 +4293,9 @@ addEventListener('touchmove', e=>{ e.preventDefault(); }, {passive:false});
 addEventListener('keydown', e=>{
   if (!ses.started) return;
   if (e.key==='Escape' && !$('#menuPanel').classList.contains('hidden')){ closeMenu(); return; }
-  if (e.key==='Escape' && !$('#hospitalPanel').classList.contains('hidden')){ $('#hospitalPanel').classList.add('hidden'); return; }
-  if (e.key==='Escape' && !$('#bankPanel').classList.contains('hidden')){ $('#bankPanel').classList.add('hidden'); return; }   // Esc closes the bank / shop like the inn and menu (it used to open PAUSE over them)
-  if (e.key==='Escape' && !$('#shopPanel').classList.contains('hidden')){ $('#shopPanel').classList.add('hidden'); return; }
+  if (e.key==='Escape' && !$('#hospitalPanel').classList.contains('hidden')){ hideBuildingPanel('#hospitalPanel'); return; }
+  if (e.key==='Escape' && !$('#bankPanel').classList.contains('hidden')){ hideBuildingPanel('#bankPanel'); return; }   // Esc closes the bank / shop like the inn and menu (it used to open PAUSE over them)
+  if (e.key==='Escape' && !$('#shopPanel').classList.contains('hidden')){ hideBuildingPanel('#shopPanel'); return; }
   if (e.key==='Escape' || e.key==='p' || e.key==='P'){ togglePause(); return; }
   // dialogue choice navigation: the New Cycle+ options reuse the panel
   // focus keys + .kbfocus ring; E confirms via ses.dlgAdvance.
@@ -4311,10 +4501,12 @@ function equip(i){
    stay true. */
 const MENU_SECTIONS = { inventory:'#menuTab-inventory', sphere:'#forge', gems:'#gemPanel', story:'#menuTab-story', more:'#menuTab-more' };
 function openMenu(tab){
-  $('#menuPanel').classList.remove('hidden');
-  showMenuTab(tab || ses.menuTab);
+  const wasOpen = !$('#menuPanel').classList.contains('hidden');
+  if (!wasOpen){ $('#menuPanel').classList.remove('hidden'); playJingle('uiOpen'); }
+  showMenuTab(tab || ses.menuTab, !wasOpen);   // the open blip covers the first tab; a switch while open ticks in showMenuTab
 }
-function showMenuTab(tab){
+function showMenuTab(tab, silent){
+  if (!silent && tab !== ses.menuTab && !$('#menuPanel').classList.contains('hidden')) playJingle('uiOpen');   // tab switch: one tiny click
   ses.menuTab = tab;
   for (const [k, sel] of Object.entries(MENU_SECTIONS)) $(sel).classList.toggle('hidden', k !== tab);
   document.querySelectorAll('#menuTabs .mtab').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
@@ -4326,6 +4518,7 @@ function showMenuTab(tab){
   refreshHUD(); updateHint();
 }
 function closeMenu(){
+  if (!$('#menuPanel').classList.contains('hidden')) playJingle('uiClose');
   $('#menuPanel').classList.add('hidden');
   for (const sel of Object.values(MENU_SECTIONS)) $(sel).classList.add('hidden');
   ses.sphereCentered = false;   // the Sphere board re-centres on its next open
@@ -4462,7 +4655,7 @@ $('#menuBtn').onclick = () => toggleMenu();
 $('#menuCloseBtn').onclick = () => closeMenu();
 $('#menuSheetClose').onclick = () => closeMenu();
 $('#menuPanel').addEventListener('click', e => { if (e.target.id === 'menuPanel') closeMenu(); });
-document.querySelectorAll('#menuTabs .mtab').forEach(b => b.onclick = ()=>{ showMenuTab(b.dataset.tab); beep(600,.05,'triangle',.06); });
+document.querySelectorAll('#menuTabs .mtab').forEach(b => b.onclick = ()=>{ showMenuTab(b.dataset.tab); });   // the switch tick lives in showMenuTab
 $('#menuSoundBtn').onclick = ()=>{ setMuted(!prog().muted); saveGame(); };
 $('#menuResetBtn').onclick = ()=>{
   const b = $('#menuResetBtn');
@@ -4953,7 +5146,7 @@ function resetRun(){
   act.resetProgress();   // progress back to a fresh character (level, coins, SP, unlocks, weapons, gems, items, hints, respawn) — name + settings kept
   me.gemRushUntil=0;
   me.hp=me.maxHp; me.mp=me.maxMp; me.wSkillCdUntil=0; me.shieldUntil=0;
-  $('#bankPanel').classList.add('hidden'); $('#shopPanel').classList.add('hidden'); $('#hospitalPanel').classList.add('hidden'); closeMenu();
+  hideBuildingPanel('#bankPanel'); hideBuildingPanel('#shopPanel'); hideBuildingPanel('#hospitalPanel'); closeMenu();
   recalc();   // one shared unlock set (branch, weapon-path and cross nodes) — reset above; re-derive stats + clamp HP
   ses.combo=0; ses.comboUntil=0; updateComboBadge(false);
   if (world.scores[me.id]) world.scores[me.id].kills = 0;
@@ -5209,18 +5402,18 @@ $('#interactPrompt').addEventListener('pointerdown', e=>{
 $('#depBtn').onclick = ()=>{ act.patchProgress(p => ({ banked: p.banked + p.coins, coins: 0 })); sfx.buy(); updateBankPanel(); refreshHUD(); saveGame(); };   // a deposit must be on disk before the next death or tab kill
 $('#wdBtn').onclick = ()=>{ act.patchProgress(p => ({ coins: p.coins + p.banked, banked: 0 })); sfx.coin(); updateBankPanel(); refreshHUD(); saveGame(); };
 $('#buySpBtn').onclick = buySpherePoint;
-$('#bankCloseBtn').onclick = ()=>$('#bankPanel').classList.add('hidden');
-$('#shopCloseBtn').onclick = ()=>$('#shopPanel').classList.add('hidden');
-$('#hospCloseBtn').onclick = ()=>$('#hospitalPanel').classList.add('hidden');
-$('#hospitalPanel').addEventListener('click', e=>{ if (e.target.id==='hospitalPanel') e.target.classList.add('hidden'); });
+$('#bankCloseBtn').onclick = ()=>hideBuildingPanel('#bankPanel');
+$('#shopCloseBtn').onclick = ()=>hideBuildingPanel('#shopPanel');
+$('#hospCloseBtn').onclick = ()=>hideBuildingPanel('#hospitalPanel');
+$('#hospitalPanel').addEventListener('click', e=>{ if (e.target.id==='hospitalPanel') hideBuildingPanel(e.target); });
 $('#wSkillBtn').onclick = ()=>castWeaponSkill();   // the button is hidden while locked, so a tap is always a cast
 /* mobile sheet sticky-header buttons (hidden on desktop via CSS) */
-$('#bankSheetClose').onclick = ()=>$('#bankPanel').classList.add('hidden');
-$('#shopSheetClose').onclick = ()=>$('#shopPanel').classList.add('hidden');
-$('#hospSheetClose').onclick = ()=>$('#hospitalPanel').classList.add('hidden');
+$('#bankSheetClose').onclick = ()=>hideBuildingPanel('#bankPanel');
+$('#shopSheetClose').onclick = ()=>hideBuildingPanel('#shopPanel');
+$('#hospSheetClose').onclick = ()=>hideBuildingPanel('#hospitalPanel');
 $('#pauseSheetResume').onclick = ()=>togglePause(false);
-$('#bankPanel').addEventListener('click', e=>{ if (e.target.id==='bankPanel') e.target.classList.add('hidden'); });
-$('#shopPanel').addEventListener('click', e=>{ if (e.target.id==='shopPanel') e.target.classList.add('hidden'); });
+$('#bankPanel').addEventListener('click', e=>{ if (e.target.id==='bankPanel') hideBuildingPanel(e.target); });
+$('#shopPanel').addEventListener('click', e=>{ if (e.target.id==='shopPanel') hideBuildingPanel(e.target); });
 /* Item buttons fire on pointerdown — a tap uses the item IMMEDIATELY, mid-
    fight, with no click latency. The window pointerdown handler flags any
    non-canvas press as uiPointer, so the tap can never swing the sword.
@@ -6504,8 +6697,12 @@ function drawEntities(t){
     occluders.push(buildingBox(b));
   }
   // townsfolk join the same depth order at their feet (the Child's spot
-  // is npcPositionAt's deterministic wander — no state, no sync)
+  // is npcPositionAt's deterministic wander — no state, no sync).
+  // BATCH A: behind the TITLE (not started) no NPC is pushed at all —
+  // the title shows the dimmed living town (ambient slimes + decor),
+  // never a character standing on the logo or the PLAY button.
   for (const def of NPC_DEFS){
+    if (!ses.started) break;
     const p = npcPositionAt(def, t);
     if (p.x<ses.cam.x-.45 || p.x>ses.cam.x+vw+.45 || p.y<ses.cam.y-.55 || p.y>ses.cam.y+vh+.25) continue;   // view-culled
     ents.push({ baseY:p.y, kind:'npc', def, x:p.x, y:p.y });
@@ -6907,6 +7104,11 @@ function frame(now){
   // y-sorted entity pass: trees, rocks, buildings and slimes by ground
   // anchor, then occlusion ghosts for slimes hidden behind props
   drawEntities(now);
+  /* BATCH A title composition: while the title is up, the world renders
+     DIMMED under a translucent overlay (the DOM #title gradient stays as
+     the vignette) — ambient slimes and decor keep living underneath,
+     but no NPC, name plate, float or HUD competes with the logo. */
+  if (!ses.started){ ctx.fillStyle = 'rgba(23,43,18,.48)'; ctx.fillRect(0, 0, W, H); }
 
   if (ses.started) tickActives(now, dt);
   // minimap at ~20Hz, not every frame: it is a navigation aid (50ms
@@ -6914,19 +7116,21 @@ function frame(now){
   // 120Hz phone refresh that was 14k fills a second for a thumbnail.
   if (now-ses.minimapAt>50){ ses.minimapAt=now; drawMinimap(); }
 
-  // particles & rings & floats
+  // particles & rings & floats — drawn only once started (Batch A: the
+  // title state shows the dimmed world only, no floats or FX)
+  const showFx = ses.started;
   ses.popRings = ses.popRings.filter(r=>r.life>0);
-  for (const r of ses.popRings){ r.r+=dt*.00045; r.life-=dt/380; ctx.strokeStyle=r.color; ctx.globalAlpha=Math.max(0,r.life); ctx.lineWidth=4; ctx.beginPath(); ctx.arc(NX(r.x),NY(r.y),r.r*SCALE(),0,7); ctx.stroke(); ctx.globalAlpha=1; }
+  for (const r of showFx ? ses.popRings : []){ r.r+=dt*.00045; r.life-=dt/380; ctx.strokeStyle=r.color; ctx.globalAlpha=Math.max(0,r.life); ctx.lineWidth=4; ctx.beginPath(); ctx.arc(NX(r.x),NY(r.y),r.r*SCALE(),0,7); ctx.stroke(); ctx.globalAlpha=1; }
   ses.particles = ses.particles.filter(p=>p.life>0);
   // particles are PIXEL SQUARES, not arc paths: one fillRect each (no
   // beginPath/arc/fill per spark) — the cheapest canvas op there is, and
   // it matches the game's pixel-art style. At the 420 cap the old arc
   // version cost ~1,300 path calls a frame; this costs 420 rects.
-  for (const p of ses.particles){ p.x+=p.vx*dt/60; p.y+=p.vy*dt/60; p.vy+=.0009*dt/16*(p.grav||1); p.life-=dt/480; ctx.globalAlpha=Math.max(0,p.life); ctx.fillStyle=p.color; const ps = p.r*1.6; ctx.fillRect(NX(p.x)-ps/2, NY(p.y)-ps/2, ps, ps); ctx.globalAlpha=1; }
+  for (const p of showFx ? ses.particles : []){ p.x+=p.vx*dt/60; p.y+=p.vy*dt/60; p.vy+=.0009*dt/16*(p.grav||1); p.life-=dt/480; ctx.globalAlpha=Math.max(0,p.life); ctx.fillStyle=p.color; const ps = p.r*1.6; ctx.fillRect(NX(p.x)-ps/2, NY(p.y)-ps/2, ps, ps); ctx.globalAlpha=1; }
   ses.floats = ses.floats.filter(f=>f.life>0);
   ctx.textAlign='center'; let lastFloatFont = '';   // ctx.font is PARSED on every assignment (costly on Safari) — set it only when the size changes
-  for (const f of ses.floats){ f.y-=dt*.00003; f.life-=dt/(f.big?1750:950); ctx.globalAlpha=Math.max(0,f.life); const fnt = '900 '+(f.size || (f.big?26:17))+'px "Baloo 2",sans-serif'; if (fnt !== lastFloatFont){ lastFloatFont = fnt; ctx.font = fnt; } ctx.lineWidth = (f.big || f.size>=20) ? 6 : 4; ctx.strokeStyle='rgba(60,40,10,.8)'; ctx.strokeText(f.text,NX(f.x),NY(f.y)); ctx.fillStyle=f.color; ctx.fillText(f.text,NX(f.x),NY(f.y)); ctx.globalAlpha=1; }
-  drawDmgFloats(now);   // ISW glyph damage numbers, on their own timeline
+  for (const f of showFx ? ses.floats : []){ f.y-=dt*.00003; f.life-=dt/(f.big?1750:950); ctx.globalAlpha=Math.max(0,f.life); const fnt = '900 '+(f.size || (f.big?26:17))+'px "Baloo 2",sans-serif'; if (fnt !== lastFloatFont){ lastFloatFont = fnt; ctx.font = fnt; } ctx.lineWidth = (f.big || f.size>=20) ? 6 : 4; ctx.strokeStyle='rgba(60,40,10,.8)'; ctx.strokeText(f.text,NX(f.x),NY(f.y)); ctx.fillStyle=f.color; ctx.fillText(f.text,NX(f.x),NY(f.y)); ctx.globalAlpha=1; }
+  if (showFx) drawDmgFloats(now);   // ISW glyph damage numbers, on their own timeline
   drawMetalArrow(now);   // edge locator for the guaranteed metal, while it lives off-screen
 
   // (boss orbs draw inside the y-sorted entity pass now — see drawOrb)
@@ -7121,6 +7325,7 @@ $('#playBtn').onclick = ()=>{
   catch(e){ notify('Multiplayer failed to start — playing solo. (' + e.message + ')', { ms:4000 }); world.isHost=true; world.hostId=me.id; if(world.slimes.size===0) for(let i=0;i<50;i++) spawnSlime(); }
   notify('Slash the slimes! One world — everyone with the link is in it.', { ms:2600 });
   beep(660,.1,'triangle',.1);
+  startMusic();   // Batch A: the procedural BGM starts on this first user gesture (PLAY) and follows town/field/boss state from here
   /* RPG: the prologue chapter card fires ONCE, the first time any save
      enters the world (cardSeen persists, so it never refires) */
   const st0 = prog().story;
