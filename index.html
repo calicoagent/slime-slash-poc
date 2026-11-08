@@ -1154,7 +1154,12 @@ function musicTick(){
   if (!m.track) return;
   const tr = MUSIC_TRACKS[m.track];
   if (!m.nextAt || m.nextAt < AC.currentTime - .25) m.nextAt = AC.currentTime + .05;
-  while (m.nextAt < AC.currentTime + .14){
+  /* FREEZE HARDENING (Batch D): the reset above already bounds this to a
+     few steps (stepDur >= .125s, lookahead window < .4s), but the cap
+     makes the bound literal — a corrupt stepDur can never spin the
+     scheduler; leftover steps simply land on the next 25ms tick. */
+  let mGuard = 0;
+  while (m.nextAt < AC.currentTime + .14 && mGuard++ < 8){
     scheduleMusicStep(tr, m.step, m.nextAt);
     m.step = (m.step + 1) % 32;
     m.nextAt += tr.stepDur;
@@ -2056,6 +2061,14 @@ function spawnSlime(opts={}){
        weights spawns to the islands players are actually on — the rest on
        an isle picked by the population split (ISLE_SPAWN_W, land-area weights). */
     const inTown = (x,y) => dist2(x,y,TOWN.x,TOWN.y) < (TOWN_R+.10)*(TOWN_R+.10);
+    /* SHRINE QUIET (Batch D): ambient/near-player wild spawns also keep
+       .85u clear of every shrine — the shrines are set-pieces, and
+       near-player spawn pressure used to carpet them with dozens of
+       slimes (kings included), burying the summon composition in a
+       brawl. Explicit-position spawns (guardian summons, boss minions,
+       splitter children, the metal guarantee) never pass through this
+       branch, so story spawns are exempt by construction. */
+    const nearShrine = (x,y) => { for (const k in SHRINE_POS){ const p = SHRINE_POS[k]; if (dist2(x,y,p.x,p.y) < .85*.85) return true; } return false; };
     let anchor = null;
     for (let tries=0; tries<6; tries++){
       if (opts.nearPlayer !== false && Math.random() < .6){
@@ -2070,17 +2083,38 @@ function spawnSlime(opts={}){
         while (ii < 2 && wi > ISLE_SPAWN_W[ii]){ wi -= ISLE_SPAWN_W[ii]; ii++; }
         const p = sampleIsle(ISLES[ii]); sx = p.x; sy = p.y; anchor = ISLES[ii];
       }
-      if (isleAt(sx,sy) >= 0 && !inTown(sx,sy)) break;   // inside an isle's disc — never on a bridge strip or in the sea
+      if (isleAt(sx,sy) >= 0 && !inTown(sx,sy) && !nearShrine(sx,sy)) break;   // inside an isle's disc — never on a bridge strip or in the sea
       if (tries===5){
-        // FALLBACK: the anchor isle's rim ring, on the anchor's bearing
-        const ai = isleAt(anchor.x, anchor.y), I = ISLES[ai >= 0 ? ai : nearestIsle(anchor.x, anchor.y)];
-        const dx = anchor.x - I.cx, dy = anchor.y - I.cy, dd = Math.hypot(dx,dy) || 1e-4;
+        // FALLBACK: the anchor isle's rim ring, on the anchor's bearing.
+        /* ANCHOR BUG (Batch D hunt): an ISLE anchor carries its centre
+           as cx/cy, not x/y — reading anchor.x on that path produced
+           undefined -> NaN dx/dy -> a NaN-position slime in the world
+           (~1/1000 spawns, whenever the isle branch's six candidates
+           all rejected). An isle anchor's bearing comes from the last
+           candidate instead (it is on that isle by construction). */
+        const axp = anchor.x !== undefined ? anchor.x : sx, ayp = anchor.y !== undefined ? anchor.y : sy;
+        const ai = isleAt(axp, ayp), I = ISLES[ai >= 0 ? ai : nearestIsle(axp, ayp)];
+        const dx = axp - I.cx, dy = ayp - I.cy, dd = Math.hypot(dx,dy) || 1e-4;
         let rr = I.r - .12;
         if (I.zone === 0) rr = Math.max(rr, TOWN_R + .16);   // Isle 1's ring must also clear the town disc
         sx = I.cx + dx/dd*rr; sy = I.cy + dy/dd*rr;
+        /* the ring can still land in a shrine's quiet radius (the
+           Meadow Shrine sits near Isle 1's rim): walk the bearing in
+           bounded steps until clear — 8 x .35 rad always finds a gap,
+           since no shrine's quiet disc spans more than ~.62 rad of any
+           isle's rim. */
+        for (let w=0; w<8 && nearShrine(sx,sy); w++){
+          const a = Math.atan2(sy - I.cy, sx - I.cx) + .35;
+          sx = I.cx + Math.cos(a)*rr; sy = I.cy + Math.sin(a)*rr;
+        }
       }
     }
   }
+  /* FINITENESS CHOKE POINT (Batch D): whatever the position phase did
+     above, a slime NEVER enters the world at a non-finite position —
+     sampleIsle over a constant isle is finite by construction, so this
+     fallback makes NaN spawns impossible, full stop. */
+  if (!isFinite(sx) || !isFinite(sy)){ const p = sampleIsle(ISLES[nearestIsle(me.x, me.y)]); sx = p.x; sy = p.y; }
   const zi = zoneOf(sx, sy), zone = ZONES[zi];
   let k = opts.kind ? (SLIME_KINDS.find(m=>m.kind===opts.kind) || SLIME_KINDS[0]) : pickKind(zi);
   /* FIRST-FIGHT GATE (Batch C): while every connected blade is under
@@ -2865,8 +2899,14 @@ function localHitCheck(now){
   let testAngles = [sa];
   if (myWeapon().motion==='swing' && me.prevSa!==undefined){
     let dA = sa - me.prevSa;
-    while (dA > Math.PI) dA -= Math.PI*2;
-    while (dA < -Math.PI) dA += Math.PI*2;
+    /* FREEZE HARDENING (Batch D): both angles are atan2-derived, so
+       |dA| <= 2PI and one pass suffices in practice; the guard makes the
+       bound independent of that invariant (a NaN/Infinity angle can
+       never spin this — non-finite dA simply skips the sweep test). */
+    let dGuard = 0;
+    while (dA > Math.PI && dGuard++ < 4) dA -= Math.PI*2;
+    dGuard = 0;
+    while (dA < -Math.PI && dGuard++ < 4) dA += Math.PI*2;
     if (Math.abs(dA) > .02 && Math.abs(dA) < 1.4) testAngles = [me.prevSa, me.prevSa + dA/2, sa];
   }
   me.prevSa = sa;
@@ -3067,7 +3107,12 @@ function gainXp(n){
      later kills drained it one level at a time. Every level still pays
      its own SP (+1, +2 on every 3rd) and its +10 max HP top-up. */
   let leveled = false;
-  while (prog().xp >= prog().level*100){
+  /* FREEZE HARDENING (Batch D): each pass strictly reduces xp by
+     level*100, so finite xp always terminates — the 512 cap makes that
+     true by construction even for a corrupt save (a legit Emperor grant
+     spans <100 levels; any residue stays parked in the bar, un-lost). */
+  let xpGuard = 0;
+  while (prog().xp >= prog().level*100 && xpGuard++ < 512){
     const maxBefore = me.maxHp;
     act.patchProgress(p => ({ xp: p.xp - p.level*100, level: p.level + 1, sp: p.sp + 1 })); leveled = true;
     recalc();   // re-derive maxHp at the new level
@@ -3675,7 +3720,21 @@ function spawnGuardian(shrine){
   if (!world.isHost || guardianAlive()) return null;
   const cfg = GUARDIANS[shrine], pos = SHRINE_POS[shrine];
   if (!cfg || !pos) return null;
-  const s = spawnSlime({ kind:'guardian', x:pos.x, y:pos.y });
+  /* SUMMON COMPOSITION (Batch D): the guardian used to materialise
+     exactly ON the shrine point, so crystal + nameplate + AWAKENS float
+     + crown all stacked onto one anchor and the identity art was buried
+     under the set-piece. It now steps out .55u in FRONT of the crystal
+     (south first — toward the approaching player — then the other
+     compass points, first on-land wins; the shrine point itself is the
+     last resort). The leash home stays the shrine, so the fight is
+     unchanged; only the entrance is staged. bornAt drives the rise-in
+     and the delayed nameplate in drawSlime. */
+  let gx = pos.x, gy = pos.y;
+  for (const [ox, oy] of [[0, .55], [0, -.55], [.55, 0], [-.55, 0]]){
+    if (onLand(pos.x + ox, pos.y + oy)){ gx = pos.x + ox; gy = pos.y + oy; break; }
+  }
+  const s = spawnSlime({ kind:'guardian', x:gx, y:gy });
+  s.bornAt = performance.now();
   let topLevel = prog().level;
   for (const p of world.peers.values()) if (p.level && p.level > topLevel) topLevel = p.level;
   const scale = (1 + .20 * Math.max(0, topLevel - 8)) * (1 + .5 * (prog().story ? prog().story.cycles : 0));
@@ -4422,6 +4481,37 @@ function updatePointer(now){
       }
     }
   }
+  /* STUCK ESCALATOR (Batch D, critic #11): Batch B's bias frees the
+     shore at its test point, but a pocket .16u away wedged solid for
+     3.2s — both .3u tangent probes failed there, so no bias ever fired.
+     This is the backstop: while the player keeps pushing (target held
+     >.02u away) and the blade's net displacement stays under .008u,
+     stuck time accrues; past 750ms a tangential nudge along the shore
+     engages, growing from a .02u slide to a decisive .075u by ~1.5s of
+     stuck. It tries the remembered tangent first, flips to the other
+     (at most every 350ms) when the landing is water, and every landing
+     is canStand-checked — the never-enter-water guarantee is untouched.
+     Real movement (>= .02u) or releasing the push resets it. */
+  {
+    const fdtMs = ses.ptrEvalT ? clamp(now - ses.ptrEvalT, 1, 100) : 16.7;
+    const disp = Math.hypot(ex - me.x, ey - me.y);
+    const pushing = Math.hypot(wantX, wantY) > .02;
+    if (pushing && disp < .008) ses.stuckMs = (ses.stuckMs || 0) + fdtMs;
+    else if (!pushing || disp >= .02){ ses.stuckMs = 0; ses.stuckSign = 1; ses.stuckFlipAt = 0; }
+    if (pushing && ses.stuckMs > 750){
+      const grow = Math.min(1, (ses.stuckMs - 750) / 750);
+      const step = Math.min(.09, (.02 + .055 * grow) * (fdtMs / 16.7));
+      const wl = Math.hypot(wantX, wantY), tx = -wantY / wl, ty = wantX / wl;
+      let sign = ses.stuckSign || 1;
+      let nx = me.x + tx * sign * step, ny = me.y + ty * sign * step;
+      if (!canStand(nx, ny)){
+        if (now - (ses.stuckFlipAt || 0) > 350){ sign = -sign; ses.stuckSign = sign; ses.stuckFlipAt = now; }
+        nx = me.x + tx * sign * step; ny = me.y + ty * sign * step;
+        if (!canStand(nx, ny)){ nx = me.x + tx * sign * step * .5; ny = me.y + ty * sign * step * .5; }
+      } else ses.stuckSign = sign;
+      if (canStand(nx, ny)){ ex = nx; ey = ny; }
+    }
+  }
   const prevX = me.x, prevY = me.y;
   me.px = prevX; me.py = prevY; me.x = ex; me.y = ey;
   if (snap) me.trailBreak = true;   // teleports don't streak the trail across the gap
@@ -4437,8 +4527,13 @@ function updatePointer(now){
     // instead of the old per-event snap of me.angle
     const heading = Math.atan2(dyPx, dxPx);
     let dA = heading - me.angle;
-    while (dA > Math.PI) dA -= Math.PI*2;
-    while (dA < -Math.PI) dA += Math.PI*2;
+    /* FREEZE HARDENING (Batch D): heading is atan2-bounded and me.angle
+       is lerped toward it every frame, so |dA| stays under ~3PI; the
+       guard caps the normalisation regardless (see localHitCheck). */
+    let dGuard = 0;
+    while (dA > Math.PI && dGuard++ < 4) dA -= Math.PI*2;
+    dGuard = 0;
+    while (dA < -Math.PI && dGuard++ < 4) dA += Math.PI*2;
     me.angle += dA * (1 - Math.exp(-fdt/32));
   }
   // flick triggers: same weapons, thresholds and cooldowns as the old event handler
@@ -5294,9 +5389,25 @@ function updateBountyUI(){
 /* ---------- king banner ---------- */
 function scanKings(){
   if (!ses.started) return;
-  const fresh = performance.now() - ses.startedAt >= 3000;   // never banner in the first 3s after PLAY
+  /* AWAKENED TIMING (Batch D): the banner used to fire ~3s after the
+     boss SPAWNED, wherever the player stood — the marquee entrance cue
+     announced a moment nobody saw, then was gone when the player
+     actually arrived. Now it fires ONCE per awakening, at the first
+     moment the awakening becomes the PLAYER's event: the boss enters
+     the camera view, or the player sets foot on his isle while he
+     lives — whichever comes first. seenBosses still prunes on death,
+     so the next awakening announces afresh. */
+  const u = UNIT(), vw = W/u, vh = H/u;
+  const myIsle = isleAt(me.x, me.y);
   for (const s of world.slimes.values()){
-    if (s.kind==='boss' && !ses.seenBosses.has(s.id) && fresh){ ses.seenBosses.add(s.id); notify('THE SLIME EMPEROR HAS AWAKENED!', { type:'king' }); }
+    if (s.kind !== 'boss' || ses.seenBosses.has(s.id)) continue;
+    const inView = s.x >= ses.cam.x - s.r && s.x <= ses.cam.x + vw + s.r &&
+                   s.y >= ses.cam.y - s.r && s.y <= ses.cam.y + vh + s.r;
+    const sameIsle = myIsle >= 0 && myIsle === isleAt(s.x, s.y);
+    if (inView || sameIsle){
+      ses.seenBosses.add(s.id);
+      notify(bossIsChaos() ? 'THE CHAOS EMPEROR HAS AWAKENED!' : 'THE SLIME EMPEROR HAS AWAKENED!', { type:'king' });
+    }
   }
   for (const id of [...ses.seenBosses]) if (!world.slimes.has(id)) ses.seenBosses.delete(id);
 }
@@ -6172,6 +6283,7 @@ function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.im
 const POIS = [
   { id:'ruins',    name:'RUINED CIRCLE',   x:3.6,  y:9.9,  isle:0 },
   { id:'flowers',  name:'FLOWER GROVE',    x:8.3,  y:15.4, isle:0 },
+  { id:'wayside',  name:'WAYSIDE REST',    x:8.52, y:12.54, isle:0 },   // Batch D: halfway stone on the town -> Meadow Shrine path (its float is the corridor's name tag)
   { id:'camp',     name:'HERMIT CAMP',     x:19.7, y:4.6,  isle:1 },
   { id:'shrooms',  name:'MUSHROOM RING',   x:15.7, y:10.0, isle:1 },
   { id:'stones',   name:'STANDING STONES', x:14.6, y:15.4, isle:2 },
@@ -6222,6 +6334,14 @@ const DECOR = (()=>{
     d.rim = [];
     for (let i = 0; i < n; i++)
       d.rim.push({ a: (i + rng() * .7) / n * Math.PI * 2, rf: .90 + rng() * .30, k: rng() < .42 ? 'stone' : (rng() < .55 ? 'reed' : 'sand') });
+    /* POND OUTLINE WOBBLE (Batch D #10): 16 seeded radius factors, a
+       smoothed random walk clamped to [.92, 1.08] (+/-8%), so the shore
+       traced through them (drawPonds/pondPath) is a natural wobbling
+       loop instead of a clean ellipse band. Deterministic per pond. */
+    d.wob = [];
+    let wf = 1;
+    for (let i = 0; i < 16; i++){ wf = clamp(wf + (rng() - .5) * .09, .92, 1.08); d.wob.push(+wf.toFixed(3)); }
+    d.wob[15] = +((d.wob[15] + d.wob[0]) / 2).toFixed(3);   // soften the wrap seam
   }
   /* POI CLUSTERS (Batch C): fixed-centre scenic groups from POIS.
      Jitter comes from this same seeded rng AFTER the scatter calls, so
@@ -6268,6 +6388,16 @@ const DECOR = (()=>{
     const offs = [[0, 0], [.24, .10], [-.22, .14], [.06, -.20]];
     for (const o of offs) items.push({ t:'tree', poi:P.id, dead:true, x:P.x + o[0], y:P.y + o[1], s:.85 + rng() * .4 });
   }
+  /* SHRINE PATH LANDMARKS (Batch D #2): the town -> Meadow Shrine walk
+     (4.6u) was the emptiest stretch on the critical path. Two furniture
+     beats now mark it: a SIGNPOST at the town's east edge (boards point
+     both ways — town behind, shrine ahead) and the WAYSIDE REST halfway:
+     a standing stone + a bench log just south of the path line. */
+  items.push({ t:'signpost', x:TOWN.x + TOWN_R + .14, y:TOWN.y - .30, s:1 });
+  { const P = poi('wayside');
+    items.push({ t:'stone', poi:P.id, x:P.x, y:P.y, s:.62, tilt:.05 });
+    items.push({ t:'log', poi:P.id, x:P.x - .24, y:P.y + .03, s:1.15, a:.10 });
+  }
   return items;
 })();
 /* The three LOST SPROUTLINGS (stage 4 side tale): fixed scenic spots
@@ -6311,8 +6441,33 @@ const TUFTS = (()=>{
     if (inPond) continue;
     items.push({ x, y, s:.5 + rng()*.5, flip: rng() < .5 });
   }
+  /* SHRINE PATH CORRIDOR LIFT (Batch D #2): +170 tufts inside the
+     town-east-edge -> Meadow Shrine rectangle (+/-.55u of the path
+     line) — the critical path's emptiest walk gets deliberate density
+     (the landmarks above mark it; this fills it). */
+  for (let i = 0; i < 170; i++){
+    const x = TOWN.x + TOWN_R + .08 + rng() * (SHRINE_POS.meadow.x - TOWN.x - TOWN_R - .16);
+    const y = TOWN.y + (rng() - .5) * 1.1;
+    let inPond = false;
+    for (const d of DECOR){ if (d.t==='pond' && Math.hypot(x-d.x, y-d.y) < d.r + .03){ inPond = true; break; } }
+    if (inPond) continue;
+    items.push({ x, y, s:.5 + rng()*.5, flip: rng() < .5 });
+  }
   return items;
 })();
+/* Corridor flowers to match the tuft lift (Batch D #2): same rectangle,
+   same pond exclusion, appended to the world FLOWERS scatter. */
+{
+  const frng = mulberry32(20261109);
+  for (let i = 0; i < 130; i++){
+    const x = TOWN.x + TOWN_R + .08 + frng() * (SHRINE_POS.meadow.x - TOWN.x - TOWN_R - .16);
+    const y = TOWN.y + (frng() - .5) * 1.15;
+    let inPond = false;
+    for (const d of DECOR){ if (d.t==='pond' && Math.hypot(x-d.x, y-d.y) < d.r + .03){ inPond = true; break; } }
+    if (inPond) continue;
+    FLOWERS.push({ x, y, c:['#fff','#ffd1e8','#fff3a0'][i % 3], s:2 + (i % 3) });
+  }
+}
 function drawTufts(t){
   const img = WORLD_IMGS['decor-grass'];
   if (!imgOk(img)) return;                 // garnish only -- no fallback art
@@ -6330,6 +6485,24 @@ function drawTufts(t){
   }
 }
 
+/* A pond's outline radius factor at angle a: linear blend of its 16
+   seeded wobble samples (1 for legacy ponds without them). */
+function pondWobAt(d, a){
+  if (!d.wob) return 1;
+  const n = d.wob.length, f = (((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) / (Math.PI * 2) * n;
+  const i0 = Math.floor(f) % n, fr = f - Math.floor(f);
+  return d.wob[i0] * (1 - fr) + d.wob[(i0 + 1) % n] * fr;
+}
+/* Trace the pond's wobbled shore as the current path (28 segments). */
+function pondPath(x, y, rx, ry, d){
+  ctx.beginPath();
+  for (let i = 0; i <= 28; i++){
+    const a = i / 28 * Math.PI * 2, w = pondWobAt(d, a);
+    const px = x + Math.cos(a) * rx * w, py = y + Math.sin(a) * ry * w;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+}
 function drawPonds(t){
   const u = UNIT(), vw = W/u, vh = H/u;
   for (const d of DECOR){
@@ -6346,13 +6519,22 @@ function drawPonds(t){
     if (imgOk(img)){   // pixel pond sprite, centred on the spot
       const w = d.r*2.2*u*br, h = w * img.naturalHeight/img.naturalWidth;
       ctx.drawImage(img, x-w/2, y-h/2, w, h);
+      /* WOBBLED SHORE (Batch D #10): the sprite's own tan ring is a
+         perfect ellipse band — overtrace it with the pond's seeded
+         wobble: a sand stroke riding just outside the waterline and a
+         deep waterline stroke on it, so the visible edge wanders
+         in and out of the sprite's ring instead of tracing it. */
+      pondPath(x, y, w/2 * 1.02, h/2 * 1.02, d);
+      ctx.strokeStyle = 'rgba(230,207,154,.45)'; ctx.lineWidth = Math.max(3, .010*u); ctx.stroke();
+      pondPath(x, y, w/2, h/2, d);
+      ctx.strokeStyle = 'rgba(33,84,128,.35)'; ctx.lineWidth = Math.max(2, .005*u); ctx.stroke();
       drawPondFx(d, x, y, w/2, h/2, t);
       drawPondRim(d, x, y, w/2, h/2, t);   // Batch C: break the uniform tan ring
       continue;
     }
     const r = d.r*u*br;
-    ctx.fillStyle = '#4da3e0'; ctx.beginPath(); ctx.ellipse(x, y, r, r*.62, 0, 0, 7); ctx.fill();
-    ctx.fillStyle = '#7cc0f2'; ctx.beginPath(); ctx.ellipse(x-r*.12, y-r*.08, r*.68, r*.4, 0, 0, 7); ctx.fill();
+    pondPath(x, y, r, r*.62, d); ctx.fillStyle = '#4da3e0'; ctx.fill();
+    pondPath(x - r*.12, y - r*.08, r*.68, r*.4, d); ctx.fillStyle = '#7cc0f2'; ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.beginPath(); ctx.ellipse(x-r*.3, y-r*.16, r*.2, r*.07, -.4, 0, 7); ctx.fill();
     drawPondFx(d, x, y, r, r*.62, t);
     drawPondRim(d, x, y, r, r*.62, t);
@@ -6363,7 +6545,7 @@ function drawPonds(t){
    blink and wiggle. Stateless -- everything derives from the clock. */
 function drawPondFx(d, x, y, rx, ry, t){
   ctx.save();
-  ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, 7); ctx.clip();
+  pondPath(x, y, rx, ry, d); ctx.clip();   // shimmer clips to the wobbled shore (Batch D), not a perfect ellipse
   for (let i=0;i<2;i++){
     const ox = Math.sin(t/900 + d.x*5 + d.y*3 + i*2.4) * rx*.5;   // drift +/-25% of the pond's width
     ctx.fillStyle = i ? 'rgba(190,230,255,.10)' : 'rgba(220,245,255,.16)';
@@ -6485,22 +6667,80 @@ function tentBox(d){
   return { cx:d.x, hw:.18, top:baseY - .27, baseY };
 }
 function drawTent(d){
+  /* HERMIT CAMP TENT (Batch D redraw): the old two flat triangles read
+     as a placeholder wedge among graded art. Now it is what it claims
+     to be — a LEAF CANOPY: two slanted poles and a draped roof of
+     overlapping leaf scales in the ISW tree palette (deep/mid/light
+     greens), a hanging fringe at the eaves, and the shelter's shade
+     beneath. All offsets hash-seeded off the spot: identical every
+     frame, no shimmer. Footprint matches tentBox (.36w x .27h). */
   const u = UNIT(), x = NX(d.x), y = NY(d.y) + .04 * u;
   const w = .36 * u, h = .27 * u;
   ctx.fillStyle = 'rgba(38,32,40,.18)';
   ctx.beginPath(); ctx.ellipse(x, y, w * .52, w * .13, 0, 0, 7); ctx.fill();
-  ctx.fillStyle = '#8a5a33'; ctx.fillRect(x - 1.5, y - h - .012 * u, 3, h + .012 * u);   // centre pole poking past the peak
-  ctx.fillStyle = '#3f7d3a';   // left leaf panel
-  ctx.beginPath(); ctx.moveTo(x, y - h); ctx.lineTo(x - w/2, y); ctx.lineTo(x, y); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = '#35682f';   // right leaf panel, a shade darker
-  ctx.beginPath(); ctx.moveTo(x, y - h); ctx.lineTo(x + w/2, y); ctx.lineTo(x, y); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = '#2c3436';   // the dark opening
-  ctx.beginPath(); ctx.moveTo(x, y - h * .52); ctx.lineTo(x - w * .17, y); ctx.lineTo(x + w * .17, y); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,.14)';   // leaf speckles on the lit panel
-  for (let i = 0; i < 5; i++){
-    const hx = hash01(d.x * 91.7 + i * 13.1), hy = hash01(d.y * 57.3 + i * 7.7);
-    ctx.fillRect(x - w * .42 + hx * w * .36, y - h * .72 + hy * h * .55, 3, 2);
+  // the shelter's shade: a soft dark mouth under the canopy (deep
+  // green-brown, never true black)
+  ctx.fillStyle = '#37402a';
+  ctx.beginPath(); ctx.moveTo(x, y - h * .60); ctx.lineTo(x - w * .20, y); ctx.lineTo(x + w * .20, y); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(38,32,40,.25)';
+  ctx.beginPath(); ctx.ellipse(x, y - 1, w * .17, h * .07, 0, 0, 7); ctx.fill();
+  // two poles, slanted in to the peak
+  ctx.strokeStyle = '#7a4d16'; ctx.lineWidth = Math.max(2, .008 * u); ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(x - w * .34, y); ctx.lineTo(x - w * .015, y - h * .97); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x + w * .34, y); ctx.lineTo(x + w * .015, y - h * .97); ctx.stroke();
+  ctx.fillStyle = '#8a5a33'; ctx.fillRect(x - 1.5, y - h - .012 * u, 3, h * .30);   // centre pole stub poking past the peak
+  // the canopy: rows of leaf scales draped peak -> eave on both slopes
+  const GREENS = ['#2e7d32', '#43a047', '#66bb6a'];
+  const peak = { x:x, y:y - h }, eaveY = y - h * .16;
+  for (const side of [-1, 1]){
+    const slopeA = Math.atan2(eaveY - peak.y, w * .52);   // leaf tilt follows the slope
+    for (let row = 0; row < 3; row++){
+      const n = 4 - row;                                   // fewer, bigger scales toward the peak
+      for (let i = 0; i < n; i++){
+        const f = (i + .5 + row * .22) / (n + .2);
+        const lx = peak.x + side * f * w * .52, ly = peak.y + f * (eaveY - peak.y) + row * h * .055;
+        const lw = w * (.30 - row * .055), lh = lw * .52;
+        const j = (hash01(d.x * 71.3 + d.y * 37.7 + side * 3.1 + row * 11.7 + i * 5.3) - .5) * .14;
+        ctx.fillStyle = GREENS[(i + row + (side > 0 ? 1 : 0)) % 3];
+        ctx.beginPath(); ctx.ellipse(lx, ly, lw/2, lh/2, side * slopeA * .55 + j, 0, 7); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,.10)';           // a lit edge on each scale
+        ctx.beginPath(); ctx.ellipse(lx - lw * .12, ly - lh * .16, lw * .26, lh * .20, side * slopeA * .55 + j, 0, 7); ctx.fill();
+      }
+    }
+    // fringe: single leaves hanging off the eave line
+    for (let i = 0; i < 3; i++){
+      const fx = x + side * (w * .16 + i * w * .15), fy = eaveY + h * .045;
+      ctx.fillStyle = GREENS[(i + 1) % 3];
+      ctx.beginPath(); ctx.ellipse(fx, fy, w * .055, h * .10, side * .35, 0, 7); ctx.fill();
+    }
   }
+  ctx.fillStyle = '#66bb6a';   // one bright leaf crowning the peak
+  ctx.beginPath(); ctx.ellipse(x, y - h - .004 * u, w * .07, h * .09, -.3, 0, 7); ctx.fill();
+}
+/* The shrine-path SIGNPOST (Batch D #2): a wooden post at the town's
+   east edge with two arrow boards — the long top board points EAST
+   (onward, to the Meadow Shrine), the shorter lower board WEST (back
+   to town). Painted wood tones match the log/bench props. */
+function drawSignpost(d){
+  const u = UNIT(), x = NX(d.x), y = NY(d.y);
+  const ph = .22 * u;
+  ctx.fillStyle = 'rgba(38,32,40,.16)';
+  ctx.beginPath(); ctx.ellipse(x, y, .055 * u, .017 * u, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#7a4d16'; ctx.fillRect(x - .007 * u, y - ph, .014 * u, ph);          // post
+  ctx.fillStyle = '#a06a35'; ctx.fillRect(x - .007 * u, y - ph, .006 * u, ph);          // lit edge
+  ctx.fillStyle = '#5d3a10'; ctx.beginPath(); ctx.arc(x, y - ph - .004 * u, Math.max(1.6, .006 * u), 0, 7); ctx.fill();   // post cap knob
+  const board = (by, dir, len, c1, c2) => {
+    const bw = len * u, bh = .040 * u;
+    ctx.fillStyle = c1;
+    ctx.beginPath();
+    ctx.moveTo(x - dir * bw * .30, by);
+    ctx.lineTo(x + dir * bw * .62, by); ctx.lineTo(x + dir * bw, by + bh / 2); ctx.lineTo(x + dir * bw * .62, by + bh); ctx.lineTo(x - dir * bw * .30, by + bh);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = c2; ctx.fillRect(Math.min(x, x + dir * bw * .45), by + bh - Math.max(1.5, bh * .18), Math.abs(bw * .75), Math.max(1.5, bh * .18));   // shaded underside
+    ctx.fillStyle = '#5d3a10'; ctx.beginPath(); ctx.arc(x, by + bh / 2, Math.max(1.2, .004 * u), 0, 7); ctx.fill();   // the nail
+  };
+  board(y - ph * .96, 1, .125, '#c9a06a', '#a06a35');    // east, to the shrine (long, light)
+  board(y - ph * .64, -1, .095, '#b28a52', '#8a5a33');   // west, back to town (shorter, darker)
 }
 function drawLog(d){
   const u = UNIT(), x = NX(d.x), y = NY(d.y);
@@ -6586,7 +6826,8 @@ function drawPondRim(d, x, y, rx, ry, t){
   if (!d.rim) return;
   const u = UNIT();
   for (const it of d.rim){
-    const px = x + Math.cos(it.a) * rx * it.rf, py = y + Math.sin(it.a) * ry * it.rf;
+    const wob = pondWobAt(d, it.a);   // rim dressing rides the wobbled shore (Batch D)
+    const px = x + Math.cos(it.a) * rx * it.rf * wob, py = y + Math.sin(it.a) * ry * it.rf * wob;
     if (it.k === 'sand'){
       ctx.fillStyle = 'rgba(230,207,154,.45)';
       ctx.beginPath(); ctx.ellipse(px, py, .030 * u * (0.7 + it.rf * .4), .016 * u, it.a, 0, 7); ctx.fill();
@@ -6842,7 +7083,7 @@ function drawField(t){
   }
   /* TOWN PLAZA: a sandy disc (r = TOWN_R) under the town — seeded pixel
      speckles (hash of the 0.06u grid cell, one jittered square per cell)
-     and a boundary ring of two-tone stone blocks every ~0.085u, so the
+     and a continuous two-tone stone curb around the boundary, so the
      safe zone reads at a glance. Drawn over the grass. */
   {
     const cx = NX(TOWN.x), cy = NY(TOWN.y), R = TOWN_R*u;
@@ -6864,13 +7105,25 @@ function drawField(t){
       ctx.fillStyle = hf < .42 ? '#ddc78c' : '#f6e7ba';
       ctx.fillRect(NX(wx+jx)-ss/2, NY(wy+jy)-ss/2, ss, ss);
     }
+    /* PLAZA EDGING (Batch D): the old ring stamped one .045u block
+       every .085u of arc — half air — so the border read as disconnected
+       grey blocks floating on the grass. Now each two-tone segment is an
+       arc stroke slightly LONGER than its spacing: neighbours overlap
+       into one continuous low stone curb, the tone changes left as
+       visible joints. A thin darker line under the band seats it. */
     const nb = Math.round(2*Math.PI*TOWN_R/.085), bs = .045*u;
+    ctx.strokeStyle = 'rgba(38,32,40,.16)'; ctx.lineWidth = bs + Math.max(2, .008*u);
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.stroke();
+    ctx.lineWidth = bs; ctx.lineCap = 'butt';
     for (let i=0; i<nb; i++){
-      const a = i/nb*Math.PI*2, bx = TOWN.x + Math.cos(a)*TOWN_R, by = TOWN.y + Math.sin(a)*TOWN_R;
-      if (bx < ses.cam.x-.1 || bx > ses.cam.x+vw+.1 || by < ses.cam.y-.1 || by > ses.cam.y+vh+.1) continue;
-      ctx.fillStyle = i%2 ? '#a89f92' : '#c2bab0';
-      ctx.fillRect(NX(bx)-bs/2, NY(by)-bs/2, bs, bs);
+      const a0 = (i - .10)/nb*Math.PI*2, a1 = (i + 1.10)/nb*Math.PI*2;
+      const bx = TOWN.x + Math.cos((a0 + a1)/2)*TOWN_R, by = TOWN.y + Math.sin((a0 + a1)/2)*TOWN_R;
+      if (bx < ses.cam.x-.12 || bx > ses.cam.x+vw+.12 || by < ses.cam.y-.12 || by > ses.cam.y+vh+.12) continue;
+      ctx.strokeStyle = i%2 ? '#a89f92' : '#c2bab0';
+      ctx.beginPath(); ctx.arc(cx, cy, R, a0, a1); ctx.stroke();
     }
+    ctx.strokeStyle = 'rgba(255,250,230,.35)'; ctx.lineWidth = Math.max(1.5, .006*u);   // worn top highlight, inside the curb
+    ctx.beginPath(); ctx.arc(cx, cy, R - bs*.32, 0, 7); ctx.stroke();
   }
   // grass tufts over the flowers, swaying in the same wind (never on the plaza)
   drawTufts(t);
@@ -7267,7 +7520,20 @@ function drawSlime(s,t){
      same gold crowned sprite). s.r — the hitbox — is UNCHANGED; only the
      rendered size (and everything derived from baseR here: aura, HP bar)
      grows. The ghost pass applies the same factor. */
-  const x=NX(s.x), y=NY(s.y), baseR=s.r*SCALE()*visFactor(s);
+  const x=NX(s.x), y=NY(s.y);
+  let baseR=s.r*SCALE()*visFactor(s);
+  /* GUARDIAN RISE-IN (Batch D): a freshly summoned guardian grows from
+     .55x over 700ms (bornAt is host-stamped at the summon; a remote
+     client stamps it on first sight of the guardian — draw-time lazily,
+     it only drives this local entrance). riseK gates the nameplate
+     below: the plate appears once the rise completes, not stacked on
+     top of the summon flash. */
+  let riseK = 1;
+  if (s.kind==='guardian'){
+    if (s.bornAt === undefined) s.bornAt = t;
+    riseK = clamp((t - s.bornAt) / 700, 0, 1);
+    baseR *= .55 + .45 * riseK;
+  }
   /* KING HP BAR (Handler): a King's floating bar shows ONLY when the local
      player is close (<= KING_BAR_RANGE). Judged against me.x/me.y — the
      same rendered position every other player-relative draw in this
@@ -7312,15 +7578,17 @@ function drawSlime(s,t){
     ag.addColorStop(0, cfg.aura + (.45 + .07*Math.sin(t/260)).toFixed(3) + ')');
     ag.addColorStop(1, cfg.aura + '0)');
     ctx.fillStyle = ag; ctx.beginPath(); ctx.arc(x, y, baseR*1.8, 0, 7); ctx.fill();
-    ctx.save();
-    ctx.font = '10px "Press Start 2P", monospace';
-    const label = cfg.name, tw = ctx.measureText(label).width;
-    const lw = tw + 14, lh = 17, lx = x - lw/2, ly = y - baseR*1.45 - lh/2;
-    ctx.fillStyle = '#40121d'; ctx.fillRect(lx, ly, lw, lh);
-    ctx.strokeStyle = '#ffd94d'; ctx.lineWidth = 2; ctx.strokeRect(lx+1, ly+1, lw-2, lh-2);
-    ctx.fillStyle = '#ffd94d'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(label, x, ly + lh/2 + 1);
-    ctx.restore();
+    if (riseK >= 1){   // nameplate waits for the rise to finish (Batch D) — during the entrance the AWAKENS float owns the shrine anchor alone
+      ctx.save();
+      ctx.font = '10px "Press Start 2P", monospace';
+      const label = cfg.name, tw = ctx.measureText(label).width;
+      const lw = tw + 14, lh = 17, lx = x - lw/2, ly = y - baseR*1.45 - lh/2;
+      ctx.fillStyle = '#40121d'; ctx.fillRect(lx, ly, lw, lh);
+      ctx.strokeStyle = '#ffd94d'; ctx.lineWidth = 2; ctx.strokeRect(lx+1, ly+1, lw-2, lh-2);
+      ctx.fillStyle = '#ffd94d'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(label, x, ly + lh/2 + 1);
+      ctx.restore();
+    }
   }
   const sg = drawVideoSlime(s,t,baseR);
   if (sg){
@@ -7462,6 +7730,7 @@ function drawEntities(t){
     else if (d.t === 'stone'){ const b = stoneBox(d); ents.push({ baseY:b.baseY, kind:'stone', d }); occluders.push(b); }
     else if (d.t === 'tent'){ const b = tentBox(d); ents.push({ baseY:b.baseY, kind:'tent', d }); occluders.push(b); }
     else if (d.t === 'log'){ ents.push({ baseY:d.y + .03, kind:'log', d }); }          // low props: depth-sorted, never occlude
+    else if (d.t === 'signpost'){ ents.push({ baseY:d.y + .02, kind:'signpost', d }); }
     else if (d.t === 'mushroom'){ ents.push({ baseY:d.y + .02, kind:'mushroom', d }); }
     else if (d.t === 'campfire'){ ents.push({ baseY:d.y + .02, kind:'campfire', d }); }
   }
@@ -7552,6 +7821,7 @@ function drawEntities(t){
     else if (e.kind === 'stone') drawStone(e.d);
     else if (e.kind === 'tent') drawTent(e.d);
     else if (e.kind === 'log') drawLog(e.d);
+    else if (e.kind === 'signpost') drawSignpost(e.d);
     else if (e.kind === 'mushroom') drawMushroom(e.d);
     else if (e.kind === 'campfire') drawCampfire(e.d, t);
     else if (e.kind === 'bld') drawBuildings(e.b.key);
@@ -7733,13 +8003,68 @@ function drawMetalArrow(now){
    edge toward whatever the quest points at (objectiveTarget()), with
    NO text label: the diamond is the label. Hides the moment the target
    is on screen, or when the story offers nothing to point at. */
+/* HUD rects the edge pointer must never hide under (Batch D): measured
+   live from the DOM, refreshed at most twice a second — pause button,
+   minimap, peer badge, boss bar, toast stack, actives column. The toast
+   container itself is height:0 (its stack overflows visibly), so its
+   rect is synthesised from the measured worst-case stack height. */
+const HUD_RECT_IDS = ['#peerBadge', '#boardBadge', '#pauseBtn', '#minimap', '#items', '#bossBar', '#actives', '#rack'];
+function hudRects(now){
+  if (ses.hudRects && now - ses.hudRectsAt < 500) return ses.hudRects;
+  const out = [];
+  for (const id of HUD_RECT_IDS){
+    const el = $(id); if (!el || el.classList.contains('hidden')) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) out.push({ l:r.left, t:r.top, r:r.right, b:r.bottom });
+  }
+  const tb = $('#toaster');
+  if (tb && tb.children.length){ const r = tb.getBoundingClientRect(); out.push({ l:r.left, t:r.top, r:r.right, b:r.top + 140 }); }
+  ses.hudRects = out; ses.hudRectsAt = now;
+  return out;
+}
 function drawObjectiveArrow(now){
+  ses.objPtr = null;
   if (!ses.started) return;
   const t = objectiveTarget(); if (!t) return;
   const u = UNIT(), vw = W/u, vh = H/u;
   if (t.x >= ses.cam.x && t.x <= ses.cam.x + vw && t.y >= ses.cam.y && t.y <= ses.cam.y + vh) return;   // on screen: the world itself is the marker
-  const sx = NX(t.x), sy = NY(t.y), M = 34;
-  const cx = clamp(sx, M, W - M), cy = clamp(sy, M, H - M);
+  const sx = NX(t.x), sy = NY(t.y);
+  /* SAFE-RECT INSET (Batch D): the old 34px raw-edge clamp parked the
+     chevron exactly under the DOM furniture — due-W landed on the pause
+     button, SW inside the minimap. The pointer now lives inside a safe
+     rectangle (84px sides for the furniture columns, 150px top for the
+     toast/boss zone, 90px bottom), and if a HUD rect still reaches it,
+     it SLIDES ALONG ITS EDGE to the nearest clear spot. Rotation is
+     computed from the true target direction, so a slid pointer never
+     lies about where to go. */
+  const L = 84, R = Math.max(L + 40, W - 84), T = 150, B = Math.max(T + 40, H - 90);
+  let cx = clamp(sx, L, R), cy = clamp(sy, T, B);
+  const PAD = 26;   // chevron + diamond span ~21px + breathing room
+  for (let pass = 0; pass < 3; pass++){
+    let slid = false;
+    for (const rc of hudRects(now)){
+      if (cx <= rc.l - PAD || cx >= rc.r + PAD || cy <= rc.t - PAD || cy >= rc.b + PAD) continue;   // clear of this rect
+      const onTB = (cy === T || cy === B), onLR = (cx === L || cx === R);
+      if (onTB && !onLR) cx = cx < (rc.l + rc.r)/2 ? rc.l - PAD : rc.r + PAD;          // pinned top/bottom: slide horizontally
+      else if (onLR && !onTB) cy = cy < (rc.t + rc.b)/2 ? rc.t - PAD : rc.b + PAD;    // pinned left/right: slide vertically
+      else if (Math.abs(sx - W/2) >= Math.abs(sy - H/2)) cx = cx < (rc.l + rc.r)/2 ? rc.l - PAD : rc.r + PAD;   // corner: slide along the dominant heading axis
+      else cy = cy < (rc.t + rc.b)/2 ? rc.t - PAD : rc.b + PAD;
+      slid = true;
+    }
+    cx = clamp(cx, L, R); cy = clamp(cy, T, B);
+    if (!slid) break;
+  }
+  /* last resort (a boss bar can span nearly the whole top edge on a
+     narrow screen, leaving nowhere to slide): step straight OUT of any
+     rect still covering the point, along its smallest penetration. */
+  for (const rc of hudRects(now)){
+    if (cx <= rc.l - PAD || cx >= rc.r + PAD || cy <= rc.t - PAD || cy >= rc.b + PAD) continue;
+    const pl = cx - (rc.l - PAD), pr = (rc.r + PAD) - cx, pt = cy - (rc.t - PAD), pb = (rc.b + PAD) - cy;
+    const m = Math.min(pl, pr, pt, pb);
+    if (m === pl) cx = rc.l - PAD; else if (m === pr) cx = rc.r + PAD; else if (m === pt) cy = rc.t - PAD; else cy = rc.b + PAD;
+  }
+  cx = clamp(cx, PAD, W - PAD); cy = clamp(cy, PAD, H - PAD);   // hard on-screen guarantee, whatever the rects did
+  ses.objPtr = { x:cx, y:cy };
   const a = Math.atan2(sy - H/2, sx - W/2);
   const pulse = 1 + .15 * Math.sin(now * Math.PI * 2 / 500);
   ctx.save(); ctx.translate(cx, cy); ctx.rotate(a);
