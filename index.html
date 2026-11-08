@@ -168,6 +168,49 @@
   .toastN.t-streak { background:#ffb52e; font-size:10px; padding:6px 12px; }
   .toastN.t-success { background:#dcf2cb; }
   .toastN.t-info { font-size:10px; }
+  .toastN.t-story { background:#1f3d2b; color:#ffe9a8; border-color:#3ddc84; font-size:12px; padding:11px 18px; }
+  .toastN.t-story .tsub { color:#a8d8a8; }
+
+  /* ---------- RPG layer: quest tracker / chapter cards / story tab ----------
+     The tracker is the ONLY new always-on HUD element: one slim chunky
+     card under the stat panel. Only the card itself takes pointer events
+     (tap opens the STORY tab); everything else about it is display. */
+  #questCard {
+    position:fixed; z-index:20; top:218px; left:max(14px, env(safe-area-inset-left));
+    max-width:300px; cursor:pointer; pointer-events:auto;
+    background:#fff6df; border:3px solid #3a2b23; border-radius:0;
+    padding:6px 12px 7px; color:#3a2b23;
+    box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 4px 4px 0 rgba(0,0,0,.30);
+  }
+  #questCard:active { transform:translate(2px,2px); box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 1px 1px 0 rgba(0,0,0,.30); }
+  #questTag { font-family:"Press Start 2P",monospace; font-size:8px; color:#2e7d32; letter-spacing:1px; }
+  #questTitle { font-family:"Press Start 2P",monospace; font-size:10px; line-height:1.5; color:#3a2b23; margin-top:3px; }
+  #questObj { font-family:"VT323",monospace; font-size:17px; line-height:1.2; color:#7a5c38; margin-top:2px; }
+  /* chapter card: full-screen dark plate, tap / E advances line by line */
+  #chapterCard {
+    position:fixed; inset:0; z-index:60; display:flex; align-items:center; justify-content:center;
+    background:rgba(10,8,20,.74); cursor:pointer; padding:18px; box-sizing:border-box;
+  }
+  #chapterCard.hidden { display:none; }
+  .chapterPlate {
+    background:#1b2450; color:#e8e4da; border:4px solid #0d1130; max-width:520px; width:100%;
+    padding:30px 30px 20px; text-align:center;
+    box-shadow:inset 0 0 0 2px rgba(255,255,255,.14), 6px 6px 0 rgba(0,0,0,.45);
+  }
+  #chChapter { font-family:"Press Start 2P",monospace; font-size:11px; color:#3ddc84; letter-spacing:2px; }
+  #chTitle { font-family:"Press Start 2P",monospace; font-size:19px; line-height:1.5; color:#ffd94d; margin:14px 0 18px; }
+  #chLine { font-family:"VT323",monospace; font-size:22px; line-height:1.35; min-height:88px; color:#e8e4da; }
+  #chHint { font-family:"Press Start 2P",monospace; font-size:8px; color:#8e9cc9; margin-top:14px; animation:chPulse 1.6s ease-in-out infinite; }
+  @keyframes chPulse { 0%,100% { opacity:.45; } 50% { opacity:1; } }
+  /* STORY tab rows */
+  .storyRow { border:3px solid #3a2b23; background:#fff6df; padding:9px 12px; margin-bottom:8px; box-shadow:3px 3px 0 rgba(0,0,0,.22); }
+  .storyRow .sChap { font-family:"Press Start 2P",monospace; font-size:8px; color:#2e7d32; }
+  .storyRow .sTitle { font-family:"Press Start 2P",monospace; font-size:11px; line-height:1.5; margin:3px 0; }
+  .storyRow .sBody { font-family:"VT323",monospace; font-size:17px; line-height:1.25; color:#7a5c38; }
+  .storyRow.done { opacity:.75; }
+  .storyRow.done .sTitle { color:#2e7d32; }
+  .storyRow.future { opacity:.5; }
+  .storyStamp { float:right; font-family:"Press Start 2P",monospace; font-size:8px; color:#2e7d32; border:2px solid #2e7d32; padding:2px 5px; transform:rotate(3deg); }
   #bubble {
     position:fixed; z-index:25; pointer-events:none; background:#fff; color:#3a2b23; font-size:20px; font-weight:700;
     padding:6px 14px; border:3px solid #3a2b23; border-radius:0; transform:translate(-50%,-130%);
@@ -639,6 +682,10 @@
     /* stat panel: half the screen wide at most, tight rows; the bars
        (14px) carry their own overlaid numbers */
     #lvlBadge { top:46px; left:8px; width:44vw; max-width:44vw; padding:5px 7px; gap:2px; font-size:11px; }
+    /* quest tracker rides directly under the slim stat panel, same width */
+    #questCard { top:158px; left:8px; width:44vw; max-width:44vw; box-sizing:border-box; padding:4px 8px 5px; }
+    #questTitle { font-size:8px; }
+    #questObj { font-size:14px; }
     #kills { font-size:11px !important; }
     #xpTrack, #hpTrack, #mpTrack { width:100%; }
     #xpTrack { height:8px; }
@@ -709,6 +756,11 @@
     <div id="hpTrack"><div id="hpFill"></div><span id="hpText">100 / 100</span></div>
     <div id="mpTrack"><div id="mpFill"></div><span id="mpText">100</span></div>
   </div>
+  <div id="questCard" class="hidden">
+    <div id="questTag">QUEST</div>
+    <div id="questTitle"></div>
+    <div id="questObj"></div>
+  </div>
   <div class="badge" id="peerBadge"><span class="dot"></span><span id="peers">Solo</span></div>
   <div class="badge" id="boardBadge"><b>TOP SLAYERS</b><div id="board"></div></div>
   <div id="rackDock">
@@ -732,6 +784,14 @@
   <button id="pauseBtn" title="Pause">| |</button>
 </div>
 
+<div id="chapterCard" class="hidden">
+  <div class="chapterPlate">
+    <div id="chChapter">PROLOGUE</div>
+    <div id="chTitle"></div>
+    <div id="chLine"></div>
+    <div id="chHint">TAP / E — CONTINUE</div>
+  </div>
+</div>
 <div id="dmgFlash"></div>
 <div id="toaster"></div>
 <div id="bubble" class="hidden"></div>
@@ -791,11 +851,14 @@
       <button class="mtab" data-tab="inventory">INVENTORY</button>
       <button class="mtab" data-tab="sphere">SPHERE</button>
       <button class="mtab" data-tab="gems">GEMS</button>
+      <button class="mtab" data-tab="story">STORY</button>
       <button class="mtab" data-tab="more">MORE</button>
     </div>
     <div id="menuTab-inventory" class="menuTab">
       <div class="menuHead">ITEMS</div>
       <div id="menuItems"></div>
+      <div class="menuHead">RELICS — EQUIP UP TO 2</div>
+      <div id="menuRelics"></div>
       <div class="menuHead">MINED GEMS</div>
       <div id="menuGems"></div>
     </div>
@@ -815,6 +878,12 @@
       <div id="gemSlots"></div>
       <div id="gemBagList"></div>
       <div id="gemOther"></div>
+    </div>
+    <div id="menuTab-story" class="menuTab hidden">
+      <div class="menuHead">THE VERDANCE CYCLE</div>
+      <div id="storyList"></div>
+      <div class="menuHead">THE PROPHECY</div>
+      <div class="pcontrols" id="storyProphecy"></div>
     </div>
     <div id="menuTab-more" class="menuTab hidden">
       <div class="menuHead">BOUNTY</div>
@@ -1174,6 +1243,7 @@ const freshSession = () => ({
   myZone: -1,                // current zone ring (banner fires on change; -1 = unset)
   nearBuilding: null,        // 'bank' | 'shop' | 'hospital' | null — drives the interact prompt
   dlgAdvance: null,          // dialogue/card advance hook (RPG layer sets this); E routes to it FIRST when set
+  chapterCard: null,         // open chapter card { lines, i } — advanced through ses.dlgAdvance
   panelFocus: null,          // building-panel keyboard focus { panel, el } — E confirms el, arrows/Tab move it
   lastPtrType: 'mouse',      // last pointer type seen ('mouse' | 'touch' | 'pen') — drives the prompt's E vs TAP cap
   seenBosses: new Set(),     // boss ids already announced by the banner
@@ -1217,6 +1287,104 @@ const freshSession = () => ({
    zustand's persist middleware would write on every set(), i.e. on
    every kill, so it is deliberately not used. */
 const SAVE_KEY = 'slimeslash-save-v1';
+
+/* ============================================================ RPG: story data
+   "The Verdance Cycle" (RPG_DESIGN.md is the design authority). Static
+   tables only — all mutable story state lives in progress.story. */
+/* RELICS: equippable passives (max 2). Effects fold into recalc() exactly
+   like soul gems: crown crit, sprout coin, eye xp, heart regen all ride
+   the existing ses.stats pools (every grant site already reads them);
+   pauldron fills the new stats.armor pool, applied in damagePlayer. */
+const RELICS = {
+  pauldron: { name: "Warden's Pauldron", desc: '-10% damage taken' },
+  crown:    { name: 'Thorn Crown',       desc: '+8% crit chance' },
+  heart:    { name: 'Rotbloom Heart',    desc: '+1.5 HP regen / sec' },
+  sprout:   { name: 'Sprout Charm',      desc: '+8% coins from kills' },
+  eye:      { name: "Emperor's Eye",     desc: '+10% XP' },
+};
+const PROPHECY = 'When the grass forgets its colour, a blade carried by no hand shall gather the three Verdant Sigils and cut the Rot at its root.';
+/* The main quest chain. Objectives run in order; `step` indexes into
+   objectives and `objHave` counts the current counted objective. Later
+   stages drive it through storyEvent(): NPC dialogue fires 'talk' /
+   'return' with { npc }, shrine guardians fire 'guardian' with
+   { shrine }, the finale Emperor fires 'emperorFinale', sproutling
+   pickups fire 'sprout'. Kills feed in from onKillFx ('kill'). */
+const QUESTS = [
+  { id:'prologue', chapter:'PROLOGUE', title:'The Grass Forgets', giver:'elder',
+    summary:'The Elder tested the Blade, and told the prophecy of the Verdance Cycle.',
+    intro:[
+      'A thousand years ago, the World Tree Verdia sickened, and its heart shattered into three Verdant Sigils.',
+      'The slimes — once the Tree\'s gardeners — turned feral as the Rot spread beneath the world.',
+      'You are the Verdant Blade, grown from the Tree\'s last branch. The blade carried by no hand.',
+      'Elder Mirra waits in the town plaza. First, prove the Blade still cuts.',
+    ],
+    objectives:[
+      { type:'killCount', n:8, text:'Slay slimes — prove the Blade still cuts' },
+      { type:'return', to:'elder', text:'Return to Elder Mirra' },
+    ],
+    rewards:{ coins:100, sp:1 } },
+  { id:'meadow', chapter:'CHAPTER I', title:'Sigil of the Meadow', giver:'elder',
+    summary:'The Verdant Warden fell at the Meadow Shrine, and the first Sigil woke.',
+    intro:[
+      'East of town sleeps the Meadow Shrine, where the first Sigil fell.',
+      'The Rot set a guardian over it: the VERDANT WARDEN, armour grown thick as bark.',
+      'Cut it down, Blade, and wake the Sigil of the Meadow.',
+    ],
+    objectives:[
+      { type:'guardian', shrine:'meadow', text:'Defeat the Verdant Warden at the Meadow Shrine' },
+      { type:'return', to:'elder', text:'Bring the Sigil to Elder Mirra' },
+    ],
+    rewards:{ coins:150, sp:1, relic:'pauldron' } },
+  { id:'grove', chapter:'CHAPTER II', title:'Sigil of the Grove', giver:'elder',
+    summary:'The Thorn Regent\'s court dissolved, and the second Sigil woke.',
+    intro:[
+      'Deeper in the Grove, the second Sigil dreams under thorns.',
+      'The THORN REGENT holds court there, and its gardeners answer its call.',
+      'Mind the little ones it summons. Take the Sigil of the Grove.',
+    ],
+    objectives:[
+      { type:'guardian', shrine:'grove', text:'Defeat the Thorn Regent at the Grove Shrine' },
+      { type:'return', to:'elder', text:'Bring the Sigil to Elder Mirra' },
+    ],
+    rewards:{ coins:250, sp:1, relic:'crown' } },
+  { id:'wilds', chapter:'CHAPTER III', title:'Sigil of the Wilds', giver:'elder',
+    summary:'The Rotbloom Colossus burst, and the third Sigil woke.',
+    intro:[
+      'The last Sigil lies deep in the Wilds, where the Rot blooms thickest.',
+      'The ROTBLOOM COLOSSUS guards it — a mountain of rot that seeds itself as it dies.',
+      'Wake the Sigil of the Wilds, and the way to the root will open.',
+    ],
+    objectives:[
+      { type:'guardian', shrine:'wilds', text:'Defeat the Rotbloom Colossus at the Wilds Shrine' },
+      { type:'return', to:'elder', text:'Bring the Sigil to Elder Mirra' },
+    ],
+    rewards:{ coins:400, sp:2, relic:'heart' } },
+  { id:'finale', chapter:'CHAPTER IV', title:'The Root of Rot', giver:'elder',
+    summary:'The Chaos Emperor fell, the Rot was cut at its root, and the Tree bloomed again.',
+    intro:[
+      'Three Sigils sing together. The Rot knows your name now, Blade.',
+      'Beneath the world it has crowned the Tree\'s old guardian: the SLIME EMPEROR, waking in his final form.',
+      'Set the Sigils with the Elder — then cut the Rot at its root.',
+    ],
+    objectives:[
+      { type:'talk', to:'elder', text:'Speak with Elder Mirra — set the Sigils' },
+      { type:'emperorFinale', text:'Destroy the CHAOS EMPEROR' },
+    ],
+    rewards:{ coins:1000, sp:3, relic:'eye' } },
+];
+/* Side tale (tracked separately from the chain): available once the
+   prologue is done; story.sprouts counts finds, story.sproutsDone the
+   return to the Child. */
+const SPROUT_QUEST = { id:'sprouts', chapter:'SIDE TALE', title:'Three Lost Sproutlings',
+  summary:'The Child\'s three sproutlings came home, and the grove remembers kindness.',
+  rewards:{ coins:120, relic:'sprout' } };
+const freshStory = () => ({
+  quest:'prologue', step:0, objHave:0,       // current chain quest + objective index + counted progress
+  sigils:0, cycles:0, complete:false,        // Sigils held, New Cycle+ count, finale done
+  sprouts:0, sproutsDone:false,              // side tale: sproutlings found (of 3) + returned
+  cardSeen:false,                            // prologue chapter card shown (fires once, ever)
+  relicsOwned:[], relicsEquipped:[],         // RELICS ids; equipped capped at 2
+});
 const freshProgress = () => ({
   level:1, xp:0, kills:0,
   coins:0, banked:0,
@@ -1228,6 +1396,7 @@ const freshProgress = () => ({
   gemBag: [], sockets: {},              // SOUL GEMS: every gem owned + per-weapon socketed gem ids
   items: { potion:0, bomb:0, shield:0 }, purse:false,
   bounty: null,                         // current bounty objective {type,key,label,need,have,reward}
+  story: freshStory(),                  // RPG: Verdance Cycle state (quest chain, sigils, relics) — see storyEvent()
   spawnAt: null,                        // respawn point bought at the inn
   name: 'Knight',
   // settings
@@ -1258,6 +1427,12 @@ const store = createStore((set, get) => {
     addToGemBag: gem => patchProgress(p => ({ gemBag: [...p.gemBag, gem] })),
     markHint: key => patchProgress(p => ({ hintsSeen: { ...p.hintsSeen, [key]: true } })),
     bountyStep: () => patchProgress(p => ({ bounty: { ...p.bounty, have: p.bounty.have + 1 } })),
+    /* RPG story writes — the only writers of progress.story. setStory
+       shallow-merges a patch (or patch fn) into a NEW story object;
+       grantRelic adds a RELICS id to the owned list (idempotent). */
+    setStory: patch => patchProgress(p => ({ story: { ...p.story, ...(typeof patch === 'function' ? patch(p.story) : patch) } })),
+    grantRelic: id => patchProgress(p => RELICS[id] && !p.story.relicsOwned.includes(id)
+      ? { story: { ...p.story, relicsOwned: [...p.story.relicsOwned, id] } } : {}),
     /* RESET SAVE: a fresh character. Name and the device settings (sound,
        rack fold) survive, exactly as before; the bounty is re-rolled by
        the caller. Starts on weapon 0 (not freshProgress's 1) as before. */
@@ -1273,7 +1448,7 @@ const store = createStore((set, get) => {
           unlocked:[...p.unlocked], weapon:p.weapon, name:p.name, muted:p.muted, hintsSeen:p.hintsSeen,
           banked:p.banked, items:p.items, purse:p.purse, owned:[...p.owned],
           gems:p.gems, wxp:p.wxp, rackCollapsed:p.rackCollapsed, spawnAt: p.spawnAt || null,
-          gemBag: p.gemBag, sockets: p.sockets,
+          gemBag: p.gemBag, sockets: p.sockets, story: p.story,
           bounty: b ? { type:b.type, key:b.key, label:b.label, need:b.need, have:b.have, reward:b.reward } : null
         }));
       }catch(e){}
@@ -1331,6 +1506,21 @@ const store = createStore((set, get) => {
       if (d.bounty && d.bounty.key && (d.bounty.type==='color' || d.bounty.type==='kind'))
         next.bounty = { type:d.bounty.type, key:d.bounty.key, label:String(d.bounty.label||'').slice(0,16) || 'SLIME',
                         need:Math.max(1, d.bounty.need|0 || 8), have:Math.max(0, d.bounty.have|0), reward:Math.max(0, d.bounty.reward|0 || 40) };
+      /* RPG story: additive — old saves (no story field) keep the fresh
+         defaults untouched. Validated: known quest id, clamped counters,
+         relic ids filtered to the RELICS table, equipped ⊆ owned, max 2. */
+      if (d.story && typeof d.story === 'object'){
+        const s = d.story;
+        const ownedR = Array.isArray(s.relicsOwned) ? [...new Set(s.relicsOwned.filter(id => RELICS[id]))] : [];
+        next.story = {
+          quest: QUESTS.some(q => q.id === s.quest) || s.quest === 'postgame' ? s.quest : 'prologue',
+          step: clamp(s.step|0, 0, 8), objHave: Math.max(0, s.objHave|0),
+          sigils: clamp(s.sigils|0, 0, 3), cycles: Math.max(0, s.cycles|0), complete: !!s.complete,
+          sprouts: clamp(s.sprouts|0, 0, 3), sproutsDone: !!s.sproutsDone, cardSeen: !!s.cardSeen,
+          relicsOwned: ownedR,
+          relicsEquipped: Array.isArray(s.relicsEquipped) ? s.relicsEquipped.filter(id => ownedR.includes(id)).slice(0, 2) : [],
+        };
+      }
       patchProgress(next);
       return d;
     },
@@ -1977,7 +2167,7 @@ function drawDmgFloats(now){
    measured height. Each type has its own auto-dismiss; the stack is
    hard-capped at 4 — beyond that the oldest is dismissed on the spot.
    King-class events also sting. */
-const TOAST_MS = { king:2800, zone:2400, death:3200, streak:1700, success:2600, info:2400 };
+const TOAST_MS = { king:2800, zone:2400, death:3200, streak:1700, success:2600, info:2400, story:3800 };
 const TOAST_CAP = 4;
 const TOAST_PEEK = 12;
 const TOAST_SCALES = [1, .97, .94, .92];
@@ -2295,6 +2485,7 @@ function onKillFx(f){
       }
       updateBountyUI();
     }
+    storyEvent('kill', { kind: f.kind });   // RPG quest engine: killCount / killKind objectives count MY kills only
     if (!prog().hintsSeen.slash){ act.markHint('slash'); updateHint(); }
     refreshHUD();
   }
@@ -2321,6 +2512,200 @@ function gainXp(n){
   }
   if (leveled){ sfx.lvl(); bubble('LEVEL UP!', me.x, me.y); buildRack(); saveGame(); }   // a level-up is an event: persist it now, not on the 2.5s HUD throttle
   refreshHUD();
+}
+
+/* ============================================================ RPG: quest engine
+   Data-driven over QUESTS. THE single entry point for story progress is
+   storyEvent(type, data) — later stages call it and nothing else:
+     storyEvent('kill', { kind })            — wired below in onKillFx
+     storyEvent('talk',   { npc:'elder' })   — NPC dialogue (next stage)
+     storyEvent('return', { npc:'elder' })   — NPC dialogue (next stage)
+     storyEvent('guardian', { shrine:'meadow' | 'grove' | 'wilds' })
+     storyEvent('emperorFinale')             — Chaos Emperor kill (finale stage)
+     storyEvent('sprout')                    — a sproutling pickup (NPC stage)
+   All state moves through act.setStory / act.grantRelic; rewards through
+   the existing coin/SP actions. Completion grants rewards, toasts, saves,
+   and fires the next chapter's card. */
+function questById(id){ return QUESTS.find(q => q.id === id) || null; }
+function currentQuest(){
+  const s = prog().story;
+  if (!s || s.complete) return null;
+  return questById(s.quest);
+}
+function currentObjective(){
+  const q = currentQuest(); if (!q) return null;
+  return q.objectives[prog().story.step] || null;
+}
+function objectiveProgressText(){
+  const s = prog().story, obj = currentObjective();
+  if (!obj) return '';
+  if (obj.type === 'killCount' || obj.type === 'killKind') return Math.min(s.objHave, obj.n) + ' / ' + obj.n;
+  if (obj.type === 'guardian') return 'Sigils ' + s.sigils + ' / 3';
+  return '';
+}
+function storyEvent(type, data = {}){
+  const s = prog().story; if (!s) return;
+  /* side tale: sproutling pickups count any time after the prologue */
+  if (type === 'sprout'){
+    if (s.quest !== 'prologue' && !s.sproutsDone && s.sprouts < 3){
+      act.setStory({ sprouts: s.sprouts + 1 });
+      notify('SPROUTLING FOUND — ' + (s.sprouts + 1) + ' / 3', { type:'success', sub:'The Child in town will want to hear of this.' });
+      sfx.coin(); saveGame(); updateQuestTracker();
+    }
+    return;
+  }
+  /* side tale: returning to the Child with all 3 completes it — and a
+     Child conversation never advances the main chain */
+  if ((type === 'return' || type === 'talk') && data.npc === 'child'){
+    if (s.quest !== 'prologue' && !s.sproutsDone && s.sprouts >= 3){
+      act.setStory({ sproutsDone: true });
+      grantQuestRewards(SPROUT_QUEST, 'SIDE TALE COMPLETE');
+      saveGame(); updateQuestTracker();
+    }
+    return;
+  }
+  const q = currentQuest(); if (!q) return;
+  const obj = q.objectives[s.step]; if (!obj) return;
+  let advanced = false;
+  if (obj.type === 'killCount' && type === 'kill'){
+    act.setStory({ objHave: s.objHave + 1 });
+    advanced = s.objHave + 1 >= obj.n;
+  } else if (obj.type === 'killKind' && type === 'kill' && data.kind === obj.kind){
+    act.setStory({ objHave: s.objHave + 1 });
+    advanced = s.objHave + 1 >= obj.n;
+  } else if (obj.type === 'guardian' && type === 'guardian' && data.shrine === obj.shrine){
+    act.setStory({ sigils: Math.min(3, s.sigils + 1) });   // the Sigil wakes as its guardian falls
+    advanced = true;
+  } else if (obj.type === 'emperorFinale' && type === 'emperorFinale'){
+    advanced = true;
+  } else if ((obj.type === 'talk' || obj.type === 'return') && type === obj.type && data.npc === obj.to){
+    advanced = true;
+  }
+  if (advanced) advanceStoryObjective();
+  else if (obj.type === 'killCount' || obj.type === 'killKind') saveGame();   // counted progress is an event: persist it
+  updateQuestTracker();
+}
+function grantQuestRewards(q, label){
+  const r = q.rewards || {};
+  if (r.coins) act.addCoins(r.coins);
+  if (r.sp) act.patchProgress(p => ({ sp: p.sp + r.sp }));
+  if (r.relic) act.grantRelic(r.relic);
+  const bits = [];
+  if (r.coins) bits.push('+' + r.coins + ' coins');
+  if (r.sp) bits.push('+' + r.sp + ' SP');
+  if (r.relic && RELICS[r.relic]) bits.push('RELIC: ' + RELICS[r.relic].name);
+  notify(label + ' — ' + q.title.toUpperCase(), { type:'story', sub: bits.join(' · ') });
+  sfx.lvl();
+}
+function advanceStoryObjective(){
+  const s = prog().story, q = questById(s.quest); if (!q) return;
+  if (s.step + 1 < q.objectives.length){
+    act.setStory({ step: s.step + 1, objHave: 0 });
+    saveGame(); updateQuestTracker();
+    return;
+  }
+  completeStoryQuest();
+}
+function completeStoryQuest(){
+  const s = prog().story, q = questById(s.quest); if (!q) return;
+  grantQuestRewards(q, 'QUEST COMPLETE');
+  const idx = QUESTS.indexOf(q), next = QUESTS[idx + 1];
+  if (q.id === 'finale' || !next){
+    act.setStory({ quest:'postgame', step:0, objHave:0, complete:true });
+  } else {
+    act.setStory({ quest: next.id, step:0, objHave:0 });
+    showChapterCard(next.chapter, next.title, next.intro);   // the next chapter opens with its card
+  }
+  saveGame(); refreshHUD(); updateQuestTracker();
+  if (!$('#menuPanel').classList.contains('hidden') && ses.menuTab === 'story') buildStoryTab();
+}
+/* ---- quest tracker card (under the stat panel; tap opens STORY tab) ---- */
+function updateQuestTracker(){
+  const card = $('#questCard'); if (!card) return;
+  const s = prog().story;
+  let title = null, obj = '';
+  if (ses.started && s){
+    if (s.complete){ title = 'THE VERDANCE CYCLE'; obj = 'The Tree blooms again. Elder Mirra keeps the Cycle.'; }
+    else {
+      const q = currentQuest();
+      if (q){
+        const o = currentObjective();
+        title = q.title.toUpperCase();
+        obj = o ? o.text + (objectiveProgressText() ? ' — ' + objectiveProgressText() : '') : '';
+      }
+    }
+  }
+  if (title === null){ if (!card.classList.contains('hidden')) card.classList.add('hidden'); updateQuestTracker._t = null; return; }
+  card.classList.remove('hidden');
+  if (updateQuestTracker._t !== title){ updateQuestTracker._t = title; $('#questTitle').textContent = title; }
+  if (updateQuestTracker._o !== obj){ updateQuestTracker._o = obj; $('#questObj').textContent = obj; }
+}
+$('#questCard').onclick = () => { openMenu('story'); beep(600, .05, 'triangle', .06); };
+/* ---- chapter cards: full-screen narration plates. While a card is open
+   ses.dlgAdvance points at advanceChapterCard, so the E dispatcher's
+   first priority (and taps on the plate) walk the lines. ---- */
+function showChapterCard(numeral, title, lines){
+  ses.chapterCard = { lines: (lines && lines.length) ? [...lines] : [''], i: 0 };
+  $('#chChapter').textContent = numeral;
+  $('#chTitle').textContent = title;
+  $('#chLine').textContent = ses.chapterCard.lines[0];
+  $('#chapterCard').classList.remove('hidden');
+  ses.dlgAdvance = advanceChapterCard;
+}
+function advanceChapterCard(){
+  const c = ses.chapterCard; if (!c) return;
+  c.i++;
+  if (c.i >= c.lines.length){ closeChapterCard(); return; }
+  $('#chLine').textContent = c.lines[c.i];
+  beep(520, .05, 'triangle', .06);
+}
+function closeChapterCard(){
+  ses.chapterCard = null;
+  $('#chapterCard').classList.add('hidden');
+  if (ses.dlgAdvance === advanceChapterCard) ses.dlgAdvance = null;
+}
+$('#chapterCard').onclick = () => advanceChapterCard();
+/* ---- STORY tab: chapter list + prophecy ---- */
+function buildStoryTab(){
+  const s = prog().story;
+  $('#storyProphecy').textContent = PROPHECY + ' The Scattered Steel — sister blades from the same fallen branches — walk this world beside you.';
+  const curIdx = s.complete ? QUESTS.length : Math.max(0, QUESTS.findIndex(q => q.id === s.quest));
+  let h = '';
+  QUESTS.forEach((q, i) => {
+    if (s.complete || i < curIdx){
+      h += `<div class="storyRow done"><span class="storyStamp">DONE</span><div class="sChap">${q.chapter}</div><div class="sTitle">${esc(q.title)}</div><div class="sBody">${esc(q.summary)}</div></div>`;
+    } else if (i === curIdx){
+      const o = currentObjective();
+      h += `<div class="storyRow"><div class="sChap">${q.chapter} — NOW</div><div class="sTitle">${esc(q.title)}</div><div class="sBody">${esc(q.intro.join(' '))}</div>` +
+        (o ? `<div class="sBody" style="color:#2e7d32">Objective: ${esc(o.text)}${objectiveProgressText() ? ' — ' + objectiveProgressText() : ''}</div>` : '') + `</div>`;
+    } else {
+      h += `<div class="storyRow future"><div class="sChap">${q.chapter}</div><div class="sTitle">???</div><div class="sBody">The Rot has not yet shown you this page.</div></div>`;
+    }
+  });
+  if (s.sproutsDone){
+    h += `<div class="storyRow done"><span class="storyStamp">DONE</span><div class="sChap">${SPROUT_QUEST.chapter}</div><div class="sTitle">${esc(SPROUT_QUEST.title)}</div><div class="sBody">${esc(SPROUT_QUEST.summary)}</div></div>`;
+  } else if (s.quest !== 'prologue'){
+    h += `<div class="storyRow"><div class="sChap">${SPROUT_QUEST.chapter} — THE CHILD, IN TOWN</div><div class="sTitle">${esc(SPROUT_QUEST.title)}</div><div class="sBody">Sproutlings found: ${s.sprouts} / 3${s.sprouts >= 3 ? ' — return to the Child in town.' : ''}</div></div>`;
+  } else {
+    h += `<div class="storyRow future"><div class="sChap">${SPROUT_QUEST.chapter}</div><div class="sTitle">???</div><div class="sBody">Someone small in town is missing something.</div></div>`;
+  }
+  if (s.complete) h += `<div class="storyRow done"><div class="sChap">THE CYCLE</div><div class="sTitle">The Tree Blooms Again</div><div class="sBody">Cycles completed: ${s.cycles}. Elder Mirra can begin a NEW CYCLE — the same tale, told harder — whenever you are ready.</div></div>`;
+  $('#storyList').innerHTML = h;
+}
+/* ---- relics: equip / unequip (INVENTORY tab) ---- */
+function equipRelic(id){
+  const s = prog().story;
+  if (!s || !RELICS[id] || !s.relicsOwned.includes(id) || s.relicsEquipped.includes(id) || s.relicsEquipped.length >= 2) return;
+  act.setStory({ relicsEquipped: [...s.relicsEquipped, id] });
+  afterRelicChange();
+}
+function unequipRelic(id){
+  act.setStory(st => ({ relicsEquipped: st.relicsEquipped.filter(x => x !== id) }));
+  afterRelicChange();
+}
+function afterRelicChange(){
+  recalc(); refreshHUD(); saveGame();
+  if (!$('#menuPanel').classList.contains('hidden') && ses.menuTab === 'inventory') buildMenuInventory();
 }
 
 /* ============================================================ survival: HP, damage, death
@@ -2370,11 +2755,12 @@ function damagePlayer(amount, now){
      here, so orb fire over town is harmless too). Enemies can't be in
      town at all, but the check stands on its own regardless. */
   if (!$('#bankPanel').classList.contains('hidden') || !$('#shopPanel').classList.contains('hidden') ||
-      !$('#hospitalPanel').classList.contains('hidden') || !$('#menuPanel').classList.contains('hidden')) return;
+      !$('#hospitalPanel').classList.contains('hidden') || !$('#menuPanel').classList.contains('hidden') ||
+      !$('#chapterCard').classList.contains('hidden')) return;
   if (dist2(me.x, me.y, WORLD/2, WORLD/2) < TOWN_R*TOWN_R) return;
   if (now < me.shieldUntil) return;        // Aegis Charm blocks ALL damage
   if (now <= me.invulnUntil) return;
-  me.hp -= amount;
+  me.hp -= amount * (1 - (ses.stats.armor || 0));   // Warden's Pauldron relic: -10% damage taken
   me.invulnUntil = now + 800;
   me.lastDmgAt = now;
   ses.dmgFlashAt = now;
@@ -3011,6 +3397,7 @@ function refreshHUD(){
   }
   // panic pulse: dying (HP < 35%) with a potion in hand -> POTION throbs
   $('#itemPotion').classList.toggle('panic', me.hp < me.maxHp*.35 && prog().items.potion > 0);
+  updateQuestTracker();   // write-on-change inside; keeps the tracker honest after any progress write
   if (!$('#bankPanel').classList.contains('hidden')) updateBankPanel();
   if (!$('#shopPanel').classList.contains('hidden')) updateShopPanel();   // in-place: same nodes, fresh values/disabled states
   if (!$('#hospitalPanel').classList.contains('hidden')) updateHospitalRows();
@@ -3139,7 +3526,7 @@ function equip(i){
    the menu is open on its tab; closeMenu hides ALL sections, so the
    legacy 'is X open?' checks scattered through damage/hints/pause
    stay true. */
-const MENU_SECTIONS = { inventory:'#menuTab-inventory', sphere:'#forge', gems:'#gemPanel', more:'#menuTab-more' };
+const MENU_SECTIONS = { inventory:'#menuTab-inventory', sphere:'#forge', gems:'#gemPanel', story:'#menuTab-story', more:'#menuTab-more' };
 function openMenu(tab){
   $('#menuPanel').classList.remove('hidden');
   showMenuTab(tab || ses.menuTab);
@@ -3150,6 +3537,7 @@ function showMenuTab(tab){
   document.querySelectorAll('#menuTabs .mtab').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   if (tab === 'sphere'){ buildSphere(); act.markHint('sphere'); }
   if (tab === 'gems') buildGemPanel();
+  if (tab === 'story') buildStoryTab();
   if (tab === 'inventory') buildMenuInventory();
   if (tab === 'more') buildMenuMore();
   refreshHUD(); updateHint();
@@ -3195,6 +3583,27 @@ function buildMenuInventory(){
       });
     }
     iw.appendChild(row);
+  }
+  /* RELICS rows: owned relics with EQUIP / UNEQUIP (max 2). Rebuilt with
+     the tab; equip changes route through afterRelicChange -> rebuild. */
+  const rw = $('#menuRelics'); rw.innerHTML = '';
+  const rst = prog().story;
+  if (!rst.relicsOwned.length){
+    const row = document.createElement('div'); row.className = 'shopRow';
+    row.innerHTML = `<div class="info"><b>No relics yet</b><span>Relics sleep in the shrines of the world — the Verdance Cycle (STORY tab) leads to them.</span></div>`;
+    rw.appendChild(row);
+  }
+  for (const id of rst.relicsOwned){
+    const r = RELICS[id]; if (!r) continue;
+    const equipped = rst.relicsEquipped.includes(id);
+    const row = document.createElement('div'); row.className = 'shopRow';
+    row.innerHTML = `<div class="info"><b>${r.name}</b><span>${r.desc}</span></div><div class="own">${equipped ? 'EQUIPPED' : (rst.relicsEquipped.length + ' / 2')}</div>`;
+    const btn = document.createElement('button');
+    btn.textContent = equipped ? 'UNEQUIP' : 'EQUIP';
+    btn.disabled = !equipped && rst.relicsEquipped.length >= 2;
+    btn.onclick = () => equipped ? unequipRelic(id) : equipRelic(id);
+    row.appendChild(btn);
+    rw.appendChild(row);
   }
   const gw = $('#menuGems'); gw.innerHTML = '';
   for (const [gk, g] of Object.entries(GEMS)){
@@ -3444,7 +3853,7 @@ const nodePos = n => {
   return { x:x+50, y:y+50, idx };
 };
 function recalc(wi = prog().weapon){
-  ses.stats = { dmg:0, reach:0, cd:0, crit:0, coin:0, xp:0, splash:0, kingBane:0, double:0, arcWide:0, skillCd:0, bounty:0, comboWin:0, exec:0, maxHp:0, regen:0, socket:0, actives:new Set() };
+  ses.stats = { dmg:0, reach:0, cd:0, crit:0, coin:0, xp:0, splash:0, kingBane:0, double:0, arcWide:0, skillCd:0, bounty:0, comboWin:0, exec:0, maxHp:0, regen:0, socket:0, armor:0, actives:new Set() };
   for (const n of NODES) if (prog().unlocked.has(n.id)){
     const f = n.fx || {};   // weapon-path tiers 1-4 carry no global fx (equipped-only effects live in wHas checks); CROSS nodes do
     for (const k of ['dmg','reach','cd','crit','coin','xp','kingBane','double','arcWide','skillCd','bounty','comboWin','exec','maxHp','regen','socket']) if (f[k]) ses.stats[k]+=f[k];
@@ -3467,6 +3876,16 @@ function recalc(wi = prog().weapon){
     else if (gem.stat==='wisdom') ses.stats.xp += v/100;
     else if (gem.stat==='vitality') ses.stats.maxHp += v;
     else if (gem.stat==='mending') ses.stats.regen += v;
+  }
+  /* RELICS: the equipped pair folds into the same pools — crit/coin/xp/
+     regen ride the pools every grant site already reads; pauldron fills
+     armor (fraction of damage shrugged off, applied in damagePlayer). */
+  for (const id of (prog().story ? prog().story.relicsEquipped : [])){
+    if (id==='pauldron') ses.stats.armor += .10;
+    else if (id==='crown') ses.stats.crit += .08;
+    else if (id==='heart') ses.stats.regen += 1.5;
+    else if (id==='sprout') ses.stats.coin += .08;
+    else if (id==='eye') ses.stats.xp += .10;
   }
   /* MAX HP derivation: 100 base + 10 per level past 1 + S.maxHp (Sphere
      vitality — no nodes grant maxHp/regen YET; the hooks are wired so
@@ -5510,6 +5929,14 @@ $('#playBtn').onclick = ()=>{
   catch(e){ notify('Multiplayer failed to start — playing solo. (' + e.message + ')', { ms:4000 }); world.isHost=true; world.hostId=me.id; if(world.slimes.size===0) for(let i=0;i<50;i++) spawnSlime(); }
   notify('Slash the slimes! One world — everyone with the link is in it.', { ms:2600 });
   beep(660,.1,'triangle',.1);
+  /* RPG: the prologue chapter card fires ONCE, the first time any save
+     enters the world (cardSeen persists, so it never refires) */
+  const st0 = prog().story;
+  if (st0 && st0.quest === 'prologue' && st0.step === 0 && !st0.cardSeen){
+    act.setStory({ cardSeen: true }); saveGame();
+    showChapterCard(QUESTS[0].chapter, QUESTS[0].title, QUESTS[0].intro);
+  }
+  updateQuestTracker();
 };
 // Enter key starts
 addEventListener('keydown', e=>{ if(!ses.started && e.key==='Enter') $('#playBtn').click(); });
