@@ -865,8 +865,8 @@
 </div>
 <div id="bankPanel" class="hidden panelWrap">
   <div class="pauseCard px-panel">
-    <div class="sheetHead"><span class="sheetTitle">THE SLIME BANK</span><button class="pbtn" id="bankSheetClose">CLOSE</button></div>
-    <h2>THE SLIME BANK</h2>
+    <div class="sheetHead"><span class="sheetTitle" id="bankSheetTitle">THE SLIME BANK</span><button class="pbtn" id="bankSheetClose">CLOSE</button></div>
+    <h2 id="bankTitle">THE SLIME BANK</h2>
     <div class="bankLine">Carried: <b id="bankCarried">0</b> coins</div>
     <div class="bankLine">Banked: <b id="bankBanked">0</b> coins</div>
     <div class="pcontrols">Banked coins are NEVER lost when you die. Death takes half of what you carry (only a quarter with a Coin Purse).</div>
@@ -880,8 +880,8 @@
 </div>
 <div id="shopPanel" class="hidden panelWrap">
   <div class="pauseCard px-panel" style="width:min(94vw,410px)">
-    <div class="sheetHead"><span class="sheetTitle">SLIME SHOP</span><button class="pbtn" id="shopSheetClose">CLOSE</button></div>
-    <h2>SLIME SHOP</h2>
+    <div class="sheetHead"><span class="sheetTitle" id="shopSheetTitle">SLIME SHOP</span><button class="pbtn" id="shopSheetClose">CLOSE</button></div>
+    <h2 id="shopTitle">SLIME SHOP</h2>
     <div class="bankLine">Carried: <b id="shopCoins">0</b> coins</div>
     <div id="shopRows"></div>
     <button class="pbtn" id="shopCloseBtn">CLOSE</button>
@@ -889,8 +889,8 @@
 </div>
 <div id="hospitalPanel" class="hidden panelWrap">
   <div class="pauseCard px-panel" style="width:min(94vw,410px)">
-    <div class="sheetHead"><span class="sheetTitle">THE INN</span><button class="pbtn" id="hospSheetClose">CLOSE</button></div>
-    <h2>THE INN</h2>
+    <div class="sheetHead"><span class="sheetTitle" id="hospSheetTitle">THE INN</span><button class="pbtn" id="hospSheetClose">CLOSE</button></div>
+    <h2 id="hospTitle">THE INN</h2>
     <div class="bankLine">HP: <b id="hospHp">100 / 100</b></div>
     <div class="bankLine">Carried: <b id="hospCoins">0</b> coins</div>
     <div class="bankLine">Respawn: <b id="hospSpawn">Town Centre</b></div>
@@ -1113,7 +1113,7 @@ function noiseAt(t, dur, gain, dest){
 function desiredMusicTrack(){
   if (!ses.started) return null;
   if (guardianAlive() || bossAt(performance.now())) return 'boss';
-  if (Math.hypot(me.x - TOWN.x, me.y - TOWN.y) <= TOWN_R) return 'town';
+  if (safeZoneAt(me.x, me.y)) return 'town';   // any settlement gets the calm theme
   return 'field';
 }
 function scheduleMusicStep(tr, step, t){
@@ -1608,7 +1608,7 @@ const freshSession = () => ({
   waves: [], meteors: [], shots: [],   // shots: thrown-spear projectiles (pierce)
   // where the player is
   myZone: -1,                // current zone ring (banner fires on change; -1 = unset)
-  nearBuilding: null,        // 'bank' | 'shop' | 'hospital' | null — drives the interact prompt
+  nearBuilding: null,        // BUILDING_SPOTS id winning the interact prompt ('bank' | 'vinn' | 'rwbed' | ...) | null
   nearNpc: null,             // NPC id currently winning the interact prompt (session only)
   nearShrine: null,          // shrine key currently winning the interact prompt (stage 4; session only)
   nearTravel: null,          // WON shrine key winning the prompt as a fast-travel departure (Batch B; session only)
@@ -1908,7 +1908,7 @@ const store = createStore((set, get) => {
       if (d.name) next.name = cleanName(d.name);
       if (d.hintsSeen) next.hintsSeen = { slash:!!d.hintsSeen.slash, skill:!!(d.hintsSeen.skill || d.hintsSeen.spin), sphere:!!d.hintsSeen.sphere };   // old saves carry the retired 'spin' hint key — it maps onto 'skill'
       if (typeof d.rackCollapsed === 'boolean') next.rackCollapsed = d.rackCollapsed;
-      if (d.spawnAt && isFinite(d.spawnAt.x) && isFinite(d.spawnAt.y)) next.spawnAt = { x:+d.spawnAt.x, y:+d.spawnAt.y };
+      if (d.spawnAt && isFinite(d.spawnAt.x) && isFinite(d.spawnAt.y)) next.spawnAt = { x:+d.spawnAt.x, y:+d.spawnAt.y, ...(typeof d.spawnAt.name === 'string' && d.spawnAt.name ? { name: d.spawnAt.name.slice(0, 24) } : {}) };
       if (d.bounty && d.bounty.key && (d.bounty.type==='color' || d.bounty.type==='kind'))
         next.bounty = { type:d.bounty.type, key:d.bounty.key, label:String(d.bounty.label||'').slice(0,16) || 'SLIME',
                         need:Math.max(1, d.bounty.need|0 || 8), have:Math.max(0, d.bounty.have|0), reward:Math.max(0, d.bounty.reward|0 || 40) };
@@ -1973,6 +1973,47 @@ const HOSPITAL_POS = { x: TOWN.x, y: TOWN.y + .70 };
 const TOWN_R = 1.02;   // safe-zone radius around the town centre (Isle 1) — covers all three buildings (<= .86u out) + the plaza; NO enemies inside, NO damage inside. Was 1.30 in the radial world; shrunk for the archipelago so Isle 1 keeps a meadow ring (see ISLES note)
 const KING_BAR_RANGE = 1.0;   // a Slime King's floating HP bar renders only when the LOCAL player is within this many world units (Handler)
 
+/* ============================================================ SETTLEMENTS (FF1 bar)
+   FF1 has a town per region; the archipelago now does too. THORNWICK
+   VILLAGE on Grove Isle (1.76u from the Grove Shrine, on the shrine
+   side of the isle) carries a full set of doors — inn, shop, bank post
+   — reusing the town panels under local titles. ROTWATCH CAMP on Wilds
+   Isle (1.6u from the Wilds Shrine, outward along the shrine bearing)
+   is a scout camp: a leaf-canopy tent to sleep in and a supply crate
+   that opens the shop. SAFE ZONES generalise the town rule: the town's
+   hardcoded disc is now ONE entry of SAFE_ZONES, and spawns, the host
+   sim's steering + clamp, and damagePlayer all read the list. */
+const VILLAGE = { x: 18.35, y: 12.05 };                 // Thornwick centre (Grove Isle)
+const V_INN_POS  = { x: VILLAGE.x - .50, y: VILLAGE.y - .42 };
+const V_SHOP_POS = { x: VILLAGE.x + .52, y: VILLAGE.y - .30 };
+const V_BANK_POS = { x: VILLAGE.x + .06, y: VILLAGE.y + .55 };
+const ROTWATCH = { x: 28.80, y: 20.58 };                // Rotwatch Camp centre (Wilds Isle)
+const RW_TENT_POS  = { x: ROTWATCH.x - .18, y: ROTWATCH.y - .10 };
+const RW_FIRE_POS  = { x: ROTWATCH.x + .10, y: ROTWATCH.y + .12 };
+const RW_CRATE_POS = { x: ROTWATCH.x + .38, y: ROTWATCH.y - .18 };
+const SAFE_ZONES = [
+  { id:'town',    name:'TOWN',          x: TOWN.x,    y: TOWN.y,    r: TOWN_R },
+  { id:'village', name:'THORNWICK',     x: VILLAGE.x, y: VILLAGE.y, r: .85 },
+  { id:'rotwatch', name:'ROTWATCH CAMP', x: ROTWATCH.x, y: ROTWATCH.y, r: .60 },
+];
+function safeZoneAt(x, y){ for (const z of SAFE_ZONES){ if (dist2(x, y, z.x, z.y) < z.r * z.r) return z; } return null; }
+function outsideSettlements(x, y, margin){ for (const z of SAFE_ZONES){ const rr = z.r + margin; if (dist2(x, y, z.x, z.y) < rr * rr) return false; } return true; }
+/* Every door in the world, town and settlement alike: `kind` picks the
+   panel, `title` names it for THIS door, `zone` is its home safe zone
+   (the panel stays open while you stand anywhere inside it — the town
+   rule, generalised), `prompt` is the interact label. */
+const BUILDING_SPOTS = [
+  { id:'bank',     kind:'bank', pos: BANK_POS,     zone:'town',    prompt:'OPEN BANK',   title:'THE SLIME BANK' },
+  { id:'shop',     kind:'shop', pos: SHOP_POS,     zone:'town',    prompt:'OPEN SHOP',   title:'SLIME SHOP' },
+  { id:'hospital', kind:'inn',  pos: HOSPITAL_POS, zone:'town',    prompt:'OPEN INN',    title:'THE INN' },
+  { id:'vinn',     kind:'inn',  pos: V_INN_POS,    zone:'village', prompt:'OPEN INN',    title:'THORNWICK INN' },
+  { id:'vshop',    kind:'shop', pos: V_SHOP_POS,   zone:'village', prompt:'OPEN SHOP',   title:'THORNWICK SHOP' },
+  { id:'vbank',    kind:'bank', pos: V_BANK_POS,   zone:'village', prompt:'OPEN BANK',   title:'THORNWICK BANK POST' },
+  { id:'rwbed',    kind:'inn',  pos: RW_TENT_POS,  zone:'rotwatch', prompt:'SLEEP',      title:'ROTWATCH CAMP' },
+  { id:'rwcrate',  kind:'shop', pos: RW_CRATE_POS, zone:'rotwatch', prompt:'OPEN SUPPLY', title:'ROTWATCH SUPPLY' },
+];
+function buildingSpot(id){ return BUILDING_SPOTS.find(s => s.id === id) || null; }
+
 /* ============================================================ NPCs (static data)
    Town folk are pure set dressing + dialogue: definitions are static,
    positions are constants — except the Child, whose plaza wander is a
@@ -1986,24 +2027,34 @@ const KING_BAR_RANGE = 1.0;   // a Slime King's floating HP bar renders only whe
    the shadow and sprite width ride `h`. The Child keeps the same canvas
    scale; its figure occupies ~60% of the canvas, so its visible height
    (.134u) stays ~60% of an adult's (.224u). */
-const NPC_DEFS = [
-  { id:'elder', name:'ELDER MIRRA', x:TOWN.x,       y:TOWN.y - .15,            h:.240, head:.224, robe:'#557d3c', skin:'#e8b08a', hair:'#cfd4d1' },
-  { id:'forge', name:'FORGE',       x:SHOP_POS.x - .28, y:SHOP_POS.y + .16,     h:.240, head:.224, robe:'#8a5a2b', skin:'#8a5a3b', hair:'#263238' },
-  { id:'pike',  name:'WARDEN PIKE', x:HOSPITAL_POS.x + .29, y:HOSPITAL_POS.y + .10, h:.240, head:.224, robe:'#6f7f8c', skin:'#d9a37e', hair:'#aeb6ba' },
-  { id:'child', name:'THE CHILD',   x:TOWN.x - .42, y:TOWN.y + .05,            h:.240, head:.134, robe:'#5d9440', skin:'#f0bd93', hair:'#6d4527' },
-];
 const CHILD_WAYPOINTS = [
   { x:TOWN.x - .42, y:TOWN.y + .05 }, { x:TOWN.x - .16, y:TOWN.y + .36 },
   { x:TOWN.x + .28, y:TOWN.y + .30 }, { x:TOWN.x + .44, y:TOWN.y - .10 },
   { x:TOWN.x + .12, y:TOWN.y - .40 }, { x:TOWN.x - .30, y:TOWN.y - .34 },
 ];
 const CHILD_SEG_MS = 9000;   // one waypoint leg; the full loop is ~54s
+/* A def with `wander` strolls its waypoint loop on the deterministic
+   clock (npcPositionAt); a def without one stands at x/y. Settlement
+   folk (Settlements batch): Bramble keeps the Thornwick inn door, Tansy
+   the shop door, the Hermit stands at the village's bridge-side edge,
+   and Scout Vex patrols the Rotwatch camp on a slow three-post loop. */
+const NPC_DEFS = [
+  { id:'elder', name:'ELDER MIRRA', x:TOWN.x,       y:TOWN.y - .15,            h:.240, head:.224, robe:'#557d3c', skin:'#e8b08a', hair:'#cfd4d1' },
+  { id:'forge', name:'FORGE',       x:SHOP_POS.x - .28, y:SHOP_POS.y + .16,     h:.240, head:.224, robe:'#8a5a2b', skin:'#8a5a3b', hair:'#263238' },
+  { id:'pike',  name:'WARDEN PIKE', x:HOSPITAL_POS.x + .29, y:HOSPITAL_POS.y + .10, h:.240, head:.224, robe:'#6f7f8c', skin:'#d9a37e', hair:'#aeb6ba' },
+  { id:'child', name:'THE CHILD',   x:TOWN.x - .42, y:TOWN.y + .05,            h:.240, head:.134, robe:'#5d9440', skin:'#f0bd93', hair:'#6d4527', wander:CHILD_WAYPOINTS, segMs:CHILD_SEG_MS },
+  { id:'bramble', name:'BRAMBLE',   x:V_INN_POS.x + .27, y:V_INN_POS.y + .18,   h:.240, head:.224, robe:'#7a5a36', skin:'#e8d3ac', hair:'#4a3826' },
+  { id:'tansy',   name:'TANSY',     x:V_SHOP_POS.x - .27, y:V_SHOP_POS.y + .18, h:.240, head:.224, robe:'#b06a34', skin:'#f0dcb8', hair:'#8a4f24' },
+  { id:'hermit',  name:'THE HERMIT', x:VILLAGE.x - .60, y:VILLAGE.y + .25,      h:.240, head:.224, robe:'#5d6463', skin:'#eee9dc', hair:'#33302c' },
+  { id:'vex',     name:'SCOUT VEX', x:RW_FIRE_POS.x + .10, y:RW_FIRE_POS.y + .06, h:.240, head:.224, robe:'#c97a30', skin:'#f2ead8', hair:'#4a3421',
+    wander:[ { x:RW_FIRE_POS.x + .10, y:RW_FIRE_POS.y + .06 }, { x:ROTWATCH.x - .52, y:ROTWATCH.y + .34 }, { x:RW_CRATE_POS.x + .06, y:RW_CRATE_POS.y + .22 } ], segMs:11000 },
+];
 function npcPositionAt(def, now){
-  if (def.id !== 'child') return { x:def.x, y:def.y };
-  const pts = CHILD_WAYPOINTS, total = CHILD_SEG_MS * pts.length;
+  if (!def.wander) return { x:def.x, y:def.y };
+  const pts = def.wander, seg = def.segMs || 9000, total = seg * pts.length;
   const cycle = ((now % total) + total) % total;
-  const i = Math.floor(cycle / CHILD_SEG_MS);
-  let f = (cycle - i * CHILD_SEG_MS) / CHILD_SEG_MS;
+  const i = Math.floor(cycle / seg);
+  let f = (cycle - i * seg) / seg;
   f = f * f * (3 - 2 * f);   // smoothstep: ease out of one waypoint, into the next (dwells at each end)
   const a = pts[i], b = pts[(i + 1) % pts.length];
   return { x:a.x + (b.x - a.x) * f, y:a.y + (b.y - a.y) * f };
@@ -2080,7 +2131,10 @@ function spawnSlime(opts={}){
        town disc (in EITHER branch). ~60% near a random player — which
        weights spawns to the islands players are actually on — the rest on
        an isle picked by the population split (ISLE_SPAWN_W, land-area weights). */
-    const inTown = (x,y) => dist2(x,y,TOWN.x,TOWN.y) < (TOWN_R+.10)*(TOWN_R+.10);
+    /* SAFE ZONES (Settlements): wild spawns keep out of EVERY
+       settlement's disc (+ .10 margin), the town rule generalised —
+       Thornwick and Rotwatch stay as calm as the town plaza. */
+    const inTown = (x,y) => { for (const z of SAFE_ZONES){ const rr = z.r + .10; if (dist2(x,y,z.x,z.y) < rr*rr) return true; } return false; };
     /* SHRINE QUIET (Batch D): ambient/near-player wild spawns also keep
        .85u clear of every shrine — the shrines are set-pieces, and
        near-player spawn pressure used to carpet them with dozens of
@@ -2120,11 +2174,11 @@ function spawnSlime(opts={}){
         if (I.zone === 0) rr = Math.max(rr, TOWN_R + .16);   // Isle 1's ring must also clear the town disc
         sx = I.cx + dx/dd*rr; sy = I.cy + dy/dd*rr;
         /* the ring can still land in a shrine's quiet radius (the
-           Meadow Shrine sits near Isle 1's rim): walk the bearing in
-           bounded steps until clear — 8 x .35 rad always finds a gap,
-           since no shrine's quiet disc spans more than ~.62 rad of any
-           isle's rim. */
-        for (let w=0; w<8 && nearShrine(sx,sy); w++){
+           Meadow Shrine sits near Isle 1's rim) or inside a settlement:
+           walk the bearing in bounded steps until clear — 8 x .35 rad
+           always finds a gap, since no quiet disc spans more than ~.62
+           rad of any isle's rim. */
+        for (let w=0; w<8 && (nearShrine(sx,sy) || inTown(sx,sy)); w++){
           const a = Math.atan2(sy - I.cy, sx - I.cx) + .35;
           sx = I.cx + Math.cos(a)*rr; sy = I.cy + Math.sin(a)*rr;
         }
@@ -2251,12 +2305,15 @@ function hostTick(now,dt){
         mult *= (GUARDIANS[s.guardian] ? GUARDIANS[s.guardian].chase : 1);
       }
     }
-    /* TOWN SAFE ZONE — steering half: inside TOWN_R + .17 of the centre,
-       whatever a slime was doing (hunting, fleeing, kiting), it turns and
-       hops radially OUT. The positional half — the hard clamp that makes
-       this a guarantee rather than an intention — runs after the hop. */
-    const townD = Math.hypot(s.x-TOWN.x, s.y-TOWN.y);
-    if (s.kind !== 'guardian' && townD < TOWN_R + .17) s.dir = Math.atan2(s.y-TOWN.y, s.x-TOWN.x);
+    /* SAFE ZONES — steering half: inside any settlement's radius + .17,
+       whatever a slime was doing (hunting, fleeing, kiting), it turns
+       and hops radially OUT of that settlement. The positional half —
+       the hard clamp that makes this a guarantee rather than an
+       intention — runs after the hop. (Was the town disc alone;
+       Thornwick and Rotwatch ride the same rule.) */
+    if (s.kind !== 'guardian') for (const z of SAFE_ZONES){
+      if (Math.hypot(s.x-z.x, s.y-z.y) < z.r + .17){ s.dir = Math.atan2(s.y-z.y, s.x-z.x); break; }
+    }
     /* HOP LOCOMOTION: slimes never glide. Steering above only chooses s.dir;
        translation happens ONLY inside the hop cycle's air window, at
        hopDist per hop (steering multiplier applied). Grounded = planted. */
@@ -2267,16 +2324,19 @@ function hostTick(now,dt){
     }
     if (s.x<s.r+ .01){s.x=s.r+.01; s.dir=Math.PI-s.dir;} if (s.x>WORLD-s.r-.01){s.x=WORLD-s.r-.01; s.dir=Math.PI-s.dir;}
     if (s.y<s.r+.02){s.y=s.r+.02; s.dir=-s.dir;} if (s.y>WORLD-s.r-.03){s.y=WORLD-s.r-.03; s.dir=-s.dir;}
-    /* TOWN HARD CLAMP — positional guarantee, applied AFTER all movement
-       (steering, kiting, hop translation, wall bounces): no slime of any
-       kind ENDS the frame inside TOWN_R + .12 of the centre. The old code
-       "corrected" deep intruders only to TOWN_R - .12 — INSIDE the safe
-       zone — so kings and the Emperor could sit in the plaza for hops at
-       a time. This clamp leaves a .12u enemy-free moat past the plaza. */
-    const clampD = Math.hypot(s.x-TOWN.x, s.y-TOWN.y), MIN_TOWN_D = TOWN_R + .12;
-    if (s.kind !== 'guardian' && clampD < MIN_TOWN_D){
-      const push = MIN_TOWN_D / (clampD || 1e-4);
-      s.x = TOWN.x + (s.x-TOWN.x)*push; s.y = TOWN.y + (s.y-TOWN.y)*push;
+    /* SAFE-ZONE HARD CLAMP — positional guarantee, applied AFTER all
+       movement (steering, kiting, hop translation, wall bounces): no
+       slime of any kind ENDS the frame inside any settlement's radius
+       + .12. (The town-only original "corrected" deep intruders only to
+       TOWN_R - .12 — INSIDE the safe zone — so kings and the Emperor
+       could sit in the plaza for hops at a time.) Each clamp leaves a
+       .12u enemy-free moat past the settlement's edge. */
+    if (s.kind !== 'guardian') for (const z of SAFE_ZONES){
+      const clampD = Math.hypot(s.x-z.x, s.y-z.y), MIN_D = z.r + .12;
+      if (clampD < MIN_D){
+        const push = MIN_D / (clampD || 1e-4);
+        s.x = z.x + (s.x-z.x)*push; s.y = z.y + (s.y-z.y)*push;
+      }
     }
     /* ISLAND CLAMP (archipelago) — runs LAST, after the town clamp: a
        slime never ends the frame off its home isle's disc. On Isle 1 it
@@ -2340,21 +2400,26 @@ function hostTick(now,dt){
     world.metalNoneNearSince = now;
     for (const [id, s] of [...world.slimes]) if (s.kind==='metal') world.slimes.delete(id);   // every living metal is unreachable — clear it
     // position computed valid HERE: 0.6u from a random player in a random
-    // direction, ON LAND and >= TOWN_R + .15 from the town centre; up to
+    // direction, ON LAND and outside every settlement (+ .15); up to
     // 8 tries, else the rim ring of the player's own isle on their bearing
     const c = metalSpots[Math.floor(Math.random()*metalSpots.length)];
     let mx = null, my = null;
     for (let tries=0; tries<8 && mx===null; tries++){
       const a = rand(0,Math.PI*2);
       const x = c.x + Math.cos(a)*.6, y = c.y + Math.sin(a)*.6;
-      if (onLand(x,y) && Math.hypot(x-TOWN.x, y-TOWN.y) >= TOWN_R + .15){ mx = x; my = y; }
+      if (onLand(x,y) && outsideSettlements(x, y, .15)){ mx = x; my = y; }
     }
     if (mx===null){
       const ci = isleAt(c.x, c.y), I = ISLES[ci >= 0 ? ci : nearestIsle(c.x, c.y)];
-      const a = Math.atan2(c.y - I.cy, c.x - I.cx);
+      let a = Math.atan2(c.y - I.cy, c.x - I.cx);
       let rr = I.r - .14;
       if (I.zone === 0) rr = Math.max(rr, TOWN_R + .17);
       mx = I.cx + Math.cos(a)*rr; my = I.cy + Math.sin(a)*rr;
+      // the rim ring can still clip a settlement (Thornwick stands near
+      // Grove's rim): walk the bearing in bounded steps until clear
+      for (let w=0; w<8 && !outsideSettlements(mx, my, .15); w++){
+        a += .35; mx = I.cx + Math.cos(a)*rr; my = I.cy + Math.sin(a)*rr;
+      }
     }
     // DIRECT construction into the map (mirror of spawnSlime's object
     // shape, incl. zone scaling) — no spawnSlime call on this path
@@ -2549,7 +2614,7 @@ function spawnNode(){
   for (const I of cands){ if ((wr -= ISLE_NODE_W[I.zone]) <= 0){ isle = I; break; } }
   for (let tries=0; tries<12; tries++){
     const p = sampleIsle(isle, isle.r - .15), x = p.x, y = p.y;
-    if (Math.hypot(x-TOWN.x, y-TOWN.y) < TOWN_R + .15) continue;   // never in town (buildings are covered by this too)
+    if (!outsideSettlements(x, y, .15)) continue;   // never in a settlement (buildings are covered by this too)
     let clash = false;
     for (const o of world.nodes.values()) if (dist2(x,y,o.x,o.y) < .28*.28){ clash = true; break; }
     if (clash) continue;
@@ -3508,11 +3573,145 @@ function childLines(){
     'If you find one, it will know your green smell and come home. Please?',
   ]};
 }
+/* ---- STORY-PHASE DIALOGUE (Settlements): the world's talk tracks the
+   tale. Phases derive from progress.story alone: 'early' (before the
+   first Sigil), 'mid' (Sigil 1–2), 'late' (the third Sigil held / the
+   finale open), 'postgame' (the Cycle complete). An NPC with a
+   PHASE_LINES entry for the current phase speaks THAT set; otherwise
+   their default set (the Elder's quest-driven lines and the Child's
+   sprout-driven lines already ARE phase talk, so they keep their own
+   functions — Mirra carries the arc beat by beat). ---- */
+function storyPhase(){
+  const s = prog().story; if (!s) return 'early';
+  if (s.complete) return 'postgame';
+  if (s.sigils >= 3 || s.quest === 'finale') return 'late';
+  if (s.sigils >= 1) return 'mid';
+  return 'early';
+}
+const PHASE_LINES = {
+  bramble: {   // hedgehog innkeeper of Thornwick — warm, gossipy
+    early: [
+      'Mind the brambles and come in, Blade! Thornwick beds are moss-soft, and the soup is never watered. Much.',
+      'Travellers say the town owl never sleeps. Between you and me, Elder Mirra naps with her eyes open. Wisdom, that is.',
+      'A bed, a bowl, and the news — an innkeeper\'s whole magic. You bring the third; I keep the first two warm.',
+    ],
+    mid: [
+      'A Sigil! The whole grove felt it, Blade — the thorns by my door bloomed out of season.',
+      'They say the Regent\'s court grows quiet since you crossed. Quiet roads fill beds. You are good for business, and better for hope.',
+    ],
+    late: [
+      'Three Sigils singing... My grandmother swore the Tree would hum before it healed. I thought she meant the wind.',
+      'Whatever wakes below the Wilds, it will find Thornwick\'s lamps lit and its doors barred with green wood. Sleep while you can, Blade.',
+    ],
+    postgame: [
+      'The Tree blooms, and my inn is full of gardeners come to see it. Half of them snore like saws.',
+      'You will always have the corner bed, Blade. No coin. Some debts are paid in soup.',
+    ],
+  },
+  tansy: {   // squirrel shopkeep of Thornwick — fast patter
+    early: [
+      'Potions! Bombs! Charms! Everything a blade about the grove needs — Tansy\'s prices, Tansy\'s patter, no refunds on the patter!',
+      'You have the look of a first-week edge. Spend small, swing often, and never — ever — lick a metal slime. Long story.',
+    ],
+    mid: [
+      'Word travels faster than you do, Blade — Sigil one, done and dusted! Grove stock just doubled. Coincidence? Commerce!',
+      'The Regent taxes the thorn road in teeth and temper. Stock up here; his court does not take coins.',
+    ],
+    late: [
+      'Three Sigils! If the Emperor shops anywhere before the end, it will not be here. I checked. Twice.',
+      'Buy the charm, Blade. Aegis — six breaths of cannot-touch-me. Against HIM, six breaths is a fortune.',
+    ],
+    postgame: [
+      'Bloom prices! Everything must grow! ...That was the patter. For you, Blade — honest prices. You grew the market.',
+    ],
+  },
+  vex: {   // fox scout of Rotwatch — clipped field reports
+    early: [
+      'Scout Vex. Rotwatch. I watch the Wilds so the Wilds do not watch us.',
+      'Report: the Emperor\'s court stirs past the standing stones. Nothing crosses to the Grove. Yet.',
+      'Keep off the dead grass. Where the Rot blooms thick, his gardeners hunt in packs.',
+    ],
+    mid: [
+      'Report: the Grove Sigil woke the thorn road. The Regent has pulled his court in close.',
+      'He knows a blade is coming, Blade. Whatever the Emperor was, he remembers being hunted. Or hunting.',
+    ],
+    late: [
+      'Final report before the deep dark: all three Sigils lit. Last night his crown turned toward the Grove. Toward YOU.',
+      'When his Guard rises, do not waste your edge. Survive it. Then cut. That is the whole of my advice, and it is good.',
+    ],
+    postgame: [
+      'Rotwatch stands down. First quiet watch in my lifetime.',
+      'The Wilds are just wild again. I will keep the fire anyway. Old habits. Good habits.',
+    ],
+  },
+  hermit: {   // badger at Thornwick's edge — cryptic; foreshadows only
+    early: [
+      'Sit a moment, Blade. The road is patient; only travellers are in a hurry.',
+      'You walk like one who has walked here before. All blades do, the first time. Hm. The FIRST time.',
+      'I count rings in the old stump by the stones. More rings than the Tree has years, some years. Do not ask me how.',
+    ],
+    mid: [
+      'A Sigil hums in your step now. The grass perks up where you pass. It remembers you, I think.',
+      'The Emperor was the Tree\'s right hand once. A crown the Rot gave him... or a crown he reached for. The rings do not say. Rings rarely accuse.',
+    ],
+    late: [
+      'Three lights, one root. When you go below, Blade, go as a gardener goes — to cut what chokes, not what grows.',
+      'If the deep place shows you a road you have walked before... walk it better. That is all any of us are doing.',
+    ],
+    postgame: [
+      'The stump sprouted, Blade. First green ring in a hundred years. I shall have to recount everything.',
+      'Walked-before, walked-again, walked-well. Rest now. The road will keep. It has had practice.',
+    ],
+  },
+  forge: {
+    mid: [
+      'Sigil steel sings different, Blade. Your edge hums a note greener than mine ever will.',
+      'The Warden\'s pauldron was garden-work, old and honourable. The Rot rusts what it cannot bend. Keep yours oiled.',
+    ],
+    late: [
+      'Three Sigils, and the forge-fire burns green at the edges. Verdia is waking in the metal of the world.',
+      'When you face him — the crowned one — remember: he was armour and guardian before he was a throne. Cut the Rot, not the memory.',
+    ],
+    postgame: [
+      'Bloom steel! Every blade in the rack flowered a little overnight. Useless for war. Perfect for peace.',
+      'My grandfather polished the old guardian\'s armour. I like to think some bright part of it cut true in the end.',
+    ],
+  },
+  pike: {
+    mid: [
+      'Bridge patrols doubled, Blade — my orders. A Sigil home safe is a road home safer.',
+      'Grove slimes fight in the Regent\'s shadow. Break his summoned court first; a crown alone is only a hat.',
+    ],
+    late: [
+      'All crossings report the same dream, Blade: a crown turning in the dark, looking for its gardener.',
+      'Final drill, from an old warden: Guard up — you dodge. Guard down — you END it. That is the whole war.',
+    ],
+    postgame: [
+      'Peace patrol is mostly watching children chase sproutlings. Best orders I ever had.',
+      'The bridges stand open and unbarred, and my wooden sword is a toy again. Verdia provides.',
+    ],
+  },
+  child: {
+    postgame: [
+      'The sproutlings grew a FLOWER each! Pip\'s is red. Nib\'s is mud-coloured — he says it is gold.',
+      'When I am big I will guard the bridge like Pike. Sprout says blades are better. Sprout is rude.',
+    ],
+  },
+};
 function dialogueSetFor(npcId){
-  if (npcId === 'elder') return elderLines();
-  if (npcId === 'child') return childLines();
+  if (npcId === 'elder') return elderLines();   // Mirra's sets are quest-phased already — she carries the arc
+  const ph = storyPhase();
+  if (npcId === 'child'){
+    // the sprout tale outranks small talk until it is done; after the
+    // Cycle (and the sproutlings home) the Child gets postgame lines
+    if (ph === 'postgame' && prog().story.sproutsDone) return { lines: PHASE_LINES.child.postgame };
+    return childLines();
+  }
+  const table = PHASE_LINES[npcId];
+  if (table && ph !== 'early' && table[ph]) return { lines: table[ph] };
   if (npcId === 'forge'){ const sets = FORGE_LINES; return { rotate:true, lines:sets[(ses.npcTalkCounts.forge || 0) % sets.length] }; }
   if (npcId === 'pike'){ const sets = PIKE_LINES; return { rotate:true, lines:sets[(ses.npcTalkCounts.pike || 0) % sets.length] }; }
+  if (table && table.early) return { lines: table.early };
   return { lines:[] };
 }
 function npcBobPx(def, t){ return Math.sin(t / 620 + def.id.charCodeAt(0) * 1.7 + def.id.length) * 1.4; }
@@ -3672,21 +3871,23 @@ function updateDmgFlash(now){
 updateDmgFlash._a = -1;
 function damagePlayer(amount, now){
   if (!ses.started || ses.paused) return;
-  /* TOWN SAFE ZONE — sanctuaries: no damage while a building panel, the
-     Sphere Grid is open, and NO damage anywhere inside
-     TOWN_R of the town centre (contact AND boss bullets funnel through
-     here, so orb fire over town is harmless too). Enemies can't be in
-     town at all, but the check stands on its own regardless. */
+  /* SAFE ZONES — sanctuaries: no damage while a building panel, the
+     Sphere Grid is open, and NO damage anywhere inside any settlement
+     in SAFE_ZONES (contact AND boss bullets funnel through here, so
+     orb fire over a settlement is harmless too). Enemies can't be in
+     a settlement at all, but the check stands on its own regardless. */
   if (!$('#bankPanel').classList.contains('hidden') || !$('#shopPanel').classList.contains('hidden') ||
       !$('#hospitalPanel').classList.contains('hidden') || !$('#travelPanel').classList.contains('hidden') || !$('#menuPanel').classList.contains('hidden') ||
       !$('#chapterCard').classList.contains('hidden')) return;
-  if (dist2(me.x, me.y, TOWN.x, TOWN.y) < TOWN_R*TOWN_R){
+  const mySafeZone = safeZoneAt(me.x, me.y);
+  if (mySafeZone){
     /* CONTESTED SHRINE GROUND (stage 4): the Meadow Shrine stands on the
        plaza's rim and its Warden is bound to it — while a guardian lives
-       and you stand in its shadow (0.65u), the sanctuary does NOT cover
-       you. Everywhere else in town stays absolutely safe, as always. */
+       and you stand in its shadow (0.65u), the TOWN sanctuary does NOT
+       cover you. Everywhere else — and Thornwick and Rotwatch entire —
+       stays absolutely safe, as always. */
     const grd = guardianAlive();
-    if (!(grd && dist2(me.x, me.y, grd.x, grd.y) < .65*.65)) return;
+    if (!(mySafeZone.id === 'town' && grd && dist2(me.x, me.y, grd.x, grd.y) < .65*.65)) return;
   }
   if (now < me.shieldUntil) return;        // Aegis Charm blocks ALL damage
   if (now <= me.invulnUntil) return;
@@ -3894,8 +4095,33 @@ function buildingPanelOpen(){
   }
   return null;
 }
-function openBuilding(b){
-  if (b==='bank') openBank(); else if (b==='shop') openShop(); else if (b==='hospital') openHospital();
+/* Which DOOR opened each panel kind (Settlements): panels are shared
+   across the world — the town bank and the Thornwick bank post are the
+   same panel wearing different titles — so the opener records its spot
+   here. The inn reads it back for its door (respawn point + name), and
+   updateInteract reads it for the walk-away rule. UI bookkeeping only,
+   like shopUpdaters; not game state. */
+const openSpot = { bank:null, shop:null, inn:null };
+function setPanelTitles(sel, sheetId, titleId, title){
+  const p = $(sel); if (!p) return;
+  const st = document.getElementById(sheetId); if (st) st.textContent = title;
+  const h = document.getElementById(titleId); if (h) h.textContent = title;
+}
+function openBuilding(id){
+  const spot = buildingSpot(id); if (!spot) return;
+  openSpot[spot.kind] = spot;
+  if (spot.kind === 'bank'){ setPanelTitles('#bankPanel', 'bankSheetTitle', 'bankTitle', spot.title); openBank(); }
+  else if (spot.kind === 'shop'){ setPanelTitles('#shopPanel', 'shopSheetTitle', 'shopTitle', spot.title); openShop(); }
+  else { setPanelTitles('#hospitalPanel', 'hospSheetTitle', 'hospTitle', spot.title); openHospital(); }
+}
+/* An inn door's respawn point: .28u from the door toward its home
+   settlement's centre (the town inn's is due north to the plaza —
+   exactly the historical point). */
+function innDoor(spot){
+  const s = spot || buildingSpot('hospital');
+  const z = SAFE_ZONES.find(z => z.id === s.zone) || SAFE_ZONES[0];
+  const dx = z.x - s.pos.x, dy = z.y - s.pos.y, d = Math.hypot(dx, dy) || 1e-4;
+  return { x: +(s.pos.x + dx / d * .28).toFixed(3), y: +(s.pos.y + dy / d * .28).toFixed(3) };
 }
 function panelButtons(panel){
   return [...panel.querySelectorAll('button')].filter(b => !b.disabled && b.style.display !== 'none' && b.getClientRects().length > 0);
@@ -4077,10 +4303,16 @@ function buyItem(id){
 function openHospital(){ showBuildingPanel('#hospitalPanel'); buildHospitalRows(); startPanelFocus($('#hospitalPanel'), document.querySelector('#hospRows button')); }
 function fullHealPrice(){ return Math.max(15, Math.ceil((me.maxHp - me.hp) * .8)); }
 function sleepSavePrice(){ return (me.hp < me.maxHp ? fullHealPrice() : 0) + 25; }   // heal (if hurt) + 25c flat for the respawn
+/* Is THIS inn (the door that opened the panel) already your respawn? */
+function spawnIsHere(){
+  const sp = prog().spawnAt; if (!sp) return false;
+  const door = innDoor(openSpot.inn);
+  return Math.hypot(sp.x - door.x, sp.y - door.y) < .05;
+}
 function updateHospitalRows(){
   $('#hospHp').textContent = Math.max(0, Math.ceil(me.hp)) + ' / ' + me.maxHp;
   $('#hospCoins').textContent = prog().coins;
-  $('#hospSpawn').textContent = prog().spawnAt ? 'The Inn' : 'Town Centre';
+  $('#hospSpawn').textContent = prog().spawnAt ? (prog().spawnAt.name || 'The Inn') : 'Town Centre';
   for (const u of hospUpdaters) u();
 }
 function buildHospitalRows(){
@@ -4090,10 +4322,10 @@ function buildHospitalRows(){
     { id:'sleep', name:'SLEEP',        btn:'SLEEP', desc:'Heal to full HP',
       price:()=>fullHealPrice(),
       disabled:()=> me.hp >= me.maxHp || prog().coins < fullHealPrice() },
-    { id:'save',  name:'SLEEP & SAVE', btn:'SAVE', desc:'Heal to full + respawn at the inn',
+    { id:'save',  name:'SLEEP & SAVE', btn:'SAVE', desc:'Heal to full + respawn here',
       price:()=>sleepSavePrice(),
-      // at full HP this stays buyable (flat 25c) UNLESS the inn is already your respawn
-      disabled:()=> (me.hp >= me.maxHp && !!prog().spawnAt) || prog().coins < sleepSavePrice() },
+      // at full HP this stays buyable (flat 25c) UNLESS this inn is already your respawn
+      disabled:()=> (me.hp >= me.maxHp && spawnIsHere()) || prog().coins < sleepSavePrice() },
   ];
   for (const r of rows){
     const row = document.createElement('div'); row.className = 'shopRow';
@@ -4115,12 +4347,15 @@ function buildHospitalRows(){
 function buyInn(id){
   if (id === 'save'){
     const price = sleepSavePrice();
-    if ((me.hp >= me.maxHp && prog().spawnAt) || prog().coins < price) return;
+    if ((me.hp >= me.maxHp && spawnIsHere()) || prog().coins < price) return;
     act.addCoins(-price);
     me.hp = me.maxHp;
-    // respawn at the inn door: just north of the sprite, toward the plaza centre
-    act.patchProgress({ spawnAt: { x: HOSPITAL_POS.x, y: HOSPITAL_POS.y - .28 } });
-    notify('SPAWN SAVED AT THE INN', { type:'success' });
+    // respawn at THIS inn's door (toward its settlement's centre), and
+    // the save remembers the inn's name for the panel's Respawn line
+    const spot = openSpot.inn || buildingSpot('hospital');
+    const door = innDoor(spot);
+    act.patchProgress({ spawnAt: { x: door.x, y: door.y, name: spot.title } });
+    notify('SPAWN SAVED — ' + spot.title, { type:'success' });
   } else {
     const price = fullHealPrice();
     if (me.hp >= me.maxHp || prog().coins < price) return;
@@ -4137,20 +4372,21 @@ function buyInn(id){
 function updateInteract(){
   const pr = $('#interactPrompt');
   if (!ses.started){ pr.classList.add('hidden'); ses.nearBuilding = null; ses.nearNpc = null; ses.nearShrine = null; ses.nearTravel = null; ses.nearSprout = null; ses.nearBarrier = null; updateInteract._pr = null; return; }
-  const db = Math.sqrt(dist2(me.x,me.y,BANK_POS.x,BANK_POS.y));
-  const ds = Math.sqrt(dist2(me.x,me.y,SHOP_POS.x,SHOP_POS.y));
-  const dh = Math.sqrt(dist2(me.x,me.y,HOSPITAL_POS.x,HOSPITAL_POS.y));
-  let nd = db, nb = 'bank';   // nearest building wins the prompt
-  if (ds < nd){ nd = ds; nb = 'shop'; }
-  if (dh < nd){ nd = dh; nb = 'hospital'; }
-  /* TOWN RULE (gauntlet F4): while the sword is INSIDE TOWN_R, the nearest
-     building is always 'in range' — prompt shows, E / prompt tap opens it,
-     however far across the plaza it is. Range used to be measured from the
-     sword's exact position against the .34 radius everywhere, so prompts
-     flickered in/out around town and the key often opened nothing. Outside town
-     the .34 radius rule applies unchanged. */
-  const inTown = dist2(me.x, me.y, TOWN.x, TOWN.y) < TOWN_R*TOWN_R;
-  const building = (inTown || nd < .34) ? nb : null;
+  /* DOORS (Settlements): every door in the world competes by the same
+     rule — the nearest IN-RANGE spot wins the prompt. A spot is in
+     range within .34u, or at any distance while the sword stands inside
+     the spot's home safe zone. The zone clause is the old TOWN RULE
+     (gauntlet F4: prompts flickered in/out around the plaza when range
+     was measured from the sword's exact position) generalised to every
+     settlement: inside Thornwick, its doors are always offered; inside
+     Rotwatch, the tent and the crate are. */
+  const myZone = safeZoneAt(me.x, me.y);
+  let nb = null, nd = Infinity;
+  for (const spot of BUILDING_SPOTS){
+    const d = Math.sqrt(dist2(me.x, me.y, spot.pos.x, spot.pos.y));
+    if ((d < .34 || (myZone && myZone.id === spot.zone)) && d < nd){ nd = d; nb = spot.id; }
+  }
+  const building = nb;
   const panelOpen = !$('#bankPanel').classList.contains('hidden') || !$('#shopPanel').classList.contains('hidden') || !$('#hospitalPanel').classList.contains('hidden') || !$('#travelPanel').classList.contains('hidden');
   /* NPCs compete for the same prompt: the nearest townsperson inside talk
      range (.6u — the same range that keeps a dialogue alive) wins over a
@@ -4215,7 +4451,8 @@ function updateInteract(){
   ses.nearBuilding = (targetNpc || ses.nearShrine || ses.nearTravel || ses.nearSprout || ses.nearBarrier) ? null : building;
   // change-only DOM writes: this runs EVERY frame, and re-setting the
   // same textContent replaces the text node (layout work) every time
-  const prName = (ses.nearBuilding && !panelOpen && !ses.dialogue) ? (ses.nearBuilding==='bank' ? 'BANK' : ses.nearBuilding==='shop' ? 'SHOP' : 'INN') : null;
+  const nearSpot = ses.nearBuilding ? buildingSpot(ses.nearBuilding) : null;
+  const prName = (nearSpot && !panelOpen && !ses.dialogue) ? nearSpot.prompt : null;
   // the prompt carries a key-cap chip: E on desktop (last input not touch),
   // TAP on touch — the chip is part of the change-only key so flipping
   // input type re-renders the label
@@ -4226,7 +4463,7 @@ function updateInteract(){
     : ses.nearTravel ? cap + '|TRAVEL|' + ses.nearTravel
     : ses.nearSprout ? cap + '|SPROUT|' + ses.nearSprout
     : ses.nearBarrier ? cap + '|BARRIER|' + ses.nearBarrier
-    : (prName ? cap + '|' + prName : null);
+    : (prName ? cap + '|BLD|' + ses.nearBuilding : null);
   if (wantPr !== updateInteract._pr){
     updateInteract._pr = wantPr;
     if (targetNpc && npcDefNear){ pr.innerHTML = '<span class="keycap">' + cap + '</span>' + npcDefNear.name; pr.classList.remove('hidden'); }
@@ -4234,19 +4471,21 @@ function updateInteract(){
     else if (ses.nearTravel){ pr.innerHTML = '<span class="keycap">' + cap + '</span>TRAVEL'; pr.classList.remove('hidden'); }
     else if (ses.nearSprout){ pr.innerHTML = '<span class="keycap">' + cap + '</span>LOST SPROUTLING'; pr.classList.remove('hidden'); }
     else if (ses.nearBarrier){ pr.innerHTML = '<span class="keycap">' + cap + '</span>ROT BARRIER'; pr.classList.remove('hidden'); }
-    else if (prName){ pr.innerHTML = '<span class="keycap">' + cap + '</span>OPEN ' + prName; pr.classList.remove('hidden'); }
+    else if (prName){ pr.innerHTML = '<span class="keycap">' + cap + '</span>' + prName; pr.classList.remove('hidden'); }
     else pr.classList.add('hidden');
   }
   // keyboard panel focus dies with its panel — panels close from many
   // places (Esc, CLOSE buttons, walking away) and all of them just add
   // .hidden, so the stale-focus cleanup lives here where state is watched
   if (ses.panelFocus && ses.panelFocus.panel.classList.contains('hidden')) clearPanelFocus();
-  // walk away (> .42 units — outside the .34 interact radius) and the panel
-  // closes itself; inside town you are never 'away', so panels stay open
-  if (!inTown){
-    if (!$('#bankPanel').classList.contains('hidden') && db > .42) hideBuildingPanel('#bankPanel');
-    if (!$('#shopPanel').classList.contains('hidden') && ds > .42) hideBuildingPanel('#shopPanel');
-    if (!$('#hospitalPanel').classList.contains('hidden') && dh > .42) hideBuildingPanel('#hospitalPanel');
+  // walk away (> .42 units from the DOOR that opened the panel — outside
+  // the .34 interact radius) and the panel closes itself; inside that
+  // door's home settlement you are never 'away', so panels stay open
+  for (const [sel, kind] of [['#bankPanel','bank'], ['#shopPanel','shop'], ['#hospitalPanel','inn']]){
+    if ($(sel).classList.contains('hidden')) continue;
+    const spot = openSpot[kind]; if (!spot) continue;
+    const inHome = myZone && myZone.id === spot.zone;
+    if (!inHome && dist2(me.x, me.y, spot.pos.x, spot.pos.y) > .42 * .42) hideBuildingPanel(sel);
   }
   // the travel panel belongs to its shrine: wander off and the path closes
   if (ses.travelFrom && !$('#travelPanel').classList.contains('hidden')){
@@ -5560,6 +5799,15 @@ function drawMinimap(){
   g.fillStyle = '#e5484d'; g.fillRect(SHOP_POS.x*S2-2.5, SHOP_POS.y*S2-2.5, 5, 5);
   g.fillStyle = '#ffffff'; g.fillRect(HOSPITAL_POS.x*S2-2.5, HOSPITAL_POS.y*S2-2.5, 5, 5);
   g.fillStyle = '#e5484d'; g.beginPath(); g.arc(HOSPITAL_POS.x*S2, HOSPITAL_POS.y*S2, 1.4, 0, 7); g.fill();
+  // settlements: Thornwick's disc + door dots (same colours as town), Rotwatch's disc + fire
+  g.fillStyle = '#ecd9a2';
+  g.beginPath(); g.arc(VILLAGE.x*S2, VILLAGE.y*S2, .85*S2, 0, 7); g.fill();
+  g.fillStyle = '#ffffff'; g.fillRect(V_INN_POS.x*S2-2, V_INN_POS.y*S2-2, 4, 4);
+  g.fillStyle = '#e5484d'; g.fillRect(V_SHOP_POS.x*S2-2, V_SHOP_POS.y*S2-2, 4, 4);
+  g.fillStyle = '#ffd94d'; g.fillRect(V_BANK_POS.x*S2-2, V_BANK_POS.y*S2-2, 4, 4);
+  g.fillStyle = '#ddcda2';
+  g.beginPath(); g.arc(ROTWATCH.x*S2, ROTWATCH.y*S2, .60*S2, 0, 7); g.fill();
+  g.fillStyle = '#ff8a3c'; g.beginPath(); g.arc(RW_FIRE_POS.x*S2, RW_FIRE_POS.y*S2, 2.6, 0, 7); g.fill();
   // current story target: whatever the quest points at wears a gold
   // diamond (Batch B: every objective type, via objectiveTarget())
   {
@@ -5625,6 +5873,18 @@ function buildWorldMapBase(S){
   g.fillStyle = '#e5484d'; g.beginPath(); g.arc(HOSPITAL_POS.x*S2, HOSPITAL_POS.y*S2, 1.6, 0, 7); g.fill();
   g.font = '8px "Press Start 2P", monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillStyle = '#7a5a22'; g.fillText('TOWN', TOWN.x*S2, (TOWN.y - TOWN_R - .38)*S2);
+  // settlements (labels placed clear of the shrine diamonds: Thornwick's
+  // rides south of the village, Rotwatch's north of the camp)
+  g.fillStyle = '#ecd9a2';
+  g.beginPath(); g.arc(VILLAGE.x*S2, VILLAGE.y*S2, .85*S2, 0, 7); g.fill();
+  g.fillStyle = '#ffffff'; g.fillRect(V_INN_POS.x*S2-3, V_INN_POS.y*S2-3, 6, 6);
+  g.fillStyle = '#e5484d'; g.fillRect(V_SHOP_POS.x*S2-3, V_SHOP_POS.y*S2-3, 6, 6);
+  g.fillStyle = '#ffd94d'; g.fillRect(V_BANK_POS.x*S2-3, V_BANK_POS.y*S2-3, 6, 6);
+  g.fillStyle = '#7a5a22'; g.fillText('THORNWICK', VILLAGE.x*S2, (VILLAGE.y + 1.28)*S2);
+  g.fillStyle = '#ddcda2';
+  g.beginPath(); g.arc(ROTWATCH.x*S2, ROTWATCH.y*S2, .60*S2, 0, 7); g.fill();
+  g.fillStyle = '#ff8a3c'; g.beginPath(); g.arc(RW_FIRE_POS.x*S2, RW_FIRE_POS.y*S2, 3, 0, 7); g.fill();
+  g.fillStyle = '#7a5a22'; g.fillText('ROTWATCH', ROTWATCH.x*S2, (ROTWATCH.y - .95)*S2);
   // shrine stones: a small diamond in the guardian's colour at each shrine
   for (const key of Object.keys(SHRINE_POS)){
     const p = SHRINE_POS[key], dx = p.x*S2, dy = p.y*S2, dr = 6;
@@ -5865,11 +6125,11 @@ const COLOR2IMG = {
 };
 /* ---- pixel world art: grass tile, decor and building sprites ---- */
 const WORLD_IMGS = {};
-for (const n of ['tile-grass','tile-water','tile-sand','decor-tree','decor-rock','decor-pond','decor-grass','bld-bank','bld-shop','bld-hospital']){
+for (const n of ['tile-grass','tile-water','tile-sand','decor-tree','decor-rock','decor-pond','decor-grass','bld-bank','bld-shop','bld-hospital','bld-hut-a','bld-hut-b','bld-hut-c']){
   const im=new Image(); im.src='assets/img/'+n+'.png'; WORLD_IMGS[n]=im;
 }
 const NPC_IMGS = {};
-for (const n of ['elder','forge','pike','child']){
+for (const n of ['elder','forge','pike','child','bramble','tansy','vex','hermit']){
   const im=new Image(); im.src='assets/img/npc-'+n+'.png'; NPC_IMGS[n]=im;
 }
 const SHRINE_IMGS = {};
@@ -6330,6 +6590,8 @@ const DECOR = (()=>{
       const a = rng()*Math.PI*2, d = Math.sqrt(rng()) * (I.r - .20);
       const x = I.cx + Math.cos(a)*d, y = I.cy + Math.sin(a)*d;
       if (Math.hypot(x-TOWN.x, y-TOWN.y) < TOWN_R + .06) continue;
+      if (Math.hypot(x-VILLAGE.x, y-VILLAGE.y) < 1.05) continue;   // Thornwick clearing (safe disc + margin)
+      if (Math.hypot(x-ROTWATCH.x, y-ROTWATCH.y) < .80) continue;   // Rotwatch clearing
       if (Math.hypot(x-BANK_POS.x, y-BANK_POS.y) < .27 ||
           Math.hypot(x-SHOP_POS.x, y-SHOP_POS.y) < .27 ||
           Math.hypot(x-HOSPITAL_POS.x, y-HOSPITAL_POS.y) < .27) continue;
@@ -6471,6 +6733,7 @@ const TUFTS = (()=>{
     if (Math.hypot(x-BANK_POS.x, y-BANK_POS.y) < .30 ||
         Math.hypot(x-SHOP_POS.x, y-SHOP_POS.y) < .30 ||
         Math.hypot(x-HOSPITAL_POS.x, y-HOSPITAL_POS.y) < .30) continue;
+    if (Math.hypot(x-VILLAGE.x, y-VILLAGE.y) < 1.0 || Math.hypot(x-ROTWATCH.x, y-ROTWATCH.y) < .75) continue;   // settlement clearings stay trampled, not tufted
     let inPond = false;
     for (const d of DECOR){ if (d.t==='pond' && Math.hypot(x-d.x, y-d.y) < d.r + .03){ inPond = true; break; } }
     if (inPond) continue;
@@ -6510,6 +6773,7 @@ function drawTufts(t){
   for (const g of TUFTS){
     if (g.x<ses.cam.x-.1 || g.x>ses.cam.x+vw+.1 || g.y<ses.cam.y-.1 || g.y>ses.cam.y+vh+.1) continue;   // view-culled
     if (Math.hypot(g.x-TOWN.x, g.y-TOWN.y) < TOWN_R + .02) continue;   // no grass grows on the town plaza
+    if (Math.hypot(g.x-VILLAGE.x, g.y-VILLAGE.y) < .87 || Math.hypot(g.x-ROTWATCH.x, g.y-ROTWATCH.y) < .62) continue;   // ... nor on settlement ground
     const w = .055*u*g.s, h = w*asp;
     ctx.save();
     ctx.translate(NX(g.x), NY(g.y));
@@ -6789,6 +7053,29 @@ function drawLog(d){
   ctx.beginPath(); ctx.ellipse(-w/2 + 2, 0, 2.6, h * .34, 0, 0, 7); ctx.fill();
   ctx.beginPath(); ctx.ellipse(w/2 - 2, 0, 2.6, h * .34, 0, 0, 7); ctx.fill();
   ctx.restore();
+}
+/* The ROTWATCH SUPPLY CRATE (Settlements): a planked war-chest with a
+   rope-bound sack and a potion bottle riding on top — the camp's shop
+   door. Painted in the log/signpost wood tones. */
+function drawCrate(d){
+  const u = UNIT(), x = NX(d.x), y = NY(d.y);
+  const w = .17 * u, h = .115 * u;
+  ctx.fillStyle = 'rgba(38,32,40,.16)';
+  ctx.beginPath(); ctx.ellipse(x, y + .012 * u, w * .56, h * .22, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#a06a35'; roundRect(x - w/2, y - h, w, h, 3); ctx.fill();
+  ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 2.5; roundRect(x - w/2, y - h, w, h, 3); ctx.stroke();
+  ctx.strokeStyle = 'rgba(91,58,30,.6)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(x - w/2 + 2, y - h/2); ctx.lineTo(x + w/2 - 2, y - h/2); ctx.stroke();   // mid plank seam
+  ctx.beginPath(); ctx.moveTo(x - w/2 + 3, y - h + 3); ctx.lineTo(x + w/2 - 3, y - 3); ctx.stroke();   // cross brace
+  ctx.beginPath(); ctx.moveTo(x + w/2 - 3, y - h + 3); ctx.lineTo(x - w/2 + 3, y - 3); ctx.stroke();
+  ctx.fillStyle = '#8a5a33'; ctx.fillRect(x - w/2, y - h, w, Math.max(3, h * .16));                    // lid band
+  // the sack: a tied bundle slumped on the lid's left
+  ctx.fillStyle = '#c9b183';
+  ctx.beginPath(); ctx.ellipse(x - w * .26, y - h - .012 * u, w * .20, h * .20, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#a8894f'; ctx.fillRect(x - w * .26 - 2, y - h - .038 * u, 4, Math.max(2, h * .10));
+  // a potion bottle on the right, red and ready
+  ctx.fillStyle = '#e5484d'; roundRect(x + w * .16, y - h - .034 * u, .020 * u, .034 * u, 3); ctx.fill();
+  ctx.fillStyle = '#7a4d16'; ctx.fillRect(x + w * .16 + .006 * u, y - h - .044 * u, .008 * u, .010 * u);
 }
 function drawMushroom(d){
   const u = UNIT(), x = NX(d.x), y = NY(d.y);
@@ -7161,6 +7448,33 @@ function drawField(t){
     ctx.strokeStyle = 'rgba(255,250,230,.35)'; ctx.lineWidth = Math.max(1.5, .006*u);   // worn top highlight, inside the curb
     ctx.beginPath(); ctx.arc(cx, cy, R - bs*.32, 0, 7); ctx.stroke();
   }
+  /* SETTLEMENT GROUND (Settlements): Thornwick and Rotwatch wear the
+     plaza's language at smaller scale — a flat disc in the zone's
+     radius, the same seeded speckle recipe, a soft edge shadow — so a
+     settlement reads as a PLACE at a glance, not a clearing. */
+  const groundDisc = (zw, base, spA, spB)=>{
+    const cx = NX(zw.x), cy = NY(zw.y), R = zw.r * u;
+    if (cx + R < -20 || cy + R < -20 || cx - R > W + 20 || cy - R > H + 20) return;   // view cull
+    ctx.fillStyle = base;
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(38,32,40,.10)'; ctx.lineWidth = Math.max(2, .014*u);
+    ctx.beginPath(); ctx.arc(cx, cy, R + .008*u, 0, 7); ctx.stroke();
+    const cell = .06, ss = Math.max(2, Math.round(u*.0035));
+    const gx0 = Math.max(0, Math.floor((zw.x - zw.r)/cell)), gx1 = Math.min(WORLD/cell, Math.ceil((zw.x + zw.r)/cell));
+    const gy0 = Math.max(0, Math.floor((zw.y - zw.r)/cell)), gy1 = Math.min(WORLD/cell, Math.ceil((zw.y + zw.r)/cell));
+    for (let gx=gx0; gx<gx1; gx++) for (let gy=gy0; gy<gy1; gy++){
+      const wx = (gx+.5)*cell, wy = (gy+.5)*cell;
+      if (wx < ses.cam.x-.1 || wx > ses.cam.x+vw+.1 || wy < ses.cam.y-.1 || wy > ses.cam.y+vh+.1) continue;   // view cull
+      const hs = Math.sin(gx*127.1 + gy*311.7)*43758.5453, hf = hs - Math.floor(hs);
+      if (hf > .85) continue;
+      const jx = (hf*7.13 - Math.floor(hf*7.13) - .5)*cell*.7, jy = (hf*3.71 - Math.floor(hf*3.71) - .5)*cell*.7;
+      if (Math.hypot(wx+jx - zw.x, wy+jy - zw.y) > zw.r - .02) continue;   // keep speckles on the disc
+      ctx.fillStyle = hf < .42 ? spA : spB;
+      ctx.fillRect(NX(wx+jx)-ss/2, NY(wy+jy)-ss/2, ss, ss);
+    }
+  };
+  groundDisc(SAFE_ZONES[1], '#e6d5a0', '#d8c48a', '#f4e7ba');   // Thornwick: pale trampled sand
+  groundDisc(SAFE_ZONES[2], '#cdbb8d', '#bfae7c', '#ddcda2');   // Rotwatch: dirtier camp earth
   // grass tufts over the flowers, swaying in the same wind (never on the plaza)
   drawTufts(t);
   // ponds only -- flat ground decals (trees/rocks live in the y-sorted entity pass)
@@ -7294,6 +7608,25 @@ function drawBuildings(only){
     sign(x, y-h/2-.052*u, 'INN', '#fff8e7', '#5b3a1e');
   }
   }
+  // ---- THORNWICK HUTS (Settlements): the village's three doors wear
+  // the ISW timber-house variants; the fallback is one shared thatched
+  // hut painter so a missing sprite never leaves a door invisible.
+  const drawHut = (pos, imgKey, name)=>{
+    if (imgOk(WORLD_IMGS[imgKey])){ drawBld(pos, WORLD_IMGS[imgKey], name, '#fff8e7', '#5b3a1e'); return; }
+    const x = NX(pos.x), y = NY(pos.y), w = .30*u, h = .20*u;
+    pad(pos.x, pos.y);
+    ctx.fillStyle = '#e8dcc0'; roundRect(x-w/2, y-h/2, w, h, 5); ctx.fill();
+    ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 3; roundRect(x-w/2, y-h/2, w, h, 5); ctx.stroke();
+    ctx.fillStyle = '#a8894f';
+    ctx.beginPath(); ctx.moveTo(x-w/2-.025*u, y-h/2); ctx.lineTo(x, y-h/2-.085*u); ctx.lineTo(x+w/2+.025*u, y-h/2); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#7a5f30'; ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.fillStyle = '#ffd97a'; roundRect(x-w/2+.026*u, y-h/2+.032*u, .044*u, .040*u, 3); ctx.fill();
+    ctx.fillStyle = '#7a4d16'; roundRect(x-.026*u, y+.012*u, .052*u, h/2-.012*u, 4); ctx.fill();
+    sign(x, y-h/2-.058*u, name, '#fff8e7', '#5b3a1e');
+  };
+  if (!only || only==='vinn') drawHut(V_INN_POS, 'bld-hut-b', 'INN');
+  if (!only || only==='vshop') drawHut(V_SHOP_POS, 'bld-hut-c', 'SHOP');
+  if (!only || only==='vbank') drawHut(V_BANK_POS, 'bld-hut-a', 'BANK');
 }
 /* One townsperson: sprite on the standard ground shadow, a subtle idle
    bob, and a small name plate when the player is close. The sprite sheet
@@ -7735,6 +8068,9 @@ const BUILDING_DEFS = [
   { key:'bank', pos:BANK_POS, img:'bld-bank' },
   { key:'shop', pos:SHOP_POS, img:'bld-shop' },
   { key:'hospital', pos:HOSPITAL_POS, img:'bld-hospital' },
+  { key:'vinn', pos:V_INN_POS, img:'bld-hut-b' },
+  { key:'vshop', pos:V_SHOP_POS, img:'bld-hut-c' },
+  { key:'vbank', pos:V_BANK_POS, img:'bld-hut-a' },
 ];
 /* Occluder boxes in world coords: { cx, hw (half width), top, baseY } --
    each matches the box its sprite is actually drawn into. */
@@ -7773,6 +8109,18 @@ function drawEntities(t){
   for (const b of BUILDING_DEFS){
     ents.push({ baseY:b.pos.y + .10, kind:'bld', b });
     occluders.push(buildingBox(b));
+  }
+  /* ROTWATCH CAMP (Settlements): the Wilds camp's furniture joins the
+     same depth order — the leaf-canopy tent (the Hermit Camp painter),
+     its fire, two log seats and the supply crate. */
+  {
+    const tentD = { x:RW_TENT_POS.x, y:RW_TENT_POS.y, s:1 };
+    const tb = tentBox(tentD);
+    ents.push({ baseY:tb.baseY, kind:'tent', d:tentD }); occluders.push(tb);
+    ents.push({ baseY:RW_FIRE_POS.y + .02, kind:'campfire', d:{ x:RW_FIRE_POS.x, y:RW_FIRE_POS.y, s:1 } });
+    ents.push({ baseY:RW_CRATE_POS.y + .03, kind:'crate', d:{ x:RW_CRATE_POS.x, y:RW_CRATE_POS.y, s:1 } });
+    ents.push({ baseY:ROTWATCH.y + .30, kind:'log', d:{ x:ROTWATCH.x - .26, y:ROTWATCH.y + .28, s:1, a:.4 } });
+    ents.push({ baseY:ROTWATCH.y + .32, kind:'log', d:{ x:ROTWATCH.x + .30, y:ROTWATCH.y + .30, s:.9, a:-.3 } });
   }
   // townsfolk join the same depth order at their feet (the Child's spot
   // is npcPositionAt's deterministic wander — no state, no sync).
@@ -7860,6 +8208,7 @@ function drawEntities(t){
     else if (e.kind === 'signpost') drawSignpost(e.d);
     else if (e.kind === 'mushroom') drawMushroom(e.d);
     else if (e.kind === 'campfire') drawCampfire(e.d, t);
+    else if (e.kind === 'crate') drawCrate(e.d);
     else if (e.kind === 'bld') drawBuildings(e.b.key);
     else if (e.kind === 'npc') drawNPC(e, t);
     else if (e.kind === 'shrine') drawShrine(e.key, t);
