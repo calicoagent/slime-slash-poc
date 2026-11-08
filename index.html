@@ -217,6 +217,34 @@
     box-shadow:3px 3px 0 rgba(0,0,0,.30); white-space:nowrap;
   }
   #bubble:after { content:""; position:absolute; left:50%; bottom:-10px; transform:translateX(-50%); border:6px solid transparent; border-top:8px solid #3a2b23; border-bottom:0; }
+  /* NPC dialogue: one in-world comic speech bubble, anchored by JS above
+     the speaker's head each frame. The speaker tag rides its top edge;
+     the New Cycle+ choice reuses the panel .kbfocus ring. */
+  #npcBubble {
+    position:fixed; z-index:35; width:min(78vw,340px); transform:translate(-50%,calc(-100% - 12px));
+    background:#fff; color:#3a2b23; border:3px solid #3a2b23; border-radius:0;
+    box-shadow:4px 4px 0 rgba(0,0,0,.30); padding:12px 14px 10px; cursor:pointer;
+    font-family:"VT323",monospace; font-size:21px; line-height:1.22;
+  }
+  #npcBubble:after { content:""; position:absolute; left:50%; bottom:-11px; transform:translateX(-50%); border:6px solid transparent; border-top:8px solid #3a2b23; border-bottom:0; }
+  /* flipped placement (speaker near the top of the screen): the bubble
+     sits BELOW the NPC, tail pointing up */
+  #npcBubble.below { transform:translate(-50%,0); }
+  #npcBubble.below:after { bottom:auto; top:-11px; border-top:0; border-bottom:8px solid #3a2b23; }
+  #npcName {
+    position:absolute; top:-17px; left:10px; background:#3a2b23; color:#ffd94d;
+    border:2px solid #3a2b23; padding:3px 7px 4px;
+    font-family:"Press Start 2P",monospace; font-size:8px; line-height:1; white-space:nowrap;
+  }
+  #npcText { min-height:50px; overflow-wrap:break-word; }
+  #npcHint { margin-top:5px; text-align:right; font-family:"Press Start 2P",monospace; font-size:7px; color:#97754a; animation:chPulse 1.6s ease-in-out infinite; }
+  .dlgChoices { display:flex; gap:8px; margin-top:9px; }
+  .dlgChoice {
+    flex:1; font-family:"Press Start 2P",monospace; font-size:8px; line-height:1.45; cursor:pointer;
+    background:#fff6df; color:#3a2b23; border:3px solid #3a2b23; border-radius:0; padding:9px 6px;
+    box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 2px 2px 0 rgba(0,0,0,.35);
+  }
+  .dlgChoice:active { transform:translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(0,0,0,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.35); }
 
   /* ---------- polish pass: combo / hint / pause ----------
      (the BOUNTY readout lives in the menu's MORE tab now — #bountyText /
@@ -795,6 +823,15 @@
 <div id="dmgFlash"></div>
 <div id="toaster"></div>
 <div id="bubble" class="hidden"></div>
+<div id="npcBubble" class="hidden">
+  <div id="npcName"></div>
+  <div id="npcText"></div>
+  <div id="dlgChoices" class="dlgChoices hidden">
+    <button type="button" class="dlgChoice" id="dlgChoice0">BEGIN NEW CYCLE+</button>
+    <button type="button" class="dlgChoice" id="dlgChoice1">NOT YET</button>
+  </div>
+  <div id="npcHint">E / TAP — NEXT</div>
+</div>
 <div id="hint" class="hidden"></div>
 <div id="pauseMenu" class="hidden">
   <div class="pauseCard px-panel">
@@ -1242,6 +1279,9 @@ const freshSession = () => ({
   // where the player is
   myZone: -1,                // current zone ring (banner fires on change; -1 = unset)
   nearBuilding: null,        // 'bank' | 'shop' | 'hospital' | null — drives the interact prompt
+  nearNpc: null,             // NPC id currently winning the interact prompt (session only)
+  dialogue: null,            // open NPC dialogue { npc, lines, i, lineAt, choiceAfter, choosing, choiceSel } — session only
+  npcTalkCounts: {},         // per-NPC count of conversations started (rotating line sets) — session only
   dlgAdvance: null,          // dialogue/card advance hook (RPG layer sets this); E routes to it FIRST when set
   chapterCard: null,         // open chapter card { lines, i } — advanced through ses.dlgAdvance
   panelFocus: null,          // building-panel keyboard focus { panel, el } — E confirms el, arrows/Tab move it
@@ -1564,6 +1604,36 @@ const SHOP_POS = { x: WORLD/2 + .67, y: WORLD/2 - .54 };
 const HOSPITAL_POS = { x: WORLD/2, y: WORLD/2 + .70 };
 const TOWN_R = 1.30;   // safe-zone radius around the town centre — 1.30 ≈ .75*sqrt(3), so the plaza AREA is 3x the old disc; covers all three buildings + the plaza; NO enemies inside, NO damage inside
 const KING_BAR_RANGE = 1.0;   // a Slime King's floating HP bar renders only when the LOCAL player is within this many world units (Handler)
+
+/* ============================================================ NPCs (static data)
+   Town folk are pure set dressing + dialogue: definitions are static,
+   positions are constants — except the Child, whose plaza wander is a
+   deterministic function of time (same trick as hopPhase: every client
+   computes the same spot from the same clock, zero sync, no state). x/y
+   are GROUND anchors (the feet); h is the sprite height in world units. */
+const NPC_DEFS = [
+  { id:'elder', name:'ELDER MIRRA', x:WORLD/2,       y:WORLD/2 - .15,            h:.365, head:.340, robe:'#557d3c', skin:'#e8b08a', hair:'#cfd4d1' },
+  { id:'forge', name:'FORGE',       x:SHOP_POS.x - .28, y:SHOP_POS.y + .16,     h:.365, head:.340, robe:'#8a5a2b', skin:'#8a5a3b', hair:'#263238' },
+  { id:'pike',  name:'WARDEN PIKE', x:HOSPITAL_POS.x + .29, y:HOSPITAL_POS.y + .10, h:.365, head:.340, robe:'#6f7f8c', skin:'#d9a37e', hair:'#aeb6ba' },
+  { id:'child', name:'THE CHILD',   x:WORLD/2 - .42, y:WORLD/2 + .05,            h:.365, head:.204, robe:'#5d9440', skin:'#f0bd93', hair:'#6d4527' },
+];
+const CHILD_WAYPOINTS = [
+  { x:WORLD/2 - .42, y:WORLD/2 + .05 }, { x:WORLD/2 - .16, y:WORLD/2 + .36 },
+  { x:WORLD/2 + .28, y:WORLD/2 + .30 }, { x:WORLD/2 + .44, y:WORLD/2 - .10 },
+  { x:WORLD/2 + .12, y:WORLD/2 - .40 }, { x:WORLD/2 - .30, y:WORLD/2 - .34 },
+];
+const CHILD_SEG_MS = 9000;   // one waypoint leg; the full loop is ~54s
+function npcPositionAt(def, now){
+  if (def.id !== 'child') return { x:def.x, y:def.y };
+  const pts = CHILD_WAYPOINTS, total = CHILD_SEG_MS * pts.length;
+  const cycle = ((now % total) + total) % total;
+  const i = Math.floor(cycle / CHILD_SEG_MS);
+  let f = (cycle - i * CHILD_SEG_MS) / CHILD_SEG_MS;
+  f = f * f * (3 - 2 * f);   // smoothstep: ease out of one waypoint, into the next (dwells at each end)
+  const a = pts[i], b = pts[(i + 1) % pts.length];
+  return { x:a.x + (b.x - a.x) * f, y:a.y + (b.y - a.y) * f };
+}
+function npcDef(id){ return NPC_DEFS.find(d => d.id === id) || null; }
 
 /* ---- polish pass state ---- */
 /* ============================================================ slimes */
@@ -2619,6 +2689,20 @@ function completeStoryQuest(){
   saveGame(); refreshHUD(); updateQuestTracker();
   if (!$('#menuPanel').classList.contains('hidden') && ses.menuTab === 'story') buildStoryTab();
 }
+/* NEW CYCLE+ (stage 2 left this to the NPC stage): the same tale told
+   harder. The chain restarts at CHAPTER I (the prologue is not repeated),
+   Sigils reset, cycle count rises; EVERYTHING else — level, coins, relics
+   owned AND equipped, side tale — is kept. Guardian/finale scaling by
+   cycle is the shrine stage's job; the count lives here in story.cycles. */
+function startNewCycle(){
+  const s = prog().story;
+  if (!s || !s.complete) return false;
+  act.setStory({ quest:'meadow', step:0, objHave:0, sigils:0, complete:false, cycles:s.cycles + 1 });
+  saveGame(); refreshHUD(); updateQuestTracker();
+  const q = questById('meadow');
+  if (q) showChapterCard(q.chapter, q.title, q.intro);
+  return true;
+}
 /* ---- quest tracker card (under the stat panel; tap opens STORY tab) ---- */
 function updateQuestTracker(){
   const card = $('#questCard'); if (!card) return;
@@ -2707,6 +2791,236 @@ function afterRelicChange(){
   recalc(); refreshHUD(); saveGame();
   if (!$('#menuPanel').classList.contains('hidden') && ses.menuTab === 'inventory') buildMenuInventory();
 }
+
+/* ============================================================ NPC dialogue
+   Line sets are DATA chosen by story state (dialogueSetFor); all runtime
+   state lives in ses.dialogue / ses.npcTalkCounts (session slice). One
+   comic bubble (#npcBubble) is anchored above the speaker's head by
+   updateDialogue() every frame. While a dialogue is open ses.dlgAdvance
+   points at advanceDialogue, so the E dispatcher (and bubble taps) walk
+   it: a press first completes the typewriter line, the next advances.
+   Walking > 0.6u from the speaker closes WITHOUT the completion hooks. */
+const FORGE_LINES = [
+  ['Mind the sparks, Blade. A keen edge is a promise kept in steel.',
+   'Mine ore with the pickaxe, bring me gems, and I will keep that promise.'],
+  ['Every tenth level, a weapon\'s steel strains at its gate. I feel it too.',
+   'Coins and gems open the gate. Skill alone will not bully good metal.'],
+  ['My grandfather polished the old guardian\'s armour, before the Rot crowned him.',
+   'He said the Emperor wept sap when the Tree first sickened. Sad steel, that.'],
+];
+const PIKE_LINES = [
+  ['Metal slime? Do not swing harder. Swing oftener. It takes one cut, always one.',
+   'A quick dagger will empty it while a great hammer is still clearing its throat.'],
+  ['Watch the Emperor at two-thirds and one-third of his strength. Guard rises then.',
+   'For six breaths no blade bites him. Spend them dodging his burning seed.'],
+  ['A King hides his hurt until you close in. Do not chase shadows across the field.',
+   'Potions are for the middle of a fight, Blade — not for admiring in a bag.'],
+];
+function elderLines(){
+  const s = prog().story;
+  if (s.complete) return { choice:true, lines:[
+    'Look at the fields, Blade. Green upon green, and no Rot in the wind.',
+    'Verdia blooms because a blade with no hand chose to be a gardener.',
+    'Yet roots remember roads. The Cycle can turn again, harder than before.',
+    'Say the word, and I will open the tale at the Meadow Shrine once more.',
+  ]};
+  if (s.quest === 'prologue' && s.step === 0) return { lines:[
+    'You came at last, little Blade. I am Mirra, keeper of what the grass forgets.',
+    'A thousand years past, the World Tree Verdia sickened, and its heart broke in three.',
+    'The slimes were its gardeners once. The Rot beneath the world has made them wild.',
+    'The prophecy names a blade carried by no hand. Look about you: no hand carries you.',
+    'Prove the edge still bites. Cut down the feral gardeners, then return to me.',
+  ]};
+  if (s.quest === 'prologue' && s.step === 1) return { lines:[
+    'Eight fall, and the Blade does not tremble. The prophecy chose well.',
+    'Three Verdant Sigils sleep in shrine and wildwood, each beneath a guardian\'s heel.',
+    'Gather them, and the road to the Rot\'s root will open beneath this town.',
+    'Begin east of town, at the Meadow Shrine. Its Warden wears bark-thick armour.',
+  ]};
+  if (s.step === 1 && s.quest === 'meadow') return { lines:[
+    'The first Sigil wakes, warm as spring rain. One root of the Tree remembers.',
+    'Its Warden\'s pauldron is yours now. Wear the garden\'s gratitude, Blade.',
+  ]};
+  if (s.step === 1 && s.quest === 'grove') return { lines:[
+    'The second Sigil wakes, and thorns loosen their hold on the Grove road.',
+    'Two voices sing. One more, and the Tree will call its guardian by name.',
+  ]};
+  if (s.step === 1 && s.quest === 'wilds') return { lines:[
+    'The third Sigil wakes. Hear it, Blade? The whole buried heart is singing.',
+    'Return when you are ready. What waits below has worn a crown too long.',
+  ]};
+  if (s.quest === 'finale' && s.step === 0) return { lines:[
+    'Lay the three Sigils in my hands, Blade. Feel how they sing together?',
+    'That song is the Tree remembering its heart. The Rot has heard it too.',
+    'Beneath us, its crowned prisoner wakes: the old guardian, the Slime Emperor.',
+    'Go, Verdant Blade. Cut the Rot at its root, and let Verdia bloom again.',
+  ]};
+  if (s.quest === 'finale') return { lines:[
+    'The Sigils are set. Somewhere below, a crown is turning toward you.',
+    'When his Royal Guard rises, do not waste your edge. Survive it, then strike.',
+  ]};
+  if (s.quest === 'meadow') return { lines:[
+    'The Meadow Shrine sleeps east of town, where the grass still remembers green.',
+    'The Verdant Warden stands over the first Sigil. Break its guard, Blade.',
+  ]};
+  if (s.quest === 'grove') return { lines:[
+    'Thorns have swallowed the Grove Shrine, and a Regent holds court there.',
+    'It calls little gardeners to its side. Cut the court away, then the crown.',
+  ]};
+  if (s.quest === 'wilds') return { lines:[
+    'The last Sigil lies deep in the Wilds, where the Rot blooms thick as summer.',
+    'The Colossus seeds itself as it dies. Finish every piece it leaves behind.',
+  ]};
+  return { lines:['The Sigils wait, Blade. The grass still believes in you.'] };
+}
+function childLines(){
+  const s = prog().story;
+  if (s.sproutsDone) return { lines:[
+    'They came home! Pip is fat, Nib is muddy, and Sprout ate a button.',
+    'I planted them by the plaza where the sun is best. You can visit!',
+  ]};
+  if (s.quest === 'prologue') return { lines:[
+    'Blade! Blade! Did the gardeners really used to talk to the Tree?',
+    'My sproutlings ran away when the grass went strange. Three of them!',
+    'Elder says I must wait until you finish your test. Grown-ups are slow.',
+  ]};
+  if (s.sprouts >= 3) return { lines:[
+    'You found them? All three? Pip, Nib, and little Sprout?',
+    'Tell me where they hid! No — tell me they are safe first. Are they?',
+  ]};
+  if (s.sprouts > 0) return { lines:[
+    s.sprouts + ' of my sproutlings are home. ' + (3 - s.sprouts) + ' still hide out there.',
+    'Pip loves sunny clearings. Nib hides by wet stones. Sprout chases sparkles.',
+    'Check beyond the town grass. They are small, but their leaves wiggle.',
+  ]};
+  return { lines:[
+    'Blade! My three sproutlings ran off, and nobody small can find them.',
+    'Pip loves sunny clearings. Nib hides by wet stones. Sprout chases sparkles.',
+    'If you find one, it will know your green smell and come home. Please?',
+  ]};
+}
+function dialogueSetFor(npcId){
+  if (npcId === 'elder') return elderLines();
+  if (npcId === 'child') return childLines();
+  if (npcId === 'forge'){ const sets = FORGE_LINES; return { rotate:true, lines:sets[(ses.npcTalkCounts.forge || 0) % sets.length] }; }
+  if (npcId === 'pike'){ const sets = PIKE_LINES; return { rotate:true, lines:sets[(ses.npcTalkCounts.pike || 0) % sets.length] }; }
+  return { lines:[] };
+}
+function npcBobPx(def, t){ return Math.sin(t / 620 + def.id.charCodeAt(0) * 1.7 + def.id.length) * 1.4; }
+function startDialogue(npcId){
+  const def = npcDef(npcId);
+  if (!def || !ses.started || ses.paused || ses.dialogue || ses.chapterCard) return false;
+  if (buildingPanelOpen() || !$('#menuPanel').classList.contains('hidden')) return false;
+  const set = dialogueSetFor(npcId);
+  if (!set.lines || !set.lines.length) return false;
+  if (set.rotate) ses.npcTalkCounts[npcId] = (ses.npcTalkCounts[npcId] || 0) + 1;
+  ses.dialogue = { npc:npcId, lines:[...set.lines], i:0, lineAt:performance.now(), choiceAfter:!!set.choice, choosing:false, choiceSel:1 };
+  $('#npcName').textContent = def.name;
+  $('#npcText').textContent = '';
+  $('#dlgChoices').classList.add('hidden');
+  $('#npcHint').textContent = 'E / TAP — NEXT';
+  $('#npcBubble').classList.remove('hidden');
+  updateDialogue._txt = '';
+  ses.dlgAdvance = advanceDialogue;
+  updateDialogue(performance.now());
+  beep(660, .05, 'triangle', .05);
+  return true;
+}
+function renderDialogueChoices(){
+  const d = ses.dialogue; if (!d) return;
+  $('#dlgChoice0').classList.toggle('kbfocus', d.choosing && d.choiceSel === 0);
+  $('#dlgChoice1').classList.toggle('kbfocus', d.choosing && d.choiceSel === 1);
+}
+function closeDialogueUI(){
+  ses.dialogue = null;
+  $('#npcBubble').classList.add('hidden');
+  $('#npcBubble').classList.remove('below');
+  $('#dlgChoices').classList.add('hidden');
+  $('#dlgChoice0').classList.remove('kbfocus');
+  $('#dlgChoice1').classList.remove('kbfocus');
+  if (ses.dlgAdvance === advanceDialogue) ses.dlgAdvance = null;
+}
+function finishDialogue(){
+  const d = ses.dialogue; if (!d) return;
+  const npc = d.npc;
+  closeDialogueUI();   // clear the hook FIRST: a completed return can open a chapter card, which claims ses.dlgAdvance for itself
+  if (npc === 'elder'){ storyEvent('talk', { npc:'elder' }); storyEvent('return', { npc:'elder' }); }
+  if (npc === 'child'){ storyEvent('talk', { npc:'child' }); storyEvent('return', { npc:'child' }); }
+}
+function openDialogueChoice(){
+  const d = ses.dialogue; if (!d) return;
+  d.choosing = true; d.choiceSel = 1;   // NOT YET starts focused: a stray advance press must never restart the Cycle
+  $('#dlgChoices').classList.remove('hidden');
+  $('#npcHint').textContent = 'ARROWS — CHOOSE · E — CONFIRM';
+  renderDialogueChoices();
+  beep(520, .05, 'triangle', .05);
+}
+function moveDialogueChoice(dir){
+  const d = ses.dialogue; if (!d || !d.choosing) return;
+  d.choiceSel = (d.choiceSel + dir + 2) % 2;
+  renderDialogueChoices();
+  beep(600, .04, 'triangle', .04);
+}
+function chooseDialogueChoice(idx){
+  const d = ses.dialogue; if (!d || !d.choosing) return;
+  if (typeof idx === 'number') d.choiceSel = idx;
+  const begin = d.choiceSel === 0;
+  closeDialogueUI();
+  if (begin) startNewCycle();
+}
+function advanceDialogue(){
+  const d = ses.dialogue;
+  if (!d){ if (ses.dlgAdvance === advanceDialogue) ses.dlgAdvance = null; return; }
+  if (d.choosing){ chooseDialogueChoice(); return; }
+  const line = d.lines[d.i] || '';
+  const shown = Math.min(line.length, Math.floor((performance.now() - d.lineAt) / 25) + 1);
+  if (shown < line.length){
+    d.lineAt = performance.now() - line.length * 25;   // reveal the whole line; the frame updater paints it
+    updateDialogue(performance.now());
+    return;
+  }
+  if (d.i < d.lines.length - 1){
+    d.i++; d.lineAt = performance.now();
+    $('#npcText').textContent = ''; updateDialogue._txt = '';
+    beep(520, .04, 'triangle', .04);
+    return;
+  }
+  if (d.choiceAfter){ openDialogueChoice(); return; }
+  finishDialogue();
+}
+function updateDialogue(now){
+  const d = ses.dialogue; if (!d) return;
+  const def = npcDef(d.npc); if (!def){ closeDialogueUI(); return; }
+  const p = npcPositionAt(def, now);
+  if (dist2(me.x, me.y, p.x, p.y) > .6 * .6){ closeDialogueUI(); return; }   // walked away mid-talk: close, no completion hooks
+  const b = $('#npcBubble');
+  const x = NX(p.x), y = NY(p.y) - def.head * UNIT() - npcBobPx(def, now) - 4;
+  /* keep the bubble ON screen: clamp x inside the viewport, and if the
+     space above the head would push it into the top toast stack, flip it
+     below the speaker's feet instead (tail up, .below) */
+  const bw = b.offsetWidth || 340, bh = b.offsetHeight || 110;
+  const cx = clamp(x, bw / 2 + 6, W - bw / 2 - 6);
+  const below = (y - bh - 12) < 56;
+  const top = below ? clamp(NY(p.y) + 16, 8, Math.max(8, H - bh - 8)) : y;
+  if (Math.abs((updateDialogue._x || 0) - cx) > .5 || Math.abs((updateDialogue._y || 0) - top) > .5 || updateDialogue._below !== below){
+    updateDialogue._x = cx; updateDialogue._y = top; updateDialogue._below = below;
+    b.classList.toggle('below', below);
+    b.style.left = cx + 'px'; b.style.top = top + 'px';
+  }
+  if (!d.choosing){
+    const line = d.lines[d.i] || '';
+    const shown = Math.min(line.length, Math.floor((now - d.lineAt) / 25) + 1);   // ~40 chars/sec typewriter
+    const txt = line.slice(0, shown);
+    if (txt !== updateDialogue._txt){ updateDialogue._txt = txt; $('#npcText').textContent = txt; }
+  }
+}
+$('#npcBubble').addEventListener('pointerdown', e=>{
+  if (!ses.dialogue || (e.target.closest && e.target.closest('.dlgChoice'))) return;
+  e.stopPropagation();
+  advanceDialogue();
+});
+$('#dlgChoice0').onclick = () => chooseDialogueChoice(0);
+$('#dlgChoice1').onclick = () => chooseDialogueChoice(1);
 
 /* ============================================================ survival: HP, damage, death
    HP is LOCAL to each player — it is never sent over the network. Contact
@@ -2833,6 +3147,7 @@ function interactPressed(){
     if (f && f.panel === panel && panel.contains(f.el) && !f.el.disabled) f.el.click();
     return true;   // a panel is up: E belongs to the panel, never to Meteor Chop
   }
+  if (ses.nearNpc){ startDialogue(ses.nearNpc); return true; }
   if (ses.nearBuilding){ openBuilding(ses.nearBuilding); return true; }
   return false;
 }
@@ -3034,7 +3349,7 @@ function buyInn(id){
 }
 function updateInteract(){
   const pr = $('#interactPrompt');
-  if (!ses.started){ pr.classList.add('hidden'); ses.nearBuilding = null; updateInteract._pr = null; return; }
+  if (!ses.started){ pr.classList.add('hidden'); ses.nearBuilding = null; ses.nearNpc = null; updateInteract._pr = null; return; }
   const db = Math.sqrt(dist2(me.x,me.y,BANK_POS.x,BANK_POS.y));
   const ds = Math.sqrt(dist2(me.x,me.y,SHOP_POS.x,SHOP_POS.y));
   const dh = Math.sqrt(dist2(me.x,me.y,HOSPITAL_POS.x,HOSPITAL_POS.y));
@@ -3048,18 +3363,34 @@ function updateInteract(){
      flickered in/out around town and the key often opened nothing. Outside town
      the .34 radius rule applies unchanged. */
   const inTown = dist2(me.x, me.y, WORLD/2, WORLD/2) < TOWN_R*TOWN_R;
-  ses.nearBuilding = (inTown || nd < .34) ? nb : null;
+  const building = (inTown || nd < .34) ? nb : null;
   const panelOpen = !$('#bankPanel').classList.contains('hidden') || !$('#shopPanel').classList.contains('hidden') || !$('#hospitalPanel').classList.contains('hidden');
+  /* NPCs compete for the same prompt: the nearest townsperson inside talk
+     range (.6u — the same range that keeps a dialogue alive) wins over a
+     building only when they are strictly NEARER than it. While a dialogue
+     is open the prompt stays down: E belongs to the conversation. */
+  let npcId = null, npcDist = Infinity;
+  const nowNpc = performance.now();
+  for (const def of NPC_DEFS){
+    const p = npcPositionAt(def, nowNpc), d = Math.sqrt(dist2(me.x, me.y, p.x, p.y));
+    if (d < npcDist){ npcDist = d; npcId = def.id; }
+  }
+  const targetNpc = (!ses.dialogue && !panelOpen && npcDist <= .6 && (!building || npcDist < nd)) ? npcId : null;
+  ses.nearNpc = targetNpc;
+  ses.nearBuilding = targetNpc ? null : building;
   // change-only DOM writes: this runs EVERY frame, and re-setting the
   // same textContent replaces the text node (layout work) every time
-  const prName = (ses.nearBuilding && !panelOpen) ? (ses.nearBuilding==='bank' ? 'BANK' : ses.nearBuilding==='shop' ? 'SHOP' : 'INN') : null;
+  const prName = (ses.nearBuilding && !panelOpen && !ses.dialogue) ? (ses.nearBuilding==='bank' ? 'BANK' : ses.nearBuilding==='shop' ? 'SHOP' : 'INN') : null;
   // the prompt carries a key-cap chip: E on desktop (last input not touch),
   // TAP on touch — the chip is part of the change-only key so flipping
   // input type re-renders the label
-  const wantPr = prName ? (ses.lastPtrType==='touch' ? 'TAP' : 'E') + '|' + prName : null;
+  const cap = ses.lastPtrType==='touch' ? 'TAP' : 'E';
+  const npcDefNear = targetNpc ? npcDef(targetNpc) : null;
+  const wantPr = targetNpc ? cap + '|NPC|' + targetNpc : (prName ? cap + '|' + prName : null);
   if (wantPr !== updateInteract._pr){
     updateInteract._pr = wantPr;
-    if (wantPr){ pr.innerHTML = '<span class="keycap">' + (ses.lastPtrType==='touch' ? 'TAP' : 'E') + '</span>OPEN ' + prName; pr.classList.remove('hidden'); }
+    if (targetNpc && npcDefNear){ pr.innerHTML = '<span class="keycap">' + cap + '</span>' + npcDefNear.name; pr.classList.remove('hidden'); }
+    else if (prName){ pr.innerHTML = '<span class="keycap">' + cap + '</span>OPEN ' + prName; pr.classList.remove('hidden'); }
     else pr.classList.add('hidden');
   }
   // keyboard panel focus dies with its panel — panels close from many
@@ -3340,6 +3671,13 @@ addEventListener('keydown', e=>{
   if (e.key==='Escape' && !$('#bankPanel').classList.contains('hidden')){ $('#bankPanel').classList.add('hidden'); return; }   // Esc closes the bank / shop like the inn and menu (it used to open PAUSE over them)
   if (e.key==='Escape' && !$('#shopPanel').classList.contains('hidden')){ $('#shopPanel').classList.add('hidden'); return; }
   if (e.key==='Escape' || e.key==='p' || e.key==='P'){ togglePause(); return; }
+  // dialogue choice navigation: the New Cycle+ options reuse the panel
+  // focus keys + .kbfocus ring; E confirms via ses.dlgAdvance.
+  if (ses.dialogue && ses.dialogue.choosing && (e.key==='Tab' || e.key==='ArrowDown' || e.key==='ArrowUp')){
+    e.preventDefault();
+    moveDialogueChoice((e.key==='ArrowUp' || e.shiftKey) ? -1 : 1);
+    return;
+  }
   // building-panel keyboard navigation: arrows / Tab move the focus ring
   // (E confirms it — see interactPressed). preventDefault stops page scroll.
   if (buildingPanelOpen() && (e.key==='Tab' || e.key==='ArrowDown' || e.key==='ArrowUp')){
@@ -4381,7 +4719,8 @@ $('#restartBtn').onclick = ()=>{
 };
 $('#interactPrompt').addEventListener('pointerdown', e=>{
   e.stopPropagation();   // fire on pointerDOWN so sword movement can't steal the click
-  openBuilding(ses.nearBuilding);   // same action the E key performs via interactPressed
+  if (ses.nearNpc) startDialogue(ses.nearNpc);   // NPC prompt: talk
+  else openBuilding(ses.nearBuilding);   // same actions the E key performs via interactPressed
 });
 $('#depBtn').onclick = ()=>{ act.patchProgress(p => ({ banked: p.banked + p.coins, coins: 0 })); sfx.buy(); updateBankPanel(); refreshHUD(); saveGame(); };   // a deposit must be on disk before the next death or tab kill
 $('#wdBtn').onclick = ()=>{ act.patchProgress(p => ({ coins: p.coins + p.banked, banked: 0 })); sfx.coin(); updateBankPanel(); refreshHUD(); saveGame(); };
@@ -4419,6 +4758,10 @@ const COLOR2IMG = {
 const WORLD_IMGS = {};
 for (const n of ['tile-grass','decor-tree','decor-rock','decor-pond','decor-grass','bld-bank','bld-shop','bld-hospital']){
   const im=new Image(); im.src='assets/img/'+n+'.png'; WORLD_IMGS[n]=im;
+}
+const NPC_IMGS = {};
+for (const n of ['elder','forge','pike','child']){
+  const im=new Image(); im.src='assets/img/npc-'+n+'.png'; NPC_IMGS[n]=im;
 }
 const imgOk = im => !!(im && im.complete && im.naturalWidth);
 function slimeSpriteImg(s){
@@ -5077,6 +5420,44 @@ function drawBuildings(only){
   }
   }
 }
+/* One townsperson: sprite on the standard ground shadow, a subtle idle
+   bob, and a small name plate when the player is close. The sprite sheet
+   canvases share one height with the Child already at 60% inside it, so
+   every NPC draws at def.h and the visible head height is def.head. */
+function drawNPC(e, t){
+  const def = e.def, u = UNIT();
+  const x = NX(e.x), groundY = NY(e.y), bob = npcBobPx(def, t);
+  const hPx = def.h * u, wPx = hPx * 512 / 688;
+  ctx.fillStyle = 'rgba(0,0,0,.18)';
+  ctx.beginPath(); ctx.ellipse(x, groundY + 3, wPx * .30, Math.max(3, hPx * .045), 0, 0, 7); ctx.fill();
+  const img = NPC_IMGS[def.id];
+  if (imgOk(img)){
+    ctx.drawImage(img, x - wPx / 2, groundY - hPx + bob, wPx, hPx);
+  } else {
+    // chunky fallback figure (palette per NPC) if a sprite ever fails to load
+    const bw = def.head * u * .46, bh = def.head * u;
+    ctx.save(); ctx.translate(x, groundY + bob);
+    ctx.fillStyle = def.robe;
+    ctx.beginPath(); ctx.moveTo(-bw * .34, -bh * .78); ctx.lineTo(bw * .34, -bh * .78); ctx.lineTo(bw * .52, 0); ctx.lineTo(-bw * .52, 0); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = def.skin; ctx.beginPath(); ctx.arc(0, -bh * .88, bh * .115, 0, 7); ctx.fill();
+    ctx.fillStyle = def.hair; ctx.beginPath(); ctx.arc(0, -bh * .925, bh * .115, Math.PI, 0); ctx.closePath(); ctx.fill();
+    if (def.id === 'elder'){ ctx.strokeStyle = '#7a4d16'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(bw * .48, -bh * .82); ctx.lineTo(bw * .55, 0); ctx.stroke(); }
+    if (def.id === 'forge'){ ctx.fillStyle = '#5b3a1e'; ctx.fillRect(-bw * .30, -bh * .68, bw * .60, bh * .42); }
+    if (def.id === 'pike'){ ctx.fillStyle = '#9db2c8'; ctx.fillRect(-bw * .38, -bh * .76, bw * .76, bh * .16); }
+    ctx.restore();
+  }
+  if (ses.started && dist2(me.x, me.y, e.x, e.y) < .55 * .55){
+    const topY = groundY - def.head * u + bob;
+    ctx.save();
+    ctx.font = '7px "Press Start 2P", monospace';
+    const tw = ctx.measureText(def.name).width, lw = tw + 10, lh = 13;
+    const lx = x - lw / 2, ly = topY - lh - 4;
+    ctx.fillStyle = '#3a2b23'; ctx.fillRect(lx, ly, lw, lh);
+    ctx.fillStyle = '#ffd94d'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(def.name, x, ly + lh / 2 + .5);
+    ctx.restore();
+  }
+}
 /* Elite radiance — NO circles (Handler: the banded rings still read as
    circles). A star of 8 jagged RAYS radiates from behind the body, slowly
    rotating, over a rotated-square (diamond) pool of ground light. Hard
@@ -5373,6 +5754,13 @@ function drawEntities(t){
     ents.push({ baseY:b.pos.y + .10, kind:'bld', b });
     occluders.push(buildingBox(b));
   }
+  // townsfolk join the same depth order at their feet (the Child's spot
+  // is npcPositionAt's deterministic wander — no state, no sync)
+  for (const def of NPC_DEFS){
+    const p = npcPositionAt(def, t);
+    if (p.x<ses.cam.x-.45 || p.x>ses.cam.x+vw+.45 || p.y<ses.cam.y-.55 || p.y>ses.cam.y+vh+.25) continue;   // view-culled
+    ents.push({ baseY:p.y, kind:'npc', def, x:p.x, y:p.y });
+  }
   // slime anchor = ground contact (y + r*.8) -- NOT the hop-lifted sprite,
   // so a jumping slime never changes depth order mid-hop
   /* VIEW CULL: the world holds ~80-120 slimes but a phone view is ~1.8x1u
@@ -5418,6 +5806,7 @@ function drawEntities(t){
     if (e.kind === 'tree') drawTree(e.d, t);
     else if (e.kind === 'rock') drawRock(e.d);
     else if (e.kind === 'bld') drawBuildings(e.b.key);
+    else if (e.kind === 'npc') drawNPC(e, t);
     else if (e.kind === 'node') drawNode(e.n, t);
     else if (e.kind === 'orb') drawOrb(e.b, t);
     else drawSlime(e.s, t);
@@ -5711,6 +6100,7 @@ function frame(now){
   }
 
   if (ses.started) updateInteract();   // every frame — the OPEN prompt and panel auto-close must never lag
+  if (ses.started) updateDialogue(now);   // the speech bubble tracks its speaker + the typewriter runs
   drawField(now);
   // y-sorted entity pass: trees, rocks, buildings and slimes by ground
   // anchor, then occlusion ghosts for slimes hidden behind props
