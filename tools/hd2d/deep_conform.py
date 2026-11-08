@@ -9,9 +9,10 @@ and conforms them to the sprites already shipped in ``assets/img``:
 * missing samples are filled from the nearest generated foreground pixel, so
   no white sheet background can bleed into a silhouette;
 * the current sprite's alpha channel and canvas size are copied back exactly;
-* slime face-band rows 120-215 are restored byte-for-byte from each current
-  slime sprite after palette work and quantisation, keeping runtime faces
-  clean;
+* after palette work and quantisation, small elliptical zones around the
+  runtime face anchors are blended to a locally smoothed, luminance-matched
+  version of the new art (see ``face_zone_blend``), so runtime faces sit on
+  clean gel with no seam against the detailed art around them;
 * the coloured slime family is palette-remapped from the conformed pink hero;
 * metal is a cool chrome derivative of the same hero.
 
@@ -261,15 +262,75 @@ def chrome_derivative(hero_rgba: np.ndarray) -> np.ndarray:
     return output
 
 
+# Runtime face anchors on the 256x255 master (see drawSlimeFace in
+# index.html): eye centres (62,166) and (162,166), eye oval ~15x21; mouth
+# centre (109,196), smile width 37. Clean zones are ellipses (cx, cy, rx, ry)
+# around those anchors with margin for the strokes, feathered ~12px.
+FACE_ZONES = ((62, 166, 26, 24), (162, 166, 26, 24), (109, 196, 32, 20))
+FACE_FEATHER_PX = 12.0
+FACE_SMOOTH_SIGMA = 5.5
+
+
+def face_zone_weights(shape: tuple[int, int]) -> np.ndarray:
+    """Feathered 0..1 weight map: 1 inside each face zone, smoothstep to 0
+    across ~FACE_FEATHER_PX outside it, so the blend has no visible edge."""
+    height, width = shape
+    yy, xx = np.mgrid[0:height, 0:width]
+    weight = np.zeros((height, width), dtype=np.float64)
+    for cx, cy, rx, ry in FACE_ZONES:
+        d = np.sqrt(((xx - cx) / rx) ** 2 + ((yy - cy) / ry) ** 2)
+        feather = FACE_FEATHER_PX / ((rx + ry) / 2.0)
+        t = np.clip((1.0 + feather - d) / feather, 0.0, 1.0)
+        weight = np.maximum(weight, t * t * (3.0 - 2.0 * t))
+    return weight
+
+
+def alpha_weighted_smooth(rgb: np.ndarray, alpha: np.ndarray, sigma: float) -> np.ndarray:
+    """Local average of rgb weighted by alpha (transparent pixels contribute
+    nothing), used to calm gel detail under the runtime face."""
+    a = (alpha.astype(np.float64) / 255.0)[..., None]
+    num = ndimage.gaussian_filter(rgb * a, sigma=(sigma, sigma, 0))
+    den = ndimage.gaussian_filter(a, sigma=(sigma, sigma, 0))
+    return np.divide(num, den, out=rgb.copy(), where=den > 1e-4)
+
+
+def face_zone_blend(rgba: np.ndarray, old_rgba: np.ndarray) -> np.ndarray:
+    """Blend the face zones of the new art toward a smoothed version of
+    itself, luminance-matched to the old sprite's face area, feathered so
+    no boundary shows. Everything outside the zones is byte-identical."""
+    alpha = rgba[:, :, 3]
+    weight = face_zone_weights(rgba.shape[:2])
+    rgb = rgba[:, :, :3].astype(np.float64)
+    smooth = alpha_weighted_smooth(rgb, alpha, FACE_SMOOTH_SIGMA)
+
+    core = (weight >= 0.999) & (alpha > 0)
+    gain = 1.0
+    if np.any(core):
+        lum = np.array([0.2126, 0.7152, 0.0722])
+        old_mean = float((old_rgba[:, :, :3].astype(np.float64) @ lum)[core].mean())
+        new_mean = float((smooth @ lum)[core].mean())
+        if new_mean > 1e-6:
+            gain = float(np.clip(old_mean / new_mean, 0.75, 1.35))
+
+    treated = np.clip(smooth * gain, 0.0, 255.0)
+    blended = rgb * (1.0 - weight[..., None]) + treated * weight[..., None]
+    output = rgba.copy()
+    output[:, :, :3] = np.rint(blended).astype(np.uint8)
+    output[:, :, 3] = alpha
+    output[alpha == 0] = (0, 0, 0, 0)
+    return output
+
+
 def finish_slime(rgba: np.ndarray, current: Image.Image) -> Image.Image:
     current_rgba = np.asarray(current.convert("RGBA"))
     alpha = current_rgba[:, :, 3]
     finished = quantise(rgba, alpha)
     output = np.asarray(finished).copy()
-    # Exact restoration, after quantisation, as specified for the face band.
-    output[FACE_BAND, :, :3] = current_rgba[FACE_BAND, :, :3]
     output[:, :, 3] = alpha
     output[alpha == 0] = (0, 0, 0, 0)
+    # Blended clean-face zones (replaces the old byte-for-byte face-band
+    # restore, whose hard seams read as a pale slab across the face).
+    output = face_zone_blend(output, current_rgba)
     return Image.fromarray(output, mode="RGBA")
 
 
