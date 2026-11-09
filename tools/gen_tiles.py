@@ -97,18 +97,41 @@ save('tile-path.png', quantise(f, [
     (1.00, (200, 164, 114)),
 ], rng, speckle=[(0.010, (148, 112, 64)), (0.010, (222, 192, 140)), (0.004, (176, 162, 140))]))
 
-# --- STONE: plaza flagstones — 2x2 wrapped flags per tile, grey family
-# of the old plaza curb (#a89f92 / #c2bab0) lifted into the tile light.
+# --- STONE: plaza flagstones — 4x4 wrapped flags per tile (basics
+# gate: the old 2x2 flags made each 0.55u cell one giant slab and the
+# plaza read as bathroom tiles), grey family of the old plaza curb
+# (#a89f92 / #c2bab0) lifted into the tile light. Each flag gets a
+# small hash brightness step so neighbours read as separate stones;
+# seams are 2px and HALF-blended — a grout hint, not a grid stamp.
 rng = np.random.default_rng(20261124)
 f = field(rng, weights=(0.4, 0.35, 0.25))
 img = quantise(f, [
     (0.30, (186, 177, 161)),
     (0.72, (198, 190, 176)),
     (1.00, (210, 203, 190)),
-], rng, speckle=[(0.008, (168, 158, 142)), (0.008, (222, 216, 202))])
-# flag seams: a darker wrapped cross at the half-tile lines (both axes wrap)
-img[126:130, :] = (172, 163, 148); img[:, 126:130] = (172, 163, 148)
-img[0:2, :] = (172, 163, 148); img[:, 0:2] = (172, 163, 148)
-img[254:256, :] = (172, 163, 148); img[:, 254:256] = (172, 163, 148)
+], rng, speckle=[(0.008, (168, 158, 142)), (0.008, (222, 216, 202))]).astype(np.int16)
+FL = S // 4   # one flag = 64px
+for fy in range(4):
+    for fx in range(4):
+        hsh = ((fx * 73856093) ^ (fy * 19349663) ^ 20261124) % 3   # -1, 0, +1 step
+        img[fy*FL:(fy+1)*FL, fx*FL:(fx+1)*FL] += (int(hsh) - 1) * 6
+# fine grain so no flag is one flat tone edge to edge
+img += ((vnoise(rng, 16) - .5) * 10).astype(np.int16)[:, :, None]
+# running bond: odd flag rows shift half a flag (toroidal roll keeps
+# the tile seamless) — a perfect square grid is what read as tiles.
+for fy in (1, 3):
+    img[fy*FL:(fy+1)*FL] = np.roll(img[fy*FL:(fy+1)*FL], FL // 2, axis=1)
+seam = np.array((178, 169, 154), dtype=np.int16)
+for b in (0, 64, 128, 192):   # horizontal seams straddle each row boundary
+    idx = [(b - 1) % S, b % S]
+    img[idx, :] = (img[idx, :] + seam) // 2
+for fy in range(4):           # vertical seams follow the bond offset
+    off = (FL // 2) if fy % 2 else 0
+    band = img[fy*FL:(fy+1)*FL]
+    for b in (0, 64, 128, 192):
+        bb = (b + off) % S
+        idx = [(bb - 1) % S, bb]
+        band[:, idx] = (band[:, idx] + seam) // 2
+    img[fy*FL:(fy+1)*FL] = band
 save('tile-stone.png', img)
 print('done')
