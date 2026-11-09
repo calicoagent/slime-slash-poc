@@ -1448,6 +1448,15 @@ const ZONE_IDS = Object.keys(ZONES_DEF);
 const HUNTING_ZONES = ['glade', 'grove', 'hollow', 'wilds', 'treasure', 'hermit'];
 const ALTAR = { zone:'glade', x:8.5, y:6.4 };            // ISW's painted summoning circle on the landing_glade plate
 const ALTAR_SPAWN = { x:8.5, y:7.15 };                   // where the summoned wake, just south of the circle
+/* PRACTICE SLIME (coach build, 2026-11-10): ONE lone baby pinned to the
+   altar road, midway between the summoning circle and the Alderwake
+   exit — every new blade's arrival walk passes it, so the first swing
+   happens one-on-one, away from the musou crowd. Spot verified
+   standable, prop-free, outside the altar safe disc (2.75u from its
+   centre). Host-kept: respawns at its spot ~5s after a kill, leashed
+   to its patch, and excluded from the zone stock census + caps. */
+const PRACTICE_ID = 'practice-glad';
+const PRACTICE_SPOT = { zone:'glade', x:11.2, y:6.9 };
 const TOWN = { x:7.2, y:7.2 };                           // Alderwake plaza centre (zone units, town zone)
 /* Zone travel: exits sit at diamond-edge midpoints. Arrival = the
    matching exit in the destination zone, pushed inward. Gates read the
@@ -1800,6 +1809,7 @@ const freshWorld = () => ({
   pendingBursts: [],         // boss 'burst': timed single AIMED orbs, target re-picked per volley
   // host sim clocks + latches
   bossSpawnAt: Infinity,     // host: next SLIME EMPEROR spawn time
+  practiceAt: 0,             // host: when the practice slime may (re)enter (kill time + 5s)
   lastMetalAt: -1,           // host: the metal GUARANTEE clock — written ONLY inside spawnSlime at the moment a metal slime actually enters the world (plus reign init); -1 = uninitialised
   metalNoneNearSince: 0,     // host: since when NO metal has been NEAR (within 0.9u of any player); 0 = a metal is near right now
   bossFireAt: 0,             // host: next bullet-pattern volley
@@ -1824,6 +1834,18 @@ const freshWorld = () => ({
             exactly x/y/a/e/w/n/c/s/l). Stable object like world: the
             frame loop writes it in place. `ses` is the slice, `me` is
             ses.player (the local player's live body). */
+/* FIRST-FIGHT COACH (2026-11-10): the manual-sword gate — the blade
+   cuts only above 240 px/s — is invisible until someone says it out
+   loud, so the game does, once per save, in-world chips only: A on the
+   first approach to a wild slime, B when 2.5s of slow dragging near
+   slimes lands zero hits (the dull grey blade from the liveness pass
+   is the visual half of that sentence), C — the stab — on the first
+   approach after the first kill. progress.coachV latches it done
+   forever; loadProgress births the latch on any save with kills. */
+const COACH_A = 'SWING FAST TO CUT!';
+const COACH_B = "TOO SLOW — A DULL BLADE\nCAN'T CUT. WHIP IT!";
+const COACH_C = 'JAB IN A STRAIGHT LINE TO STAB';
+const freshCoach = () => ({ stage:0, chip:'', slowMs:0, bArmed:false, kills0:0, init:false, farAt:0, cAt:0, cShown:0, lastTick:0 });
 const freshSession = () => ({
   player: {
     id: selfId, color:`hsl(${hashHue(selfId)} 80% 55%)`,
@@ -1849,6 +1871,8 @@ const freshSession = () => ({
   dmgFlashAt: 0,             // last time the player took damage (flat red flash decay stamp)
   myTrail: [],               // slash trail: full blade segments {bx, by (grip, world), tx, ty (tip, world), t} — rendered as swept quads
   hitPruneAt: 0,             // last me.lastHitAt prune (was localHitCheck._prune)
+  liveF: 1,                  // blade liveness 0..1 (render only — the dull/bright read of the cut gate)
+  coach: freshCoach(),       // first-fight coach state machine (session side; the done-latch is progress.coachV)
   lastTingAt: 0,             // metal 'ting' sound throttle
   lastPickToastAt: 0,        // 'NEED THE PICKAXE' toast throttle
   // procedural BGM state (Batch A): started on the PLAY gesture; the
@@ -2116,6 +2140,7 @@ const freshProgress = () => ({
   // settings
   muted: false,
   hintsSeen: { slash:false, skill:false, sphere:false },
+  coachV: 0,                            // first-fight coach latch: 1 once the attack-mechanics lesson is done (or born-done on a save with kills)
   rackCollapsed: window.innerWidth <= 640,   // phones start collapsed; a save overrides
 });
 const store = createStore((set, get) => {
@@ -2161,7 +2186,7 @@ const store = createStore((set, get) => {
           econV:2,   // economy unit version: 2 = ×100-rescaled units. Absent/<2 in a save = pre-rescale units; loadProgress migrates ×100 exactly once.
           worldV:2,  // world layout version: 2 = ISW zone world. Absent/<2 = an archipelago save; loadGame migrates its feet to Alderwake, progress untouched.
           level:p.level, xp:p.xp, coins:p.coins, kills:p.kills, sp:p.sp, spBuys:p.spBuys,
-          unlocked:[...p.unlocked], weapon:p.weapon, name:p.name, muted:p.muted, hintsSeen:p.hintsSeen,
+          unlocked:[...p.unlocked], weapon:p.weapon, name:p.name, muted:p.muted, hintsSeen:p.hintsSeen, coachV:p.coachV|0,
           banked:p.banked, items:p.items, purse:p.purse, owned:[...p.owned],
           gems:p.gems, wxp:p.wxp, rackCollapsed:p.rackCollapsed, spawnAt: p.spawnAt || null,
           gemBag: p.gemBag, sockets: p.sockets, story: p.story,
@@ -2213,7 +2238,9 @@ const store = createStore((set, get) => {
         banked: Math.max(0, isFinite(d.banked) ? +d.banked : 0),   // economy persists (fractional since the ×0.01 ruling — deposits carry fractional coins); HP deliberately does NOT
         purse: !!d.purse,
         muted: !!d.muted,
+        coachV: (d.coachV|0) ? 1 : 0,
       };
+      if (next.kills > 0) next.coachV = 1;   // a blade with kills has already learned to cut — the first-fight coach never speaks to it (covers every migrated save)
       if (d.items) next.items = { potion:Math.max(0, d.items.potion|0), bomb:Math.max(0, d.items.bomb|0), shield:Math.max(0, d.items.shield|0) };
       if (d.name) next.name = cleanName(d.name);
       if (d.hintsSeen) next.hintsSeen = { slash:!!d.hintsSeen.slash, skill:!!(d.hintsSeen.skill || d.hintsSeen.spin), sphere:!!d.hintsSeen.sphere };   // old saves carry the retired 'spin' hint key — it maps onto 'skill'
@@ -2572,7 +2599,7 @@ function spawnSlime(opts={}){
   let eliteCapped = false;
   if (!opts.kind){
     let ez = 0, tz = 0;
-    for (const o of world.slimes.values()) if (o.zone === zid){ tz++; if (o.elite) ez++; }
+    for (const o of world.slimes.values()) if (o.zone === zid){ if (!o.practice) tz++; if (o.elite) ez++; }
     eliteCapped = ez >= Math.max(4, tz * .08);
   }
   if (k.kind !== 'king' && k.kind !== 'boss' && k.kind !== 'metal' && !eliteCapped && Math.random() < .08){
@@ -2583,6 +2610,22 @@ function spawnSlime(opts={}){
   }
   world.slimes.set(id,s);
   if (s.kind === 'boss') world.bossRef = s; else if (s.kind === 'guardian') world.grdRef = s;
+  return s;
+}
+/* PRACTICE SLIME (host): direct construction into the map under a
+   RESERVED id (the metal guarantee's pattern) — any host, including a
+   migrated one, recognises it by id alone. Baby stats at tier-0
+   scaling, a fixed soft green, never elite, never counted. */
+function spawnPracticeSlime(){
+  const old = world.slimes.get(PRACTICE_ID); if (old) return old;
+  const k = SLIME_KINDS.find(m => m.kind === 'baby');
+  const zi = ZONES_DEF[PRACTICE_SPOT.zone].tier, zone = ZONES[zi];
+  const hp = Math.round(k.hp * zone.hp);
+  const s = { id: PRACTICE_ID, kind: 'baby', hp, max: hp, r: k.r,
+    x: PRACTICE_SPOT.x, y: PRACTICE_SPOT.y, vx: 0, vy: 0, dir: rand(0, Math.PI * 2), turnAt: performance.now() + rand(800, 2600),
+    color: '#a8e6a1', seed: seedForId(PRACTICE_ID), squish: 0, flash: 0, mul: zone.mul, elite: false,
+    zone: PRACTICE_SPOT.zone, isle: zi, practice: true, bornAt: performance.now() };
+  world.slimes.set(PRACTICE_ID, s);
   return s;
 }
 /* ROYAL GUARD (host): the Emperor raises a 6s invulnerable shield at 66%
@@ -2661,6 +2704,12 @@ function hostTick(now,dt){
         else { s.dir = Math.atan2(home.y-s.y, home.x-s.x); mult *= .8; }   // no blade in its zone: drift home
       }
     }
+    if (s.practice){
+      /* PRACTICE SLIME: leashed to its spot on the altar road — it
+         wanders its little patch and always drifts home, so a new
+         blade finds it where the coach expects it. */
+      if (Math.hypot(s.x - PRACTICE_SPOT.x, s.y - PRACTICE_SPOT.y) > .8){ s.dir = Math.atan2(PRACTICE_SPOT.y - s.y, PRACTICE_SPOT.x - s.x); mult *= 1.3; }
+    }
     /* SAFE ZONES — steering half: inside any settlement's radius + .17,
        whatever a slime was doing (hunting, fleeing, kiting), it turns
        and hops radially OUT of that settlement. The positional half —
@@ -2717,8 +2766,12 @@ function hostTick(now,dt){
      Zones without players keep only a 60-slime garrison (story pieces,
      metals and elites exempt); safe zones stay empty. */
   {
+    /* PRACTICE SLIME upkeep: exactly one, pinned to the altar road —
+       back ~5s after a kill (hostKill stamps world.practiceAt). It is
+       excluded from the census below and from every cap. */
+    if (!world.slimes.has(PRACTICE_ID) && now >= (world.practiceAt || 0)) spawnPracticeSlime();
     const zoneCounts = {};
-    for (const s of world.slimes.values()) zoneCounts[s.zone] = (zoneCounts[s.zone] || 0) + 1;
+    for (const s of world.slimes.values()){ if (s.practice) continue; zoneCounts[s.zone] = (zoneCounts[s.zone] || 0) + 1; }
     const spawnP = 1 - Math.pow(.45, dt/16.667);   // dt-rescaled trickle (120Hz must not refill twice as fast)
     for (const zid in playersByZone){
       if (ZONES_DEF[zid].safe) continue;
@@ -2733,7 +2786,7 @@ function hostTick(now,dt){
       let shed = 2;
       for (const s of world.slimes.values()){
         if (!shed) break;
-        if (s.zone === zid && s.kind !== 'boss' && s.kind !== 'guardian' && s.kind !== 'metal' && !s.elite){ world.slimes.delete(s.id); shed--; }
+        if (s.zone === zid && s.kind !== 'boss' && s.kind !== 'guardian' && s.kind !== 'metal' && !s.elite && !s.practice){ world.slimes.delete(s.id); shed--; }
       }
     }
   }
@@ -3043,7 +3096,7 @@ function minedFx(d){
 }
 function worldPayload(){
   const boss = bossAt(performance.now());
-  return { s:[...world.slimes.values()].map(s=>[s.id, +s.x.toFixed(3), +s.y.toFixed(3), Math.ceil(s.hp), s.max, s.kind, s.color, +s.dir.toFixed(2), Math.round((s.mul||1)*100)/100, s.elite?1:0, s.guardian||'', s.zone||'glade']),
+  return { s:[...world.slimes.values()].map(s=>[s.id, +s.x.toFixed(3), +s.y.toFixed(3), Math.ceil(s.hp), s.max, s.kind, s.color, +s.dir.toFixed(2), Math.round((s.mul||1)*100)/100, s.elite?1:0, s.guardian||'', s.zone||'glade', s.practice?1:0]),
            n:[...world.nodes.values()].map(n=>[n.id, +n.x.toFixed(3), +n.y.toFixed(3), n.t, n.left, n.zone||'glade']),
            sc: world.scores, h: world.hostId,
            /* Emperor scaling block: clients evaluate orb + contact damage
@@ -3060,17 +3113,18 @@ function applyWorld(p){
     const mul = a[8]!==undefined ? +a[8] : 1, elite = a[9]===1;   // appended fields (old payloads default safely)
     const grdKey = a[10] || '';   // stage 4: a guardian's shrine key rides appended, like mul/elite
     const zid = a[11] || 'glade';   // transplant: the slime's home zone rides appended (old payloads default to the glade)
+    const practiceF = a[12] === 1;   // coach build: the pinned practice baby rides appended too
     const old = world.slimes.get(id);
     if (old){
       if (hp < old.hp){ old.squish=1; old.flash=1; old.flinchUntil=performance.now()+220; spawnHitFx(old.x,old.y,old.color,3); }
       old.tx=x; old.ty=y; old.hp=hp; old.dir=dir; old.mul=mul; old.elite=elite;
       if (grdKey) old.guardian = grdKey;
-      old.zone = zid;
+      old.zone = zid; old.practice = practiceF;
       const kk = SLIME_KINDS.find(m=>m.kind===old.kind);
       if (kk) old.r = old.kind==='guardian' && GUARDIANS[old.guardian] ? GUARDIANS[old.guardian].r : kk.r * (elite?1.35:1);
     } else {
       const k = SLIME_KINDS.find(k=>k.kind===kind) || SLIME_KINDS[0];
-      const ns = {id,kind,hp,max,r:k.r*(elite?1.35:1),x,y,tx:x,ty:y,dir,color,seed:seedForId(id),squish:1,flash:0,mul,elite,zone:zid,isle:ZONES_DEF[zid].tier};
+      const ns = {id,kind,hp,max,r:k.r*(elite?1.35:1),x,y,tx:x,ty:y,dir,color,seed:seedForId(id),squish:1,flash:0,mul,elite,zone:zid,isle:ZONES_DEF[zid].tier,practice:practiceF};
       if (grdKey){ ns.guardian = grdKey; ns.r = GUARDIANS[grdKey] ? GUARDIANS[grdKey].r : ns.r; }
       world.slimes.set(id, ns);
       if (ns.kind === 'boss') world.bossRef = ns; else if (ns.kind === 'guardian') world.grdRef = ns;
@@ -3407,6 +3461,7 @@ function localHitCheck(now){
       let crit = false;
       if (Math.random() < critCh){ dmg *= critMul; crit = true; }
       doHit(s, Math.round(dmg), { crit });
+      coachHit();   // first-fight coach: a landed blade hit retires the swing chips
     }
   }
   /* ---- mining: the same swept blade vs ore nodes (circle r .078).
@@ -3490,6 +3545,7 @@ function hostApplyHit(slimeId, dmg, byId){
 }
 function hostKill(s, byId){
   world.slimes.delete(s.id);
+  if (s.practice) world.practiceAt = performance.now() + 5000;   // the practice baby returns to its spot ~5s after the kill
   if (s.kind==='boss'){ world.bossSpawnAt = performance.now() + 240000; world.bossEnraged = false; world.bossFury = false; world.bossSummonAt = 0; }   // next Emperor 240s after the KILL; enrage/fury/summon state dies with him
   // (a metal KILL deliberately does not touch lastMetalAt — the guarantee
   // clock moves only when a metal ENTERS the world; see hostTick)
@@ -6274,6 +6330,7 @@ function checkZone(force){
 /* ---------- tutorial hints (one at a time, in sequence) ---------- */
 function updateHint(){
   const h = $('#hint');
+  if (ses.coach && ses.coach.chip && !prog().coachV){ h.classList.add('hidden'); return; }   // the coach owns the hint slot while its chip is up — never two lessons at once
   if (!ses.started || ses.paused || ses.nearBuilding || !$('#menuPanel').classList.contains('hidden')){ h.classList.add('hidden'); return; }
   let txt = '';
   if (!prog().hintsSeen.slash) txt = 'DRAG TO SLASH!';
@@ -6281,6 +6338,87 @@ function updateHint(){
   else if (!prog().hintsSeen.sphere && (prog().level>=2 || prog().sp>0)) txt = 'F — OPEN THE SPHERE GRID';
   if (!txt){ h.classList.add('hidden'); return; }
   h.textContent = txt; h.classList.remove('hidden');
+}
+
+/* ---------- first-fight coach (see COACH_A note at freshCoach) ---------- */
+function coachNearDist(){
+  let bd = Infinity;
+  for (const s of world.slimes.values()){
+    if (s.zone !== ses.myZone) continue;
+    const d2 = dist2(me.x, me.y, s.x, s.y);
+    if (d2 < bd) bd = d2;
+  }
+  return Math.sqrt(bd);
+}
+function coachComplete(){
+  const c = ses.coach; if (c){ c.chip = ''; c.stage = 6; }
+  act.patchProgress({ coachV: 1 }); saveGame();
+}
+/* A landed BLADE hit (localHitCheck only — splash/skill damage does not
+   call this): the swing lesson is over, whichever chip was up. */
+function coachHit(){
+  const c = ses.coach; if (!c || prog().coachV) return;
+  if (c.stage === 1 || c.stage === 2){ c.chip = ''; c.stage = 3; }
+  else if (c.stage === 5) coachComplete();
+}
+function coachTick(now){
+  const c = ses.coach; if (!c) return;
+  const p = prog();
+  if (p.coachV){ c.chip = ''; return; }
+  if (!ses.started || ses.paused) return;
+  if (!c.init){ c.init = true; c.kills0 = p.kills; }
+  const dtF = Math.min(100, now - (c.lastTick || now)); c.lastTick = now;
+  /* A kill by ANY means (a bomb, a skill) ends the swing lesson too —
+     the cause/effect already landed with its damage number. */
+  if (c.stage >= 0 && c.stage <= 3 && p.kills > c.kills0){ c.chip = ''; c.stage = 4; }
+  const isNear = coachNearDist() <= 2.5;
+  const moving = (me.speed || 0) > 40;
+  if (c.stage === 0){
+    if (isNear){ c.kills0 = p.kills; c.chip = c.bArmed ? COACH_B : COACH_A; c.stage = c.bArmed ? 2 : 1; c.farAt = 0; }
+  } else if (c.stage === 1){
+    if (!isNear){ if (!c.farAt) c.farAt = now; else if (now - c.farAt > 1500){ c.chip = ''; c.stage = 0; c.farAt = 0; } }
+    else {
+      c.farAt = 0;
+      if (moving) c.slowMs += dtF;   // time spent waving the blade through slimes without a single landed hit
+      if (c.slowMs >= 2500){ c.bArmed = true; c.chip = COACH_B; c.stage = 2; }
+    }
+  } else if (c.stage === 2){
+    if (!isNear){ if (!c.farAt) c.farAt = now; else if (now - c.farAt > 2000){ c.chip = ''; c.stage = 0; c.farAt = 0; } }
+    else c.farAt = 0;
+  } else if (c.stage === 4){
+    if (isNear){ c.chip = COACH_C; c.stage = 5; c.cAt = now; c.cShown = 0; }
+  } else if (c.stage === 5){
+    if (isNear){ c.cShown += dtF; if (c.cShown >= 4000) coachComplete(); }
+    else if (now - c.cAt > 1200){ c.chip = ''; c.stage = 4; }   // walked away unread — offer it again on the next approach
+  }
+}
+/* The coach chip: an in-world plate floating over the player's head,
+   styled after the #hint chip (white plate, dark border, hard shadow,
+   gentle bob) — canvas-drawn so it tracks the blade, and suppressed
+   wherever the interact prompt or a panel owns the screen. */
+function drawCoachChip(now){
+  const c = ses.coach; if (!c || !c.chip || prog().coachV) return;
+  if (ses.paused || ses.dialogue || ses.chapterCard || ses.zoneFading) return;
+  if (ses.nearBuilding || ses.nearNpc || ses.nearShrine || ses.nearExit || ses.nearTravel || ses.nearSprout) return;
+  if (!$('#menuPanel').classList.contains('hidden')) return;
+  const p = SP(me.x, me.y);
+  const lines = c.chip.split('\n');
+  ctx.save();
+  ctx.font = '800 13px "Baloo 2",sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  let tw = 0; for (const ln of lines) tw = Math.max(tw, ctx.measureText(ln).width);
+  const bw = tw + 26, bh = lines.length * 18 + 15;
+  const bob = Math.sin(now / 300) * 3;
+  const cx = clamp(p[0], bw / 2 + 6, W - bw / 2 - 6);
+  const cy = p[1] - 72 * ZK() - 18 - bh / 2 + bob;   // above the stick figure's head AND the name plate
+  ctx.fillStyle = 'rgba(38,32,40,.30)'; ctx.fillRect(cx - bw / 2 + 4, cy - bh / 2 + 4, bw, bh);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(cx - bw / 2, cy - bh / 2, bw, bh);
+  ctx.strokeStyle = '#3a2b23'; ctx.lineWidth = 3; ctx.strokeRect(cx - bw / 2, cy - bh / 2, bw, bh);
+  ctx.beginPath();   // little tail pointing down at the blade
+  ctx.moveTo(cx - 6, cy + bh / 2); ctx.lineTo(cx + 6, cy + bh / 2); ctx.lineTo(cx, cy + bh / 2 + 8); ctx.closePath();
+  ctx.fillStyle = '#ffffff'; ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#3a2b23';
+  lines.forEach((ln, i) => ctx.fillText(ln, cx, cy + (i - (lines.length - 1) / 2) * 18 + 1));
+  ctx.restore();
 }
 
 function togglePause(force){
@@ -6302,6 +6440,7 @@ function resetRun(){
   hideBuildingPanel('#bankPanel'); hideBuildingPanel('#shopPanel'); hideBuildingPanel('#hospitalPanel'); hideBuildingPanel('#travelPanel'); closeMenu();
   recalc();   // one shared unlock set (branch, weapon-path and cross nodes) — reset above; re-derive stats + clamp HP
   ses.combo=0; ses.comboUntil=0; updateComboBadge(false);
+  ses.coach = freshCoach();   // a fresh run is a fresh blade — the coach teaches again (progress.coachV was reset with the save)
   if (world.scores[me.id]) world.scores[me.id].kills = 0;
   act.clearSave();
   ses.myZone = ALTAR.zone; me.x = ALTAR_SPAWN.x; me.y = ALTAR_SPAWN.y; me.px = me.x; me.py = me.y; ses.cam.x = me.x; ses.cam.y = me.y;   // a fresh run wakes at the summoning altar
@@ -8937,6 +9076,7 @@ function frame(now){
   }
   if (world.isHost && ses.started){ hostTick(now,dt); flushWorld(); }   // at most ONE coalesced world payload per frame (see queueWorld)
   if (ses.started && !ses.paused) localHitCheck(now);
+  if (ses.started && !ses.paused) coachTick(now);   // first-fight coach watches the same frames the blade does
 
   /* ---- survival (ALL local — HP is never networked): slime contact damage,
      boss bullet hits, spiral emitters, out-of-combat regen ---- */
@@ -9288,6 +9428,7 @@ function frame(now){
     const mg = SP(me.x, me.y), mt = SP(me.x + Math.cos(bl.ang) * myReach() * (1 + bl.ext), me.y + Math.sin(bl.ang) * myReach() * (1 + bl.ext));
     drawSword(mg[0], mg[1], Math.atan2(mt[1] - mg[1], mt[0] - mg[0]), prog().weapon, me.color, ses.started?prog().name:'', true, now, now<me.whirlUntil, bl.ext, Math.hypot(mt[0] - mg[0], mt[1] - mg[1]), ses.liveF === undefined ? 1 : ses.liveF);
   }
+  if (ses.started) drawCoachChip(now);   // the coach chip floats over the blade, above the sword pass
 
   // pause guarantee: with dt frozen at 0 the trail vanishes and the sword can
   // end up hidden under the centred pause card — redraw my sword explicitly as
