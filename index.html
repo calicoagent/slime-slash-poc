@@ -1474,6 +1474,12 @@ const GATE_LINES = {
   herald:   'THE MOOR SLEEPS UNTIL THE ROOT HERALD FALLS.',
   complete: 'THE HERMIT PATH OPENS WHEN THE CYCLE ENDS.',
 };
+const QUEST_ORDER = ['arrival','prologue','meadow','bell','grove','scout','wilds','herald','finale','postgame'];
+function questPast(id){
+  const st = prog().story; if (!st) return false;
+  if (st.complete) return true;
+  return QUEST_ORDER.indexOf(st.quest) > QUEST_ORDER.indexOf(id);
+}
 function gateOpen(ex){
   if (!ex.gate) return true;
   const st = prog().story; if (!st) return false;
