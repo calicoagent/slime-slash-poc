@@ -6229,6 +6229,18 @@ function checkZone(force){
   addFloat(me.x, me.y - .35, zd.name, '#ffe9a8', { big:true });
   showZoneSub(zd.sub);
 }
+/* ---------- tutorial hints (one at a time, in sequence) ---------- */
+function updateHint(){
+  const h = $('#hint');
+  if (!ses.started || ses.paused || ses.nearBuilding || !$('#menuPanel').classList.contains('hidden')){ h.classList.add('hidden'); return; }
+  let txt = '';
+  if (!prog().hintsSeen.slash) txt = 'DRAG TO SLASH!';
+  else if (!prog().hintsSeen.skill) txt = 'CLICK / TAP — WEAPON SKILL';
+  else if (!prog().hintsSeen.sphere && (prog().level>=2 || prog().sp>0)) txt = 'F — OPEN THE SPHERE GRID';
+  if (!txt){ h.classList.add('hidden'); return; }
+  h.textContent = txt; h.classList.remove('hidden');
+}
+
 function togglePause(force){
   if (!ses.started) return;
   ses.paused = (force!==undefined) ? !!force : !ses.paused;
