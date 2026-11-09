@@ -1015,7 +1015,7 @@
 import { joinRoom, selfId } from 'https://cdn.jsdelivr.net/npm/trystero@0.21.6/nostr/+esm';
 import { createStore } from 'https://cdn.jsdelivr.net/npm/zustand@5.1.0/vanilla/+esm';
 
-const GAME_VERSION = '0.6.3';   // shown small on the title screen + pause menu
+const GAME_VERSION = '0.6.4';   // shown small on the title screen + pause menu
 
 /* ============================================================ utils */
 const $ = s => document.querySelector(s);
@@ -1525,8 +1525,8 @@ function ZK(){ return _ZK; }
 /* WORLD ZOOM (Handler, 2026-11-10: 'Zoom in 5x half the slime size'):
    the game view shows 1/5 the world area it used to. Applied ONCE,
    here, at the single place the effective zoom is derived — every
-   ground-locked thing (plate, water, props, NPCs, stick figure,
-   sword, tags) reads ZK()/SP() and scales together, and SP /
+   ground-locked thing (plate, water, props, NPCs, sword, tags)
+   reads ZK()/SP() and scales together, and SP /
    screenToZone stay exact inverses at the new size. */
 const WORLD_ZOOM = 5;
 function computeView(){
@@ -8861,41 +8861,9 @@ function dullMix(hex, f){
   const k = .12 + .88 * f, mix = v => Math.round(lum + (v - lum) * k);
   return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
 }
-/* STICK FIGURE (Handler, 2026-11-09): a little upright figure stands
-   at the base of every sword — feet on the player's ground point, one
-   arm reaching down to the grip (the pommel anchor the blade pivots
-   on), so a player reads as a person holding the sword and stays
-   findable inside the musou crowd. Screen-upright at any blade angle;
-   dark slate ink (#2e3440, never true black) over a pale halo pass so
-   he holds up on Cinderfell's dark ash too. Drawn by drawSword, the
-   one path every blade (mine + peers) shares. Height ~0.55u in NPC
-   yardsticks (150*ZK frame ~ 0.96u): 72*ZK px. */
-function drawStickFigure(x, y){
-  const H = 72 * ZK();
-  const hipY = y - H * .40, shoY = y - H * .72;
-  ctx.save();
-  ctx.fillStyle = 'rgba(38,32,40,.25)';
-  ctx.beginPath(); ctx.ellipse(x, y + 2, H * .17, H * .05, 0, 0, 7); ctx.fill();   // ground shadow at his feet
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  const limbs = () => {
-    ctx.beginPath();
-    ctx.moveTo(x, hipY); ctx.lineTo(x - H * .14, y);        // legs
-    ctx.moveTo(x, hipY); ctx.lineTo(x + H * .14, y);
-    ctx.moveTo(x, hipY); ctx.lineTo(x, shoY);               // torso
-    ctx.moveTo(x, shoY); ctx.lineTo(x, y);                  // sword arm: shoulder down to the grip
-    ctx.moveTo(x, shoY); ctx.lineTo(x - H * .19, y - H * .44);   // free arm
-    ctx.stroke();
-    ctx.beginPath(); ctx.arc(x, y - H * .86, H * .13, 0, 7); ctx.stroke();   // head
-  };
-  ctx.strokeStyle = 'rgba(245,245,235,.5)'; ctx.lineWidth = Math.max(2, H * .07) + 2.5; limbs();   // halo
-  ctx.strokeStyle = '#2e3440'; ctx.lineWidth = Math.max(2, H * .07); limbs();                        // ink
-  ctx.restore();
-  return H;
-}
 function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,whirling,ext=0,reachPxIn,liveFIn){
   const w=WEAPONS[weaponIdx];
   const lf = liveFIn === undefined ? 1 : liveFIn;   // blade liveness 0..1 (see dullMix note): dull when the hand is too slow to cut
-  const figH = drawStickFigure(x, y);   // the figure stands under the blade; name floats above his head
   const reachPx = reachPxIn != null ? reachPxIn : (isMe?myReach():(w.reach)) * SCALE() * (1+ext);   // callers in the iso world pass the PROJECTED reach
   const whirlA = whirling ? (t/38)%(Math.PI*2) : 0;
   const a = whirling ? whirlA : angle;
@@ -8944,7 +8912,7 @@ function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,whirling,ext=0,reachPxI
     if (name){
       ctx.font='800 13px "Baloo 2",sans-serif'; ctx.textAlign='center';
       ctx.lineWidth=4; ctx.strokeStyle='rgba(50,80,30,.75)';
-      ctx.strokeText(name, x, y-figH-8); ctx.fillStyle='#fff'; ctx.fillText(name, x, y-figH-8);
+      ctx.strokeText(name, x, y-16); ctx.fillStyle='#fff'; ctx.fillText(name, x, y-16);
     }
     return {tipX,tipY};
   }
@@ -8971,7 +8939,7 @@ function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,whirling,ext=0,reachPxI
   if (name){
     ctx.font='800 13px "Baloo 2",sans-serif'; ctx.textAlign='center';
     ctx.lineWidth=4; ctx.strokeStyle='rgba(50,80,30,.75)';
-    ctx.strokeText(name, x, y-figH-8); ctx.fillStyle='#fff'; ctx.fillText(name, x, y-figH-8);
+    ctx.strokeText(name, x, y-16); ctx.fillStyle='#fff'; ctx.fillText(name, x, y-16);
   }
   return {tipX,tipY};
 }
