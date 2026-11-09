@@ -5579,7 +5579,7 @@ function rollGemRarity(floor){
   return 4;
 }
 function grantGem(floor, x, y){
-  if (prog().gemBag.length >= 99){ act.addCoins(1500); addFloat(x, y - .16, 'GEM → +1500 COINS (BAG FULL)', '#ffd94d'); return; }   // bag cap 99: the drop converts to coins — 1500c in rescaled units (the ×0.01-era code constant was 15, paid 0.15c after the mult; per the rescale brief this path converts at 1500)
+  if (prog().gemBag.length >= 99){ act.addCoins(15); addFloat(x, y - .16, 'GEM → +15 COINS (BAG FULL)', '#ffd94d'); return; }   // bag cap 99: the drop converts to coins — 15c in rescaled units (the x0.01-era effective payout was 0.15c; the x100 rescale preserves the ratio exactly)
   const stats = Object.keys(GEM_STATS);
   const gem = { id:'g' + Date.now().toString(36) + (ses.gemSeq++), stat:stats[Math.floor(Math.random()*stats.length)], rarity:rollGemRarity(floor) };
   act.addToGemBag(gem);
