@@ -1628,6 +1628,7 @@ const freshSession = () => ({
   // run lifecycle
   started: false,            // PLAY pressed: this tab is in the world
   startedAt: 0,              // when PLAY was pressed (banner suppression window)
+  titleStaging: false,       // true only inside the title still's single synchronous staging pass (lets drawEntities pose the townsfolk in the diorama)
   paused: false,
   // camera: top-left of the view, world coords — follows the sword
   cam: { x: TOWN.x - .5, y: TOWN.y - .5 },
@@ -4948,6 +4949,7 @@ function pinPtr(x, y, t){   // teleport the sword (tap snap / respawn / dash lan
   pushPtrSample(x, y, t);
 }
 addEventListener('pointermove', e=>{
+  if (!ses.started) return;   // TITLE (Handler ruling 2026-11-09): game input is inert until PLAY — a sweep across the menu never reaches the sword's sample stream
   if (e.pointerType) ses.lastPtrType = e.pointerType;
   if (ses.uiPointer) return;
   const now = performance.now();
@@ -5112,9 +5114,9 @@ function updatePointer(now){
      blade beyond it. */
 }
 addEventListener('pointerdown', e=>{
+  if (!ses.started){ ses.uiPointer = true; ses.downInfo = null; return; }   // TITLE: the press belongs to the menu layer alone — it must never prime a sword snap or a skill cast
   ses.uiPointer = e.target !== cv;   // UI presses are for buttons/panels — flag them so pointermove ignores the drag
   if (e.pointerType) ses.lastPtrType = e.pointerType;   // drives the interact prompt's E vs TAP cap
-  if (!ses.started) return;
   if (e.target.closest && e.target.closest('#hud') && !e.target.closest('#game')) { /* UI taps handled by buttons */ }
   if (e.target===cv){
     // a tap on the world dismisses the expanded weapon rack (it also
@@ -5132,6 +5134,7 @@ addEventListener('pointerdown', e=>{
   }
 });
 addEventListener('pointerup', e=>{
+  if (!ses.started){ ses.uiPointer = false; ses.downInfo = null; ses.lastClient = null; return; }   // TITLE: a release over the menu casts nothing
   if (ses.uiPointer){ ses.uiPointer = false; ses.lastClient = null; return; }   // release of a UI press: no cast, no stale delta
   if (!ses.downInfo) return;
   const info = ses.downInfo; ses.downInfo = null;
@@ -5149,7 +5152,7 @@ addEventListener('pointerover', e=>{
   const btn = e.target.closest('button');
   if (btn && panel.contains(btn) && !btn.disabled && (!ses.panelFocus || ses.panelFocus.el !== btn)) setPanelFocus(panel, btn);
 });
-addEventListener('touchmove', e=>{ e.preventDefault(); }, {passive:false});
+addEventListener('touchmove', e=>{ if (ses.started) e.preventDefault(); }, {passive:false});   // in-game a drag steers the sword and must never scroll; on the TITLE the menu keeps its native scroll
 addEventListener('keydown', e=>{
   if (!ses.started) return;
   if (e.key==='Escape' && !$('#menuPanel').classList.contains('hidden')){ closeMenu(); return; }
@@ -8637,11 +8640,11 @@ function drawEntities(t){
   }
   // townsfolk join the same depth order at their feet (the Child's spot
   // is npcPositionAt's deterministic wander — no state, no sync).
-  // BATCH A: behind the TITLE (not started) no NPC is pushed at all —
-  // the title shows the dimmed living town (ambient slimes + decor),
-  // never a character standing on the logo or the PLAY button.
+  // TITLE: pre-PLAY the townsfolk are pushed ONLY inside the title
+  // still's staging pass (ses.titleStaging), where the frozen diorama
+  // poses them deliberately — the live title never runs this pass.
   for (const def of NPC_DEFS){
-    if (!ses.started) break;
+    if (!ses.started && !ses.titleStaging) break;
     const p = npcPositionAt(def, t);
     if (p.x<ses.cam.x-.45 || p.x>ses.cam.x+vw+.45 || p.y<ses.cam.y-.55 || p.y>ses.cam.y+vh+.25) continue;   // view-culled
     ents.push({ baseY:p.y, kind:'npc', def, x:p.x, y:p.y });
@@ -9030,6 +9033,18 @@ function frame(now){
   // timestamp-based (see audit in the commit), so refresh rate can never
   // speed the game up.
   const dt = ses.paused ? 0 : Math.min(50, now-ses.lastT); ses.lastT=now;   // pause freezes local dt only; world/netcode keep running
+  if (!ses.started){
+    /* TITLE — NOT THE GAME (Handler ruling 2026-11-09: "title screen
+       shouldn't be the game I can't click anything because sword
+       moves!"): while the title is up, the world does not exist — no
+       pointer evaluation, no simulation, no world render runs behind
+       the menu. The canvas shows ONE frozen composed diorama (see
+       drawTitleStill below) and the DOM #title layer owns all input;
+       every game input handler is separately gated on ses.started.
+       PLAY boots the world fresh, exactly as it always has. */
+    drawTitleStill();
+    return;
+  }
   me.ptrSpeedPx *= Math.exp(-dt/110);   // pointer-speed memory decays fast — a stopped hand stops cutting within ~a few hundred ms
   updatePointer(now);   // place the blade from the pointer sample stream (interpolated, frame-rate) BEFORE anything reads me.x/me.y this frame
   ctx.setTransform(DPR,0,0,DPR,0,0);
@@ -9189,12 +9204,7 @@ function frame(now){
   // y-sorted entity pass: trees, rocks, buildings and slimes by ground
   // anchor, then occlusion ghosts for slimes hidden behind props
   drawEntities(now);
-  drawAmbientAir(now);   // Batch C: gulls, fireflies, drifting petals (drawn before the title dim, so the title stays dimmed)
-  /* BATCH A title composition: while the title is up, the world renders
-     DIMMED under a translucent overlay (the DOM #title gradient stays as
-     the vignette) — ambient slimes and decor keep living underneath,
-     but no NPC, name plate, float or HUD competes with the logo. */
-  if (!ses.started){ ctx.fillStyle = 'rgba(23,43,18,.48)'; ctx.fillRect(0, 0, W, H); }
+  drawAmbientAir(now);   // Batch C: gulls, fireflies, drifting petals
 
   if (ses.started) tickActives(now, dt);
   // minimap at ~20Hz, not every frame: it is a navigation aid (50ms
@@ -9369,13 +9379,91 @@ function frame(now){
   // scoreboard innerHTML rebuild) TWICE per tick for nothing.
   if (ses.started && now-ses.slowTickAt>500){ ses.slowTickAt=now; refreshPeers(); checkZone(); }
 }
+/* ============================================================ TITLE STILL
+   The title backdrop is a FROZEN COMPOSED DIORAMA, not the game: at
+   boot we stage ONE town-meadow vignette — the tilemap floor, the town
+   buildings and decor, the townsfolk at their posts, and a hand-placed
+   cast of slimes — render it ONCE through the normal world painters at
+   one fixed instant (TITLE_STILL_T), snapshot the canvas, and from
+   then on the title frame is a plain blit of that snapshot. No slime
+   is ever simulated behind the menu (the old live "ambient wander"
+   setInterval and its amb-slimes are gone), nothing animates, and the
+   world itself is only booted by PLAY. While the sprite sheets are
+   still streaming in, the staged scene is re-rendered (same fixed
+   instant, same poses — the picture simply gains its art); once every
+   staged image has loaded (or a 4s deadline passes, so a dead asset
+   can never keep the title live) the snapshot freezes for good. A
+   viewport resize re-stages at the new aspect and re-freezes. */
+const TITLE_STILL_T = 2600;   // the frozen instant the diorama is painted at — hop phases, NPC wander spots and ambient motes all read this one clock
+let titleStillCv = null;      // offscreen snapshot canvas (device pixels)
+let titleStillKey = '';       // 'WxHxDPR' the snapshot was taken at
+let titleStillFrozen = false;
+let titleStillBornAt = 0;
+/* The cast: hand-placed around the plaza ring, clear of the centred
+   menu column, all inside the town disc. Colours pick the sprite. */
+const TITLE_CAST = [
+  { kind:'baby', color:'#7ee787', dx:-.58, dy:+.16, seed:1.3 },
+  { kind:'baby', color:'#6fd3ff', dx:+.50, dy:+.34, seed:4.1 },
+  { kind:'baby', color:'#ffb3d9', dx:-.16, dy:+.52, seed:7.7 },
+  { kind:'mid',  color:'#8affd1', dx:+.60, dy:-.22, seed:2.9 },
+  { kind:'mid',  color:'#ffb3d9', dx:-.34, dy:-.44, seed:5.3 },
+  { kind:'big',  color:'#c39bff', dx:+.34, dy:+.58, seed:3.7 },
+  { kind:'gold', color:'#ffe066', dx:-.64, dy:-.28, seed:6.1 },
+  { kind:'dart', color:'#ffab7a', dx:+.18, dy:-.58, seed:8.3 },
+];
+function titleImgsReady(){
+  const ok = im => !!im && im.complete && im.naturalWidth > 0;
+  for (const n in WORLD_IMGS) if (!ok(WORLD_IMGS[n])) return false;
+  for (const n in SLIME_IMGS) if (!ok(SLIME_IMGS[n])) return false;
+  for (const n in NPC_IMGS) if (!ok(NPC_IMGS[n])) return false;
+  for (const n in SHRINE_IMGS) if (!ok(SHRINE_IMGS[n])) return false;
+  return ok(SPROUT_IMG);
+}
+function stageTitleScene(){
+  // camera: the town vignette, centred a touch north of the plaza so
+  // the bank/shop doorways crown the top of the frame
+  const vw = W/UNIT(), vh = H/UNIT();
+  ses.cam.x = clamp(TOWN.x - vw/2, 0, Math.max(0, WORLD - vw));
+  ses.cam.y = clamp(TOWN.y - .08 - vh/2, 0, Math.max(0, WORLD - vh));
+  for (let i=0;i<TITLE_CAST.length;i++){
+    const c = TITLE_CAST[i], k = SLIME_KINDS.find(m=>m.kind===c.kind) || SLIME_KINDS[0];
+    const id = 'ttl' + i;
+    world.slimes.set(id, { id, kind:k.kind, hp:k.hp, max:k.hp, r:k.r, x:TOWN.x + c.dx, y:TOWN.y + c.dy, vx:0, vy:0, dir:0, color:c.color, seed:c.seed, squish:0, flash:0 });
+  }
+  ses.titleStaging = true;   // lets drawEntities pose the townsfolk for this one pass
+}
+function unstageTitleScene(){
+  for (let i=0;i<TITLE_CAST.length;i++) world.slimes.delete('ttl' + i);
+  ses.titleStaging = false;
+}
+function renderTitleStage(){
+  stageTitleScene();
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  drawField(TITLE_STILL_T);
+  drawEntities(TITLE_STILL_T);
+  drawAmbientAir(TITLE_STILL_T);
+  ctx.fillStyle = 'rgba(23,43,18,.48)'; ctx.fillRect(0, 0, W, H);   // the menu's readable wash, baked into the still (the DOM #title gradient vignettes on top, as before)
+  unstageTitleScene();
+}
+function freezeTitleStill(){
+  if (!titleStillCv) titleStillCv = document.createElement('canvas');
+  titleStillCv.width = cv.width; titleStillCv.height = cv.height;
+  titleStillCv.getContext('2d').drawImage(cv, 0, 0);
+  titleStillKey = W + 'x' + H + 'x' + DPR;
+  titleStillFrozen = true;
+}
+function drawTitleStill(){
+  if (!W || !H) return;
+  if (titleStillFrozen && titleStillKey === W + 'x' + H + 'x' + DPR){
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.drawImage(titleStillCv, 0, 0);   // device-pixel 1:1 blit — the still cannot move
+    return;
+  }
+  if (!titleStillBornAt) titleStillBornAt = performance.now();
+  renderTitleStage();
+  if (titleImgsReady() || performance.now() - titleStillBornAt > 4000) freezeTitleStill();
+}
 requestAnimationFrame(frame);
-// title-screen ambient slimes (solo sim before joining)
-for(let i=0;i<9;i++){ const k=pickKind(); const id='amb'+i; world.slimes.set(id,{id,kind:k.kind,hp:k.hp,max:k.hp,r:k.r,x:rand(.08,.92),y:rand(.15,.9),vx:0,vy:0,dir:rand(0,7),turnAt:performance.now()+rand(800,2000),color:SLIME_COLORS[i%SLIME_COLORS.length],seed:Math.random()*10,squish:0,flash:0}); }
-setInterval(()=>{ if(!ses.started){ // ambient wander on title
-  const now=performance.now();
-  for (const s of world.slimes.values()){ if(now>s.turnAt){s.dir=rand(0,7); s.turnAt=now+rand(900,2400);} s.x+=Math.cos(s.dir)*.0016; s.y+=Math.sin(s.dir)*.0011; s.x=clamp(s.x,.05,.95); s.y=clamp(s.y,.1,.93); }
-}},50);
 
 /* ============================================================ start */
 // ONE single world for everyone — fixed Trystero room id under the hood, never shown to players.
@@ -9405,10 +9493,9 @@ $('#playBtn').onclick = ()=>{
   buildRack(); refreshHUD(); refreshPeers();
   if (!prog().bounty) rollBounty();
   updateHint();
-  // the 9 title-screen ambient slimes (ids amb0..amb8, parked in the world's top-left
-  // corner, no zone scaling) must not leak into the real world: with them
-  // still in the map, electHost's slimes.size===0 check skipped the 50-slime seed
-  for (const id of [...world.slimes.keys()]) if (String(id).startsWith('amb')) world.slimes.delete(id);
+  // the title staged its diorama slimes only for single synchronous
+  // render passes and removed them itself — the world boots empty here,
+  // exactly as electHost's slimes.size===0 seed check expects
   try { joinWorld(WORLD_ID); }
   catch(e){ notify('Multiplayer failed to start — playing solo. (' + e.message + ')', { ms:4000 }); world.isHost=true; world.hostId=me.id; if(world.slimes.size===0) for(let i=0;i<50;i++) spawnSlime(); }
   notify('Slash the slimes! One world — everyone with the link is in it.', { ms:2600 });
