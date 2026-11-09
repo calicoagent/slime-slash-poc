@@ -1047,8 +1047,8 @@ const sfx = {
   hit:  ()=>beep(rand(280,340),.07,'square',.06,-160),
   pop:  ()=>{ beep(520,.12,'sine',.14,420); beep(180,.1,'triangle',.08,80); },
   coin: ()=>{ beep(950,.07,'square',.07); setTimeout(()=>beep(1420,.12,'square',.07),55); },
-  lvl:  ()=>{ [523,659,784,1046].forEach((f,i)=>setTimeout(()=>beep(f,.14,'triangle',.1),i*80)); },
-  buy:  ()=>{ beep(700,.08,'triangle',.1); setTimeout(()=>beep(980,.12,'triangle',.1),70); },
+  lvl:  ()=>{ lvlPool.play(); },
+  buy:  ()=>{ buyPool.play(); },
   whirl: ()=>beep(300,.16,'sawtooth',.045,700),
   sting: ()=>{ beep(196,.32,'sawtooth',.09,-30); setTimeout(()=>beep(392,.3,'triangle',.1,140),60); setTimeout(()=>beep(587,.38,'triangle',.09,80),130); },
   combo: ()=>beep(880,.09,'square',.07,320),
@@ -1127,11 +1127,16 @@ function noiseAt(t, dur, gain, dest){
     src.start(t); src.stop(t + dur + .02);
   } catch(e){}
 }
+/* ISW MUSIC (MANIFEST): real tracks as looping audio elements —
+   title-theme on the title, field-landing-glade across the west
+   country, field-lakeside-camp across the east. ISW has no boss
+   track, so guardian/Emperor fights keep the procedural BOSS loop. */
+const TRACK_SRC = { title:'assets/isw/media/title-theme.mp3', fieldA:'assets/isw/media/field-landing-glade.mp3', fieldB:'assets/isw/media/field-lakeside-camp.mp3' };
+const FIELD_A_ZONES = ['town', 'glade', 'camp', 'grove'];
 function desiredMusicTrack(){
-  if (!ses.started) return null;
   if (guardianAlive() || bossAt(performance.now())) return 'boss';
-  if (safeZoneAt(me.x, me.y)) return 'town';   // any settlement gets the calm theme
-  return 'field';
+  if (!ses.started) return 'title';
+  return FIELD_A_ZONES.includes(ses.myZone) ? 'fieldA' : 'fieldB';
 }
 function scheduleMusicStep(tr, step, t){
   const m = ses.music;
@@ -1143,30 +1148,36 @@ function scheduleMusicStep(tr, step, t){
 }
 function musicTick(){
   const m = ses.music;
-  if (!m.started || !AC) return;
-  if (document.hidden || prog().muted){
-    if (!m.silenced){
-      m.silenced = true;
-      if (m.gain){ try { m.gain.gain.cancelScheduledValues(AC.currentTime); m.gain.gain.setValueAtTime(0, AC.currentTime); } catch(e){} }
-      m.nextAt = 0;
+  if (!m.started) return;
+  const want = desiredMusicTrack();
+  const off = document.hidden || prog().muted;
+  // ---- ISW MP3 side (title / fieldA / fieldB)
+  const wantMp3 = (want === 'title' || want === 'fieldA' || want === 'fieldB') ? want : null;
+  if (wantMp3 !== m.elKey){
+    m.elKey = wantMp3;
+    if (m.el){ try { m.el.pause(); } catch(e){} }
+    if (wantMp3){
+      if (!m.el){ try { m.el = new Audio(); m.el.loop = true; m.el.preload = 'auto'; } catch(e){ m.el = null; } }
+      if (m.el){
+        try { m.el.src = TRACK_SRC[wantMp3]; m.el.volume = 0; const p = m.el.play(); if (p && p.catch) p.catch(()=>{}); } catch(e){}
+      }
     }
+  }
+  const target = (off || !wantMp3) ? 0 : .5;
+  m.elVol += (target - m.elVol) * .1;
+  if (m.el && Math.abs(m.el.volume - m.elVol) > .01){ try { m.el.volume = clamp(m.elVol, 0, 1); } catch(e){} }
+  // ---- procedural side: the BOSS loop only (the town/field entries
+  // in MUSIC_TRACKS are retired data — the ISW tracks replaced them)
+  if (!AC || !m.gain) return;
+  if (AC.state === 'suspended') AC.resume();
+  if (off){
+    try { m.gain.gain.setTargetAtTime(0, AC.currentTime, .05); } catch(e){}
     return;
   }
-  if (m.silenced){
-    m.silenced = false;
-    if (m.track && m.gain){ try { m.gain.gain.setTargetAtTime(MUSIC_GAIN, AC.currentTime, .08); } catch(e){} }
-    m.nextAt = AC.currentTime + .05;
-  }
-  if (AC.state === 'suspended') AC.resume();
-  const want = desiredMusicTrack();
-  if (want && want !== m.track && want !== m.pending && m.gain){
-    m.pending = want; m.switchAt = AC.currentTime + .25;   // fade out .25s, swap, fade in .25s
-    try { m.gain.gain.cancelScheduledValues(AC.currentTime); m.gain.gain.setValueAtTime(m.gain.gain.value, AC.currentTime); m.gain.gain.linearRampToValueAtTime(0, m.switchAt); } catch(e){}
-  }
-  if (m.pending){
-    if (AC.currentTime < m.switchAt) return;
-    m.track = m.pending; m.pending = null; m.step = 0; m.nextAt = AC.currentTime + .03;
-    try { m.gain.gain.setValueAtTime(0, AC.currentTime); m.gain.gain.linearRampToValueAtTime(MUSIC_GAIN, AC.currentTime + .25); } catch(e){}
+  const wantProc = want === 'boss' ? 'boss' : null;
+  if (wantProc !== m.track){
+    try { m.gain.gain.cancelScheduledValues(AC.currentTime); m.gain.gain.setTargetAtTime(wantProc ? MUSIC_GAIN : 0, AC.currentTime, .12); } catch(e){}
+    m.track = wantProc; m.step = 0; m.nextAt = AC.currentTime + .05;
   }
   if (!m.track) return;
   const tr = MUSIC_TRACKS[m.track];
@@ -1184,19 +1195,27 @@ function musicTick(){
 }
 function startMusic(){
   const m = ses.music;
-  if (m.started){ if (AC && AC.state === 'suspended') AC.resume(); return; }
-  if (!ensureAC()) return;
-  try {
-    m.gain = AC.createGain(); m.gain.gain.value = 0; m.gain.connect(AC.destination);
-    ensureNoiseBuf();
-    m.started = true;
-    m.track = desiredMusicTrack() || 'town';
-    m.step = 0; m.nextAt = AC.currentTime + .06;
-    if (!prog().muted) m.gain.gain.linearRampToValueAtTime(MUSIC_GAIN, AC.currentTime + .5);
-    else m.silenced = true;
-    m.timer = setInterval(musicTick, 25);
-  } catch(e){}
+  if (m.started){
+    if (AC && AC.state === 'suspended') AC.resume();
+    if (m.el && m.el.paused && m.elKey){ try { const p = m.el.play(); if (p && p.catch) p.catch(()=>{}); } catch(e){} }
+    return;
+  }
+  ensureAC();
+  if (AC){
+    try {
+      m.gain = AC.createGain(); m.gain.gain.value = 0; m.gain.connect(AC.destination);
+      ensureNoiseBuf();
+    } catch(e){}
+  }
+  m.started = true;
+  m.track = null; m.step = 0; m.nextAt = AC ? AC.currentTime + .06 : 0;
+  if (!m.timer) m.timer = setInterval(musicTick, 25);
 }
+/* the title theme starts at the first touch/click anywhere (autoplay
+   rules): the whole music system primes there, so PLAY crossfades
+   from the title track into the field track seamlessly */
+window.addEventListener('pointerdown', ()=>startMusic(), { once:true });
+window.addEventListener('keydown', ()=>startMusic(), { once:true });
 document.addEventListener('visibilitychange', () => {
   const m = ses.music;
   if (!document.hidden && m.started){ m.nextAt = 0; if (AC && AC.state === 'suspended') AC.resume(); }
@@ -1208,7 +1227,10 @@ const JINGLE_NOTES = {
   chapter: [1046.50, 1567.98],                             // soft two-note chime: chapter card
 };
 function playJingle(kind){
-  if (prog().muted || !ensureAC()) return;
+  if (prog().muted) return;
+  if (kind === 'uiOpen'){ tickPool.play(); return; }
+  if (kind === 'uiClose'){ tickPool.play(.18); return; }
+  if (!ensureAC()) return;
   const t = AC.currentTime + .02;
   if (kind === 'quest' || kind === 'sigil'){
     const notes = JINGLE_NOTES[kind], gap = kind === 'sigil' ? .10 : .085;
@@ -1220,10 +1242,6 @@ function playJingle(kind){
     toneAt(196.00, t + .40, .16, 'square', .06);
   } else if (kind === 'chapter'){
     JINGLE_NOTES.chapter.forEach((f, i) => toneAt(f, t + i * .11, .30, 'sine', i ? .035 : .05));
-  } else if (kind === 'uiOpen'){
-    toneAt(660, t, .028, 'square', .012);
-  } else if (kind === 'uiClose'){
-    toneAt(520, t, .028, 'square', .012);
   }
 }
 
@@ -1246,6 +1264,9 @@ function makeAudioPool(src, vol){
 }
 const hitPool  = makeAudioPool('assets/fx/hit.mp3', .5);
 const critPool = makeAudioPool('assets/fx/critical-hit.mp3', .5);
+const lvlPool  = makeAudioPool('assets/isw/sfx/level-up.mp3', .55);
+const buyPool  = makeAudioPool('assets/isw/sfx/shop-buy-sell.mp3', .55);
+const tickPool = makeAudioPool('assets/isw/sfx/tick.mp3', .3);
 /* Digit atlas (Phaser-style JSON): n0..n9 normal glyphs, c0..c9 crit, 'c!' bang. */
 const DIGITS = { img:new Image(), frames:null };
 DIGITS.img.src = 'assets/fx/digits.png';
