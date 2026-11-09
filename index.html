@@ -2995,7 +2995,7 @@ function minedFx(d){
     addFloat(d.x, d.y-.1, '+1 ' + GEMS[d.g].name.toUpperCase(), GEMS[d.g].col, rare ? { big:true } : {});
     sfx.gem();
   }
-  gainWxp(6, 600);   // the chunk is the work — pickaxe XP even when no gem pops (×100 rescale: mining wxp was 6/chunk against the old 60*lv bar; both sides ×100, ratio preserved)
+  gainWxp(6, 30);   // MINING REBALANCE (Handler, 2026-11-09): chunk weapon XP 600 -> 30 — mining was levelling the pickaxe ~20x faster than combat levels weapons. Chunks grant no player XP (verified: minedFx is the only chunk path), so the rider's 4/chunk player-XP clause has nothing to attach to.
   saveGame(); refreshHUD();
 }
 function worldPayload(){
