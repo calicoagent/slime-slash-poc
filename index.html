@@ -9151,12 +9151,18 @@ function frame(now){
   }
   updateDmgFlash(now);   // flat red damage screen: per-hit flash decay + low-HP tint
 
-  // camera eases after the sword — push toward an edge to travel the world
+  // camera eases after the sword — push toward an edge to travel the world.
+  // The ease time constant IS the edge-travel speed: pinned at a screen
+  // edge, the camera gap sits at ~half the view, so sustained travel runs
+  // at gap/TAU — Handler (2026-11-09) ruled that speed too fast and cut it
+  // to a quarter: TAU 240ms -> 960ms. In-screen blade tracking is NOT this
+  // (updatePointer places the blade on the pointer stream 1:1), so fine
+  // control near the blade is untouched — only the far/edge catch-up slows.
   {
     const vw = W/UNIT(), vh = H/UNIT();
     const tx = clamp(me.x - vw/2, 0, Math.max(0, WORLD - vw));
     const ty = clamp(me.y - vh/2, 0, Math.max(0, WORLD - vh));
-    const k = 1 - Math.exp(-dt/240);
+    const k = 1 - Math.exp(-dt/960);
     ses.cam.x += (tx - ses.cam.x) * k; ses.cam.y += (ty - ses.cam.y) * k;
   }
 
