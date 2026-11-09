@@ -2411,80 +2411,71 @@ function pickKind(zone=0){
   for (let i=0;i<SLIME_KINDS.length;i++){ if ((r-=ws[i])<=0) return SLIME_KINDS[i]; }
   return SLIME_KINDS[0];
 }
+/* Zone-aware player census: the host simulates the zones players are
+   actually in. Peers carry their zone on the pos payload (p.zone). */
+function playersList(){
+  const out = [{ x: me.x, y: me.y, zone: ses.myZone }];
+  for (const p of world.peers.values())
+    out.push({ x: (p.tx !== undefined ? p.tx : p.x), y: (p.ty !== undefined ? p.ty : p.y), zone: p.zone || 'glade' });
+  return out;
+}
+function playersByZoneMap(){
+  const m = {};
+  for (const pl of playersList()) m[pl.zone] = (m[pl.zone] || 0) + 1;
+  return m;
+}
+function playersInZone(zid){ return playersList().filter(p => p.zone === zid); }
+function nearestPlayerPos(x, y, zid){
+  let bx = null, by = 0, bd = Infinity;
+  for (const p of playersList()){
+    if (p.zone !== zid) continue;
+    const d = dist2(x, y, p.x, p.y);
+    if (d < bd){ bd = d; bx = p.x; by = p.y; }
+  }
+  return bx === null ? null : { x: bx, y: by, d2: bd };
+}
+function pickSpawnZone(){
+  const m = playersByZoneMap(), cands = Object.keys(m).filter(z => !ZONES_DEF[z].safe);
+  if (cands.length) return cands[Math.floor(Math.random() * cands.length)];
+  return HUNTING_ZONES[Math.floor(Math.random() * HUNTING_ZONES.length)];
+}
 function spawnSlime(opts={}){
   // THE EMPEROR IS UNIQUE: never create a second boss while one lives
   if (opts.kind === 'boss'){ for (const o of world.slimes.values()) if (o.kind==='boss') return o; }
-  // position FIRST: the zone (and therefore kind odds + scaling) depends on it
-  let sx, sy;
-  if (opts.x !== undefined){ sx = opts.x; sy = opts.y; }
+  let sx, sy, zid;
+  if (opts.x !== undefined){ sx = opts.x; sy = opts.y; zid = opts.zone || ses.myZone; }
   else {
-    /* ARCHIPELAGO SPAWNS: every wild spawn lands ON LAND and outside the
-       town disc (in EITHER branch). ~60% near a random player — which
-       weights spawns to the islands players are actually on — the rest on
-       an isle picked by the population split (ISLE_SPAWN_W, land-area weights). */
-    /* SAFE ZONES (Settlements): wild spawns keep out of EVERY
-       settlement's disc (+ .10 margin), the town rule generalised —
-       Thornwick and Rotwatch stay as calm as the town plaza. */
-    const inTown = (x,y) => { for (const z of SAFE_ZONES){ const rr = z.r + .10; if (dist2(x,y,z.x,z.y) < rr*rr) return true; } return false; };
-    /* SHRINE QUIET (Batch D): ambient/near-player wild spawns also keep
-       .85u clear of every shrine — the shrines are set-pieces, and
-       near-player spawn pressure used to carpet them with dozens of
-       slimes (kings included), burying the summon composition in a
-       brawl. Explicit-position spawns (guardian summons, boss minions,
-       splitter children, the metal guarantee) never pass through this
-       branch, so story spawns are exempt by construction. */
-    const nearShrine = (x,y) => { for (const k in SHRINE_POS){ const p = SHRINE_POS[k]; if (dist2(x,y,p.x,p.y) < .85*.85) return true; } return false; };
-    let anchor = null;
-    for (let tries=0; tries<6; tries++){
-      if (opts.nearPlayer !== false && Math.random() < .6){
-        const spots = [{x:me.x, y:me.y}];
-        for (const p of world.peers.values()) spots.push({ x:(p.tx!==undefined?p.tx:p.x), y:(p.ty!==undefined?p.ty:p.y) });
-        const c = spots[Math.floor(Math.random()*spots.length)];
-        anchor = c;
-        const a = rand(0,Math.PI*2), d = rand(.15,.9);
-        sx = c.x + Math.cos(a)*d; sy = c.y + Math.sin(a)*d;
-      } else {
-        let wi = Math.random(), ii = 0;
-        while (ii < ISLE_SPAWN_W.length - 1 && wi > ISLE_SPAWN_W[ii]){ wi -= ISLE_SPAWN_W[ii]; ii++; }
-        const p = sampleIsle(ISLES[ii]); sx = p.x; sy = p.y; anchor = ISLES[ii];
-      }
-      const ci = isleAt(sx, sy);
-      if (ci >= 0 && !ISLES[ci].noSpawn && !inTown(sx,sy) && !nearShrine(sx,sy)) break;   // inside a spawnable isle's disc — never on a bridge strip, in the sea, or on the spawnless Hermit
-      if (tries===5){
-        // FALLBACK: the anchor isle's rim ring, on the anchor's bearing.
-        /* ANCHOR BUG (Batch D hunt): an ISLE anchor carries its centre
-           as cx/cy, not x/y — reading anchor.x on that path produced
-           undefined -> NaN dx/dy -> a NaN-position slime in the world
-           (~1/1000 spawns, whenever the isle branch's six candidates
-           all rejected). An isle anchor's bearing comes from the last
-           candidate instead (it is on that isle by construction). */
-        const axp = anchor.x !== undefined ? anchor.x : sx, ayp = anchor.y !== undefined ? anchor.y : sy;
-        const ai = isleAt(axp, ayp), I = ISLES[ai >= 0 ? ai : nearestIsle(axp, ayp)];
-        const dx = axp - I.cx, dy = ayp - I.cy, dd = Math.hypot(dx,dy) || 1e-4;
-        let rr = I.r - .12;
-        if (I.zone === 0) rr = Math.max(rr, TOWN_R + .16);   // Isle 1's ring must also clear the town disc
-        sx = I.cx + dx/dd*rr; sy = I.cy + dy/dd*rr;
-        /* the ring can still land in a shrine's quiet radius (the
-           Meadow Shrine sits near Isle 1's rim) or inside a settlement:
-           walk the bearing in bounded steps until clear — 8 x .35 rad
-           always finds a gap, since no quiet disc spans more than ~.62
-           rad of any isle's rim. */
-        for (let w=0; w<8 && (nearShrine(sx,sy) || inTown(sx,sy)); w++){
-          const a = Math.atan2(sy - I.cy, sx - I.cx) + .35;
-          sx = I.cx + Math.cos(a)*rr; sy = I.cy + Math.sin(a)*rr;
-        }
-      }
+    /* ZONE SPAWNS (transplant): every wild spawn lands on walkable
+       ground in its zone, outside every safe disc/zone (+ margin), and
+       clear of the shrines' .85u quiet radius (set-piece ground — the
+       guardian summons, boss minions, splitter children and the metal
+       guarantee pass explicit positions and are exempt by construction).
+       ~65% spawn in a ring around a random player IN THE ZONE (musou:
+       the crowd thickens where the fighting is), the rest anywhere in
+       the zone. */
+    zid = opts.zone || pickSpawnZone();
+    const nearShrine = (x, y) => { for (const k in SHRINE_POS){ const p = SHRINE_POS[k]; if (p.zone === zid && dist2(x, y, p.x, p.y) < .85 * .85) return true; } return false; };
+    let placed = false;
+    for (let tries = 0; tries < 8 && !placed; tries++){
+      if (opts.nearPlayer !== false && Math.random() < .65){
+        const spots = playersInZone(zid);
+        if (spots.length){
+          const c = spots[Math.floor(Math.random() * spots.length)];
+          const a = rand(0, Math.PI * 2), d = rand(1.1, 3.4);
+          sx = c.x + Math.cos(a) * d; sy = c.y + Math.sin(a) * d;
+        } else { const p = sampleZonePoint(zid); sx = p.x; sy = p.y; }
+      } else { const p = sampleZonePoint(zid); sx = p.x; sy = p.y; }
+      if (canStandZ(zid, sx, sy) && !safeZoneAt(sx, sy, zid) && !nearShrine(sx, sy)) placed = true;
     }
+    if (!placed){ const p = projectToZone(zid, isFinite(sx) ? sx : ZONE_U / 2, isFinite(sy) ? sy : ZONE_U / 2); sx = p.x; sy = p.y; }
   }
-  /* FINITENESS CHOKE POINT (Batch D): whatever the position phase did
-     above, a slime NEVER enters the world at a non-finite position —
-     sampleIsle over a constant isle is finite by construction, so this
-     fallback makes NaN spawns impossible, full stop. */
-  if (!isFinite(sx) || !isFinite(sy)){ const p = sampleIsle(ISLES[nearestIsle(me.x, me.y)]); sx = p.x; sy = p.y; }
-  const zi = zoneOf(sx, sy), zone = ZONES[zi];
+  /* FINITENESS CHOKE POINT (Batch D, kept): a slime NEVER enters the
+     world at a non-finite position. */
+  if (!isFinite(sx) || !isFinite(sy)){ const p = sampleZonePoint(zid || 'glade'); sx = p.x; sy = p.y; zid = zid || 'glade'; }
+  const zi = ZONES_DEF[zid].tier, zone = ZONES[zi];
   let k = opts.kind ? (SLIME_KINDS.find(m=>m.kind===opts.kind) || SLIME_KINDS[0]) : pickKind(zi);
   /* FIRST-FIGHT GATE (Batch C): while every connected blade is under
-     level 5, no King spawns on Verdant Isle at all — a new player's
+     level 5, no King spawns in a tier-0 zone at all — a new player's
      first fight must never be a King. The roll degrades to a Big. */
   if (k.kind === 'king' && zi === 0 && connectedTopLevel() < 5) k = SLIME_KINDS.find(m=>m.kind==='big');
   const id = (world.hostId||me.id).slice(0,4)+'-'+(world.slimeSeq++);
@@ -2492,7 +2483,7 @@ function spawnSlime(opts={}){
   const s = { id, kind:k.kind, hp, max:hp, r:k.r,
     x:sx, y:sy, vx:0, vy:0, dir:rand(0,Math.PI*2), turnAt:performance.now()+rand(800,2600),
     color: k.kind==='gold' ? '#ffe066' : k.kind==='metal' ? '#cfd8dc' : SLIME_COLORS[Math.floor(Math.random()*SLIME_COLORS.length)],
-    seed:seedForId(id), squish:0, flash:0, mul: k.kind==='boss' ? 1.5 : zone.mul, elite:false, isle: zi };   // isle: the home island this slime is bound to (host sim clamps it there)
+    seed:seedForId(id), squish:0, flash:0, mul: k.kind==='boss' ? 1.5 : zone.mul, elite:false, zone: zid, isle: zi };   // zone: home zone (host sim + payload); isle: its tier, kept for legacy readers
   if (k.kind==='metal') world.lastMetalAt = performance.now();   // THE guarantee clock: a metal entering the world is the only thing that resets it
   // ELITES: rare, tougher, much richer (never kings, the Emperor, or metal slimes)
   if (k.kind !== 'king' && k.kind !== 'boss' && k.kind !== 'metal' && Math.random() < .08){
@@ -2518,26 +2509,24 @@ function royalGuard(now, boss){
   bossEvent(rp);
   if (world.sendBoss && hasPeers()){ try { world.sendBoss(rp); } catch(e){} }
   for (let i=0;i<3;i++)
-    spawnSlime({ kind: Math.random() < .5 ? 'mid' : 'dart', x:clamp(boss.x+rand(-.25,.25), .06, WORLD-.06), y:clamp(boss.y+rand(-.25,.25), .1, WORLD-.06) });
+    spawnSlime({ kind: Math.random() < .5 ? 'mid' : 'dart', zone: boss.zone, x:clamp(boss.x+rand(-.25,.25), .06, WORLD-.06), y:clamp(boss.y+rand(-.25,.25), .1, WORLD-.06) });
   broadcastWorld();
 }
 function hostTick(now,dt){
   const topLvl = connectedTopLevel();   // read once per tick: drives the king gate below
+  const playersByZone = playersByZoneMap();   // transplant: only zones holding players are simulated + stocked
   // wander + spawn
   for (const s of world.slimes.values()){
+    if (!playersByZone[s.zone]){ s.squish = Math.max(0, s.squish - dt/160); s.flash = Math.max(0, s.flash - dt/120); continue; }   // a zone with no players in it waits, frozen — its crowd is (re)built on entry
     if (now>s.turnAt){ s.dir=rand(0,Math.PI*2); s.turnAt=now+rand(800,2600); }
     const k = SLIME_KINDS.find(k=>k.kind===s.kind);
     let sp = k.speed*dt*60/1000, mult = 1;   // mult: steering speed multiplier, applied to hop distance
     if (s.kind==='dart') s.dir += Math.sin(now/90 + s.seed*9)*.095*(dt/16.667);   // zigzag — punchy, reads as a darter (dt-scaled: the raw per-frame += steered twice as hard at 120Hz)
     if (s.kind==='gold' || s.kind==='metal'){
-      // gold slimes FLEE the nearest player — catch one if you can
-      let bx=me.x, by=me.y, bd=dist2(s.x,s.y,me.x,me.y);
-      for (const p of world.peers.values()){
-        const px=(p.tx!==undefined?p.tx:p.x), py=(p.ty!==undefined?p.ty:p.y);
-        const d=dist2(s.x,s.y,px,py);
-        if (d<bd){ bd=d; bx=px; by=py; }
-      }
-      if (s.kind==='gold') s.dir = Math.atan2(s.y-by, s.x-bx);
+      // gold slimes FLEE the nearest player IN THEIR ZONE — catch one if you can
+      const np = nearestPlayerPos(s.x, s.y, s.zone);
+      const bx = np ? np.x : s.x, by = np ? np.y : s.y, bd = np ? np.d2 : Infinity;
+      if (s.kind==='gold' && np) s.dir = Math.atan2(s.y-by, s.x-bx);
       else if (s.guaranteed && now - (s.bornAt||0) < 1500){
         /* guaranteed metal, spawn-in shimmer: PLANTED for its first
            1500ms — no flee, no hop translation (mult 0) — so the player
@@ -2552,25 +2541,15 @@ function hostTick(now,dt){
       // the King HUNTS: it steers straight at the nearest player, faster than its wander.
       // FIRST-FIGHT GATE (Batch C): while every connected blade is under level 5 a King
       // anywhere only WANDERS (the generic turnAt steering above) — hunting resumes at 5.
-      let bx=me.x, by=me.y, bd=dist2(s.x,s.y,me.x,me.y);
-      for (const p of world.peers.values()){
-        const px=(p.tx!==undefined?p.tx:p.x), py=(p.ty!==undefined?p.ty:p.y);
-        const d=dist2(s.x,s.y,px,py);
-        if (d<bd){ bd=d; bx=px; by=py; }
-      }
-      s.dir = Math.atan2(by-s.y, bx-s.x);
-      mult *= 1.6;
+      const np = nearestPlayerPos(s.x, s.y, s.zone);
+      if (np){ s.dir = Math.atan2(np.y-s.y, np.x-s.x); mult *= 1.6; }
     }
     if (s.kind==='boss'){
       // the Emperor KITES like a bullet-hell boss: holds a firing band
       // (~.62-.85u from the nearest player) — backs off when crowded,
       // closes only to firing range, strafes while in the band.
-      let bx=me.x, by=me.y, bd=dist2(s.x,s.y,me.x,me.y);
-      for (const p of world.peers.values()){
-        const px=(p.tx!==undefined?p.tx:p.x), py=(p.ty!==undefined?p.ty:p.y);
-        const d=dist2(s.x,s.y,px,py);
-        if (d<bd){ bd=d; bx=px; by=py; }
-      }
+      const np = nearestPlayerPos(s.x, s.y, s.zone);
+      const bx = np ? np.x : s.x, by = np ? np.y : s.y, bd = np ? np.d2 : 1;
       const d = Math.sqrt(bd), away = Math.atan2(s.y-by, s.x-bx);
       if (d < .62){ s.dir = away; mult *= 2.1; }
       else if (d > .85){ s.dir = away + Math.PI; mult *= 1.8; }
@@ -2586,14 +2565,9 @@ function hostTick(now,dt){
       const home = SHRINE_POS[s.guardian] || { x:s.x, y:s.y };
       if (Math.hypot(s.x-home.x, s.y-home.y) > 1.05){ s.dir = Math.atan2(home.y-s.y, home.x-s.x); mult *= 1.2; }
       else {
-        let bx=me.x, by=me.y, bd=dist2(s.x,s.y,me.x,me.y);
-        for (const p of world.peers.values()){
-          const px=(p.tx!==undefined?p.tx:p.x), py=(p.ty!==undefined?p.ty:p.y);
-          const d=dist2(s.x,s.y,px,py);
-          if (d<bd){ bd=d; bx=px; by=py; }
-        }
-        s.dir = Math.atan2(by-s.y, bx-s.x);
-        mult *= (GUARDIANS[s.guardian] ? GUARDIANS[s.guardian].chase : 1);
+        const np = nearestPlayerPos(s.x, s.y, s.zone);
+        if (np){ s.dir = Math.atan2(np.y-s.y, np.x-s.x); mult *= (GUARDIANS[s.guardian] ? GUARDIANS[s.guardian].chase : 1); }
+        else { s.dir = Math.atan2(home.y-s.y, home.x-s.x); mult *= .8; }   // no blade in its zone: drift home
       }
     }
     /* SAFE ZONES — steering half: inside any settlement's radius + .17,
@@ -2602,12 +2576,16 @@ function hostTick(now,dt){
        the hard clamp that makes this a guarantee rather than an
        intention — runs after the hop. (Was the town disc alone;
        Thornwick and Rotwatch ride the same rule.) */
-    if (s.kind !== 'guardian') for (const z of SAFE_ZONES){
-      if (Math.hypot(s.x-z.x, s.y-z.y) < z.r + .17){ s.dir = Math.atan2(s.y-z.y, s.x-z.x); break; }
+    if (s.kind !== 'guardian'){
+      const zd0 = ZONES_DEF[s.zone];
+      if (zd0 && zd0.safeDiscs) for (const d of zd0.safeDiscs){
+        if (Math.hypot(s.x-d.x, s.y-d.y) < d.r + .17){ s.dir = Math.atan2(s.y-d.y, s.x-d.x); break; }
+      }
     }
     /* HOP LOCOMOTION: slimes never glide. Steering above only chooses s.dir;
        translation happens ONLY inside the hop cycle's air window, at
        hopDist per hop (steering multiplier applied). Grounded = planted. */
+    const ox = s.x, oy = s.y;   // pre-hop point — the zone clamp below slides back to it
     const hopP = hopPhase(s, now);
     if (hopP >= .16 && hopP < .56){
       const adv = k.hopDist * mult / (.40 * k.hopCycle / 1000) * (dt/1000);
@@ -2615,43 +2593,58 @@ function hostTick(now,dt){
     }
     if (s.x<s.r+ .01){s.x=s.r+.01; s.dir=Math.PI-s.dir;} if (s.x>WORLD-s.r-.01){s.x=WORLD-s.r-.01; s.dir=Math.PI-s.dir;}
     if (s.y<s.r+.02){s.y=s.r+.02; s.dir=-s.dir;} if (s.y>WORLD-s.r-.03){s.y=WORLD-s.r-.03; s.dir=-s.dir;}
-    /* SAFE-ZONE HARD CLAMP — positional guarantee, applied AFTER all
-       movement (steering, kiting, hop translation, wall bounces): no
-       slime of any kind ENDS the frame inside any settlement's radius
-       + .12. (The town-only original "corrected" deep intruders only to
-       TOWN_R - .12 — INSIDE the safe zone — so kings and the Emperor
-       could sit in the plaza for hops at a time.) Each clamp leaves a
-       .12u enemy-free moat past the settlement's edge. */
-    if (s.kind !== 'guardian') for (const z of SAFE_ZONES){
-      const clampD = Math.hypot(s.x-z.x, s.y-z.y), MIN_D = z.r + .12;
-      if (clampD < MIN_D){
-        const push = MIN_D / (clampD || 1e-4);
-        s.x = z.x + (s.x-z.x)*push; s.y = z.y + (s.y-z.y)*push;
+    /* SAFE-DISC HARD CLAMP + ZONE CLAMP (transplant) — run AFTER all
+       movement: no slime ends the frame inside a safe disc (+ .12 moat),
+       and none ends it on unwalkable ground (water, a building
+       footprint, past the diamond): a blocked landing slides along x,
+       then y, then stays at the pre-hop point and turns around. A wild
+       slime inside a zone-wide-safe zone (town/camp) is a bug — remove
+       it rather than shove it across the map. */
+    if (s.kind !== 'guardian'){
+      const zd = ZONES_DEF[s.zone];
+      if (zd && zd.safe){ world.slimes.delete(s.id); continue; }
+      if (zd && zd.safeDiscs) for (const d of zd.safeDiscs){
+        const clampD = Math.hypot(s.x-d.x, s.y-d.y), MIN_D = d.r + .12;
+        if (clampD < MIN_D){
+          const push = MIN_D / (clampD || 1e-4);
+          s.x = d.x + (s.x-d.x)*push; s.y = d.y + (s.y-d.y)*push;
+        }
       }
     }
-    /* ISLAND CLAMP (archipelago) — runs LAST, after the town clamp: a
-       slime never ends the frame off its home isle's disc. On Isle 1 it
-       also settles the town clamp's overshoot (it projects to
-       TOWN_R+.12 = 1.14, inside the isle, so the two compose cleanly).
-       Guardians included: their leash circle can reach past the shore,
-       but the fight stays on land. */
-    {
-      const isl = ISLES[s.isle !== undefined ? s.isle : zoneOf(s.x, s.y)];
-      const idd = Math.hypot(s.x - isl.cx, s.y - isl.cy), maxD = isl.r - .02;
-      if (idd > maxD){
-        const p = maxD / idd;
-        s.x = isl.cx + (s.x - isl.cx)*p; s.y = isl.cy + (s.y - isl.cy)*p;
-      }
+    if (zoneBlocked(s.zone, s.x, s.y)){
+      if (!zoneBlocked(s.zone, s.x, oy)) s.y = oy;
+      else if (!zoneBlocked(s.zone, ox, s.y)) s.x = ox;
+      else { s.x = ox; s.y = oy; s.dir += Math.PI; }
     }
     s.squish = Math.max(0, s.squish - dt/160); s.flash = Math.max(0, s.flash - dt/120);
   }
-  const target = Math.min(620, 520 + world.peers.size*25);   // scaled with the world (was 80 + peers*8, cap 120, in the 6u world; 380 + peers*20, cap 460, at 24u)
-  if (world.slimes.size < target){
-    // spawn probability rescaled by dt: a flat .55/frame trickle would
-    // refill the world twice as fast at 120Hz as at 60Hz
-    const spawnP = 1 - Math.pow(.45, dt/16.667);
-    if (Math.random()<spawnP) spawnSlime();
-    if (world.slimes.size < target-4 && Math.random()<spawnP) spawnSlime();   // refill in pairs while well under target
+  /* MUSOU POPULATIONS (Handler: "keep the massive amount of slimes, we
+     go satisfying musou type"): a hunting zone with players in it stays
+     PACKED — ~285-380 active slimes, fodder-heavy by pickKind, with
+     elites and kings as officers. The crowd is never thinned for perf;
+     entry builds it fast (6/tick), then a dt-scaled trickle holds it.
+     Zones without players keep only a 60-slime garrison (story pieces,
+     metals and elites exempt); safe zones stay empty. */
+  {
+    const zoneCounts = {};
+    for (const s of world.slimes.values()) zoneCounts[s.zone] = (zoneCounts[s.zone] || 0) + 1;
+    const spawnP = 1 - Math.pow(.45, dt/16.667);   // dt-rescaled trickle (120Hz must not refill twice as fast)
+    for (const zid in playersByZone){
+      if (ZONES_DEF[zid].safe) continue;
+      const target = Math.min(380, 285 + playersByZone[zid] * 25);
+      let deficit = target - (zoneCounts[zid] || 0);
+      if (deficit <= 0) continue;
+      let n = deficit > 120 ? 6 : deficit > 40 ? 3 : (Math.random() < spawnP ? 1 : 0) + (deficit > 4 && Math.random() < spawnP ? 1 : 0);
+      while (n-- > 0 && deficit-- > 0) spawnSlime({ zone: zid });
+    }
+    for (const zid in zoneCounts){
+      if (playersByZone[zid] || ZONES_DEF[zid].safe || zoneCounts[zid] <= 60) continue;
+      let shed = 2;
+      for (const s of world.slimes.values()){
+        if (!shed) break;
+        if (s.zone === zid && s.kind !== 'boss' && s.kind !== 'guardian' && s.kind !== 'metal' && !s.elite){ world.slimes.delete(s.id); shed--; }
+      }
+    }
   }
   /* METAL SLIME GUARANTEE (v5): a FINDABLE metal at least every ~60s of
      continuous none-near time (near = within 0.9u). v5 changes over v4,
@@ -2681,45 +2674,43 @@ function hostTick(now,dt){
      (3) the spawn announces itself with the king banner and the metal
      sheds silver sparkles while alive, so it cannot be missed. */
   if (world.lastMetalAt < 0) world.lastMetalAt = now;   // the clock starts with this host's reign
-  const metalSpots = [{x:me.x, y:me.y}];
-  for (const p of world.peers.values()) metalSpots.push({ x:(p.tx!==undefined?p.tx:p.x), y:(p.ty!==undefined?p.ty:p.y) });
+  const metalSpots = playersList();
   let metalNear = false;
-  for (const s of world.slimes.values()) if (s.kind==='metal' && metalSpots.some(c=>dist2(s.x,s.y,c.x,c.y) < .9*.9)){ metalNear = true; break; }
+  for (const s of world.slimes.values()) if (s.kind==='metal' && metalSpots.some(c=>c.zone === s.zone && dist2(s.x,s.y,c.x,c.y) < .9*.9)){ metalNear = true; break; }
   if (metalNear) world.metalNoneNearSince = 0;
   else if (!world.metalNoneNearSince) world.metalNoneNearSince = now;
   else if (now - world.metalNoneNearSince > 60000){
     world.metalNoneNearSince = now;
     for (const [id, s] of [...world.slimes]) if (s.kind==='metal') world.slimes.delete(id);   // every living metal is unreachable — clear it
-    // position computed valid HERE: 0.6u from a random player in a random
-    // direction, ON LAND and outside every settlement (+ .15); up to
-    // 8 tries, else the rim ring of the player's own isle on their bearing
+    // position computed valid HERE: 0.6u from a random player, on
+    // walkable ground in THAT PLAYER'S ZONE and outside its safe areas;
+    // up to 8 tries, then a widening ring around the player, then the
+    // zone projection of the player's own spot.
     const c = metalSpots[Math.floor(Math.random()*metalSpots.length)];
     let mx = null, my = null;
     for (let tries=0; tries<8 && mx===null; tries++){
       const a = rand(0,Math.PI*2);
       const x = c.x + Math.cos(a)*.6, y = c.y + Math.sin(a)*.6;
-      if (onLand(x,y) && outsideSettlements(x, y, .15)){ mx = x; my = y; }
+      if (canStandZ(c.zone, x, y) && !safeZoneAt(x, y, c.zone)){ mx = x; my = y; }
     }
     if (mx===null){
-      const ci = isleAt(c.x, c.y), I = ISLES[ci >= 0 ? ci : nearestIsle(c.x, c.y)];
-      let a = Math.atan2(c.y - I.cy, c.x - I.cx);
-      let rr = I.r - .14;
-      if (I.zone === 0) rr = Math.max(rr, TOWN_R + .17);
-      mx = I.cx + Math.cos(a)*rr; my = I.cy + Math.sin(a)*rr;
-      // the rim ring can still clip a settlement (Thornwick stands near
-      // Grove's rim): walk the bearing in bounded steps until clear
-      for (let w=0; w<8 && !outsideSettlements(mx, my, .15); w++){
-        a += .35; mx = I.cx + Math.cos(a)*rr; my = I.cy + Math.sin(a)*rr;
+      outer: for (let rr=.8; rr<=1.6; rr+=.2){
+        for (let st=0; st<10; st++){
+          const a = st/10*Math.PI*2 + rr;
+          const x = c.x + Math.cos(a)*rr, y = c.y + Math.sin(a)*rr;
+          if (canStandZ(c.zone, x, y) && !safeZoneAt(x, y, c.zone)){ mx = x; my = y; break outer; }
+        }
       }
     }
+    if (mx===null){ const p = projectToZone(c.zone, c.x + .8, c.y); mx = p.x; my = p.y; }
     // DIRECT construction into the map (mirror of spawnSlime's object
-    // shape, incl. zone scaling) — no spawnSlime call on this path
-    const mk = SLIME_KINDS.find(m=>m.kind==='metal'), mzone = ZONES[zoneOf(mx, my)];
+    // shape, incl. tier scaling) — no spawnSlime call on this path
+    const mk = SLIME_KINDS.find(m=>m.kind==='metal'), mtier = ZONES_DEF[c.zone].tier, mzone = ZONES[mtier];
     const mid = (world.hostId||me.id).slice(0,4)+'-'+(world.slimeSeq++);
     const mhp = Math.round(mk.hp * mzone.hp);
     world.slimes.set(mid, { id:mid, kind:'metal', hp:mhp, max:mhp, r:mk.r,
       x:mx, y:my, vx:0, vy:0, dir:rand(0,Math.PI*2), turnAt:now+rand(800,2600),
-      color:'#cfd8dc', seed:seedForId(mid), squish:0, flash:0, mul:mzone.mul, elite:false, isle:zoneOf(mx,my),
+      color:'#cfd8dc', seed:seedForId(mid), squish:0, flash:0, mul:mzone.mul, elite:false, zone:c.zone, isle:mtier,
       guaranteed:true, bornAt:now });   // guaranteed: edge arrow + 1500ms spawn-in freeze key off these (host-local flavour; the world payload doesn't carry them)
     world.lastMetalAt = now;   // a metal entered the world
   }
@@ -2732,17 +2723,16 @@ function hostTick(now,dt){
   if (now >= world.bossSpawnAt){
     world.bossSpawnAt = now + 240000;   // fallback cadence (hostKill re-anchors this to the kill moment); the FIRST spawn stays at +75s
     if (!boss){
-      /* The Emperor's home is WILDS ISLE (archipelago): he awakens on its
-         disc, away from the Wilds Shrine, and the island clamp keeps his
-         court there. (The old rule — anywhere > 2.3u from the centre —
-         died with the radial world.) */
-      const WI = ISLES[2], ws = SHRINE_POS.wilds;
-      let bx = WI.cx - .5, by = WI.cy + .5;
+      /* The Emperor's home is CINDERFELL (the wilds zone): he awakens
+         at its ash crossroads, away from both shrines, and the zone
+         clamp keeps his court on the plate. */
+      const ws = SHRINE_POS.wilds, rs = SHRINE_POS.root;
+      let bx = 7.4, by = 6.8;
       for (let i=0;i<40;i++){
-        const p = sampleIsle(WI, WI.r - .3);
-        if (Math.hypot(p.x - ws.x, p.y - ws.y) > .55){ bx = p.x; by = p.y; break; }
+        const p = { x: 7.4 + rand(-1.6, 1.6), y: 6.8 + rand(-1.6, 1.6) };
+        if (canStandZ('wilds', p.x, p.y) && Math.hypot(p.x - ws.x, p.y - ws.y) > .55 && Math.hypot(p.x - rs.x, p.y - rs.y) > .55){ bx = p.x; by = p.y; break; }
       }
-      boss = spawnSlime({ kind:'boss', x:bx, y:by });
+      boss = spawnSlime({ kind:'boss', zone:'wilds', x:bx, y:by });
       world.bossEnraged = false; world.bossFury = false; world.bossSummonAt = 0;   // a fresh Emperor starts calm and summons on his own clock
       /* EMPEROR SCALING: the flat 4000 melts under a geared high-level
          player, so the Emperor scales to the STRONGEST player present
@@ -2782,31 +2772,27 @@ function hostTick(now,dt){
     }
     // SUMMONS: every 20s while he lives, he calls 2-3 minions to his side
     if (!world.bossSummonAt) world.bossSummonAt = now + 20000;
-    else if (now >= world.bossSummonAt){
+    else if (now >= world.bossSummonAt && playersByZone[boss.zone]){
       world.bossSummonAt = now + 20000;
       const nMin = Math.random() < .5 ? 2 : 3;
       for (let i=0;i<nMin;i++)
-        spawnSlime({ kind: Math.random() < .5 ? 'mid' : 'dart', x:clamp(boss.x+rand(-.25,.25), .06, WORLD-.06), y:clamp(boss.y+rand(-.25,.25), .1, WORLD-.06) });
+        spawnSlime({ kind: Math.random() < .5 ? 'mid' : 'dart', zone: boss.zone, x:clamp(boss.x+rand(-.25,.25), .06, WORLD-.06), y:clamp(boss.y+rand(-.25,.25), .1, WORLD-.06) });
       const sp = { p:'summon', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now };
       bossEvent(sp);
       if (world.sendBoss && hasPeers()){ try { world.sendBoss(sp); } catch(e){} }
       broadcastWorld();   // minions ride the normal slime sync — push them out now, not on the next cycle
     }
     if (!world.bossFireAt) world.bossFireAt = now + 1200;
-    if (now >= world.bossFireAt){
+    if (now >= world.bossFireAt && !playersByZone[boss.zone]) world.bossFireAt = now + 600;   // no blade in Cinderfell: the Emperor holds his fire
+    if (now >= world.bossFireAt && playersByZone[boss.zone]){
       world.bossFireAt = now + 1250 * (world.bossEnraged ? .75 : 1) * (world.bossFury ? .6 : 1) * (boss.chaos ? .8 : 1);   // enrage x0.75 (~0.94s), FINAL FURY x0.6 on top, CHAOS EMPEROR x0.8
       const p = ['ring','fan','burst','spiral','spread'][world.bossPatternIdx++ % 5];
       const sm = (world.bossEnraged ? 1.15 : 1) * (world.bossFury ? 1.3 : 1);   // orb-speed multipliers, carried on every pattern payload
       let payload;
       if (p==='ring') payload = { p:'ring', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now, n:28, spd:.32, sm };
       else if (p==='fan' || p==='spread'){
-        let bx=me.x, by=me.y, bd=dist2(boss.x,boss.y,me.x,me.y);
-        for (const pp of world.peers.values()){
-          const px=(pp.tx!==undefined?pp.tx:pp.x), py=(pp.ty!==undefined?pp.ty:pp.y);
-          const d=dist2(boss.x,boss.y,px,py);
-          if (d<bd){ bd=d; bx=px; by=py; }
-        }
-        payload = { p, x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now, aim:+Math.atan2(by-boss.y, bx-boss.x).toFixed(3), sm };
+        const np = nearestPlayerPos(boss.x, boss.y, boss.zone) || { x: boss.x + 1, y: boss.y };
+        payload = { p, x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now, aim:+Math.atan2(np.y-boss.y, np.x-boss.x).toFixed(3), sm };
       }
       else if (p==='burst') payload = { p:'burst', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now, sm };   // no aim: each client re-picks the nearest player per volley, so it tracks
       else payload = { p:'spiral', x:+boss.x.toFixed(3), y:+boss.y.toFixed(3), at:now, sm };
@@ -2836,17 +2822,13 @@ function hostTick(now,dt){
     if (grd){
       const cfg = GUARDIANS[grd.guardian] || GUARDIANS.meadow;
       if (!world.guardianFireAt) world.guardianFireAt = now + 1200;
-      if (now >= world.guardianFireAt){
+      if (now >= world.guardianFireAt && !playersByZone[grd.zone]) world.guardianFireAt = now + 600;   // no blade in the guardian's zone: it holds its fire
+      if (now >= world.guardianFireAt && playersByZone[grd.zone]){
         world.guardianFireAt = now + cfg.fireMs;
         let payload;
         const fanPayload = () => {
-          let bx=me.x, by=me.y, bd=dist2(grd.x,grd.y,me.x,me.y);
-          for (const pp of world.peers.values()){
-            const px=(pp.tx!==undefined?pp.tx:pp.x), py=(pp.ty!==undefined?pp.ty:pp.y);
-            const d=dist2(grd.x,grd.y,px,py);
-            if (d<bd){ bd=d; bx=px; by=py; }
-          }
-          return { p:'fan', x:+grd.x.toFixed(3), y:+grd.y.toFixed(3), at:now, aim:+Math.atan2(by-grd.y, bx-grd.x).toFixed(3), sm:1 };
+          const np = nearestPlayerPos(grd.x, grd.y, grd.zone) || { x: grd.x + 1, y: grd.y };
+          return { p:'fan', x:+grd.x.toFixed(3), y:+grd.y.toFixed(3), at:now, aim:+Math.atan2(np.y-grd.y, np.x-grd.x).toFixed(3), sm:1 };
         };
         if (cfg.pattern === 'ring') payload = { p:'ring', x:+grd.x.toFixed(3), y:+grd.y.toFixed(3), at:now, n:10, spd:.30, sm:1 };
         else if (cfg.pattern === 'fan') payload = fanPayload();
@@ -2864,10 +2846,10 @@ function hostTick(now,dt){
       // ride cfg.summonKind / summonN / summonText on the same clock.
       if (cfg.summonMs){
         if (!world.guardianSummonAt) world.guardianSummonAt = now + cfg.summonMs;
-        else if (now >= world.guardianSummonAt){
+        else if (now >= world.guardianSummonAt && playersByZone[grd.zone]){
           world.guardianSummonAt = now + cfg.summonMs;
           for (let i=0;i<(cfg.summonN || 2);i++)
-            spawnSlime({ kind:cfg.summonKind || 'dart', x:clamp(grd.x+rand(-.22,.22), .06, WORLD-.06), y:clamp(grd.y+rand(-.22,.22), .1, WORLD-.06) });
+            spawnSlime({ kind:cfg.summonKind || 'dart', zone: grd.zone, x:clamp(grd.x+rand(-.22,.22), .06, WORLD-.06), y:clamp(grd.y+rand(-.22,.22), .1, WORLD-.06) });
           addFloat(grd.x, grd.y-.2, cfg.summonText || 'THE REGENT CALLS!', '#8affd1', { big:true });
           broadcastWorld();   // minions ride the normal slime sync
         }
@@ -2903,19 +2885,22 @@ function spawnNode(){
   let r = Math.random()*tot, t = 0;
   for (let i=0;i<NODE_WEIGHTS.length;i++){ if ((r -= NODE_WEIGHTS[i]) <= 0){ t = i; break; } }
   const type = NODE_TYPES[t];
-  const cands = ISLES.filter(I => !I.noSpawn && type.zones.includes(ZONE_NAMES[I.zone]));   // the Hermit's zone (1 = 'grove') must not make it a node candidate — nothing spawns there
+  /* the type's zone names are TIER names: pick one of its tiers, then a
+     hunting zone of that tier. Nodes live on walkable ground outside
+     every settlement, clear of other nodes in the zone. */
+  const tierName = type.zones[Math.floor(Math.random() * type.zones.length)];
+  const tier = ZONE_NAMES.indexOf(tierName);
+  const cands = HUNTING_ZONES.filter(z => ZONES_DEF[z].tier === tier);
   if (!cands.length) return false;
-  let wtot = 0; for (const I of cands) wtot += ISLE_NODE_W[I.zone];
-  let wr = Math.random()*wtot, isle = cands[cands.length-1];
-  for (const I of cands){ if ((wr -= ISLE_NODE_W[I.zone]) <= 0){ isle = I; break; } }
+  const zid = cands[Math.floor(Math.random() * cands.length)];
   for (let tries=0; tries<12; tries++){
-    const p = sampleIsle(isle, isle.r - .15), x = p.x, y = p.y;
-    if (!outsideSettlements(x, y, .15)) continue;   // never in a settlement (buildings are covered by this too)
+    const p = sampleZonePoint(zid), x = p.x, y = p.y;
+    if (safeZoneAt(x, y, zid)) continue;
     let clash = false;
-    for (const o of world.nodes.values()) if (dist2(x,y,o.x,o.y) < .28*.28){ clash = true; break; }
+    for (const o of world.nodes.values()) if (o.zone === zid && dist2(x,y,o.x,o.y) < .28*.28){ clash = true; break; }
     if (clash) continue;
     const id = (world.hostId||me.id).slice(0,4)+'-n'+(world.nodeSeq++);
-    world.nodes.set(id, { id, x:+x.toFixed(3), y:+y.toFixed(3), t, r:.078, left:type.chunks, shakeT:0 });
+    world.nodes.set(id, { id, x:+x.toFixed(3), y:+y.toFixed(3), t, r:.078, left:type.chunks, shakeT:0, zone:zid });
     return true;
   }
   return false;
@@ -2933,6 +2918,8 @@ function hostMine(nodeId, d, byId){
   let px, py;
   if (byId === me.id){ px = me.x; py = me.y; }
   else { const p = world.peers.get(byId); if (!p) return; px = (p.tx!==undefined ? p.tx : p.x); py = (p.ty!==undefined ? p.ty : p.y); }
+  const minerZone = byId === me.id ? ses.myZone : (world.peers.get(byId) || {}).zone;
+  if (minerZone !== n.zone) return;   // zones are separate worlds for mining too
   if (dist2(px, py, n.x, n.y) > .55*.55) return;   // the miner must actually be at the rock
   const now = performance.now();
   const key = 'mine:'+byId+':'+nodeId, last = world.hitClaimsAt.get(key)||0;
@@ -2965,8 +2952,8 @@ function minedFx(d){
 }
 function worldPayload(){
   const boss = [...world.slimes.values()].find(s=>s.kind==='boss');
-  return { s:[...world.slimes.values()].map(s=>[s.id, +s.x.toFixed(3), +s.y.toFixed(3), Math.ceil(s.hp), s.max, s.kind, s.color, +s.dir.toFixed(2), Math.round((s.mul||1)*100)/100, s.elite?1:0, s.guardian||'']),
-           n:[...world.nodes.values()].map(n=>[n.id, +n.x.toFixed(3), +n.y.toFixed(3), n.t, n.left]),
+  return { s:[...world.slimes.values()].map(s=>[s.id, +s.x.toFixed(3), +s.y.toFixed(3), Math.ceil(s.hp), s.max, s.kind, s.color, +s.dir.toFixed(2), Math.round((s.mul||1)*100)/100, s.elite?1:0, s.guardian||'', s.zone||'glade']),
+           n:[...world.nodes.values()].map(n=>[n.id, +n.x.toFixed(3), +n.y.toFixed(3), n.t, n.left, n.zone||'glade']),
            sc: world.scores, h: world.hostId,
            /* Emperor scaling block: clients evaluate orb + contact damage
               locally, so the scaled values (and the guard window, carried
@@ -2981,16 +2968,18 @@ function applyWorld(p){
     const [id,x,y,hp,max,kind,color,dir] = a; seen.add(id);
     const mul = a[8]!==undefined ? +a[8] : 1, elite = a[9]===1;   // appended fields (old payloads default safely)
     const grdKey = a[10] || '';   // stage 4: a guardian's shrine key rides appended, like mul/elite
+    const zid = a[11] || 'glade';   // transplant: the slime's home zone rides appended (old payloads default to the glade)
     const old = world.slimes.get(id);
     if (old){
       if (hp < old.hp){ old.squish=1; old.flash=1; old.flinchUntil=performance.now()+220; spawnHitFx(old.x,old.y,old.color,3); }
       old.tx=x; old.ty=y; old.hp=hp; old.dir=dir; old.mul=mul; old.elite=elite;
       if (grdKey) old.guardian = grdKey;
+      old.zone = zid;
       const kk = SLIME_KINDS.find(m=>m.kind===old.kind);
       if (kk) old.r = old.kind==='guardian' && GUARDIANS[old.guardian] ? GUARDIANS[old.guardian].r : kk.r * (elite?1.35:1);
     } else {
       const k = SLIME_KINDS.find(k=>k.kind===kind) || SLIME_KINDS[0];
-      const ns = {id,kind,hp,max,r:k.r*(elite?1.35:1),x,y,tx:x,ty:y,dir,color,seed:seedForId(id),squish:1,flash:0,mul,elite,isle:zoneOf(x,y)};
+      const ns = {id,kind,hp,max,r:k.r*(elite?1.35:1),x,y,tx:x,ty:y,dir,color,seed:seedForId(id),squish:1,flash:0,mul,elite,zone:zid,isle:ZONES_DEF[zid].tier};
       if (grdKey){ ns.guardian = grdKey; ns.r = GUARDIANS[grdKey] ? GUARDIANS[grdKey].r : ns.r; }
       world.slimes.set(id, ns);
     }
@@ -3006,6 +2995,7 @@ function applyWorld(p){
     const seenN = new Set();
     for (const a of p.n){
       const [id,x,y,t,left] = a; seenN.add(id);
+      const nz = a[5] || 'glade';
       const old = world.nodes.get(id);
       if (old){
         if (left < old.left){   // a chunk was lost — every client sees the rock shake AND a burst of stone chips
@@ -3013,8 +3003,8 @@ function applyWorld(p){
           mineChips(old.x, old.y, 12);
           capParticles();
         }
-        old.x = x; old.y = y; old.t = t; old.left = left;
-      } else world.nodes.set(id, { id, x, y, t, r:.078, left, shakeT:0 });
+        old.x = x; old.y = y; old.t = t; old.left = left; old.zone = nz;
+      } else world.nodes.set(id, { id, x, y, t, r:.078, left, shakeT:0, zone:nz });
     }
     if (!world.isHost) for (const [id, n] of [...world.nodes.entries()]) if (!seenN.has(id)){
       // a node that vanishes mid-life CRUMBLES (it was mined out)
@@ -3183,30 +3173,35 @@ function restackToasts(){
   }
   box.style.height = kids.length ? (kids[0].offsetHeight + (kids.length - 1) * TOAST_PEEK + 6) + 'px' : '0px';
 }
-function bubble(text,x,y,ms=1600){ const b=$('#bubble'); b.textContent=text; b.style.left=NX(x)+'px'; b.style.top=NY(y)+'px'; b.classList.remove('hidden'); clearTimeout(ses.bubbleTimer); ses.bubbleTimer=setTimeout(()=>b.classList.add('hidden'),ms); }
+function bubble(text,x,y,ms=1600){ const b=$('#bubble'); b.textContent=text; const p=SP(x,y); b.style.left=p[0]+'px'; b.style.top=p[1]+'px'; b.classList.remove('hidden'); clearTimeout(ses.bubbleTimer); ses.bubbleTimer=setTimeout(()=>b.classList.add('hidden'),ms); }
 
 /* ============================================================ boss bullets (client-local sim)
    The host broadcasts PATTERN EVENTS on the 'boss' action; every client
    (including the host's own) turns them into glowing orbs simulated locally.
    Bullets are never added to the world payload. */
-function spawnBullet(x,y,vx,vy,now){
-  world.bullets.push({ x, y, vx, vy, born:now, life:3000 });
+function spawnBullet(x,y,vx,vy,now,zone){
+  world.bullets.push({ x, y, vx, vy, born:now, life:3000, zone: zone || ses.myZone });
   if (world.bullets.length > 320) world.bullets.splice(0, world.bullets.length-320);   // global live-orb cap: cull the OLDEST first
 }
 function bossEvent(d){
   if (!d || typeof d.x!=='number' || typeof d.y!=='number') return;
   const now = performance.now();
+  /* the volley's zone: the boss/guardian body standing at the origin
+     (payloads stay position-only, as they always were) */
+  let bz = d.z || null;
+  if (!bz) for (const s of world.slimes.values()) if ((s.kind==='boss' || s.kind==='guardian') && Math.abs(s.x - d.x) < .02 && Math.abs(s.y - d.y) < .02){ bz = s.zone; break; }
+  if (!bz) bz = ses.myZone;
   const sm = d.sm || 1;   // enrage orb-speed multiplier (host-latched, carried on every pattern payload)
   if (d.p==='ring'){
     const n = d.n || 26, spd = (d.spd || .34) * sm;
-    for (let i=0;i<n;i++){ const a = (i/n)*Math.PI*2; spawnBullet(d.x, d.y, Math.cos(a)*spd, Math.sin(a)*spd, now); }
+    for (let i=0;i<n;i++){ const a = (i/n)*Math.PI*2; spawnBullet(d.x, d.y, Math.cos(a)*spd, Math.sin(a)*spd, now, bz); }
   } else if (d.p==='fan'){
     /* n / spread / spd are optional (the Emperor's volleys never set
        them and get the classic 9 orbs over 1.0 rad at .4); the Root
        Herald's AIMED BURSTS ride the same event with n:5, spread:.4,
        spd:.48 — a tight fast fan at the nearest blade. */
     const aim = +d.aim || 0, n = d.n || 9, spread = d.spread !== undefined ? d.spread : 1.0, spd = (d.spd || .4) * sm;
-    for (let i=0;i<n;i++){ const a = aim + (n > 1 ? (i-(n-1)/2) * (spread/(n-1)) : 0); spawnBullet(d.x, d.y, Math.cos(a)*spd, Math.sin(a)*spd, now); }
+    for (let i=0;i<n;i++){ const a = aim + (n > 1 ? (i-(n-1)/2) * (spread/(n-1)) : 0); spawnBullet(d.x, d.y, Math.cos(a)*spd, Math.sin(a)*spd, now, bz); }
   } else if (d.p==='spiral'){
     world.spiralEmitters.push({ until: now+2400, nextAt: now, ang: rand(0, Math.PI*2), sm });
   } else if (d.p==='spread'){
@@ -3302,6 +3297,7 @@ function localHitCheck(now){
   };
   me.prevSa = sa;
   for (const s of world.slimes.values()){
+    if (s.zone !== ses.myZone) continue;   // other zones are other worlds — my blade is not there
     const last = me.lastHitAt.get(s.id)||0;
     if (now-last < myCd()) continue;
     const hit = bladeHit(s);
@@ -3324,6 +3320,7 @@ function localHitCheck(now){
   /* ---- mining: the same swept blade vs ore nodes (circle r .078).
      Only the PICKAXE sends a claim; any other weapon just CLINKs. ---- */
   for (const n of world.nodes.values()){
+    if (n.zone !== ses.myZone) continue;
     const nk = 'node:'+n.id, nlast = me.lastHitAt.get(nk)||0;
     if (now - nlast < myCd()) continue;
     const hit = bladeHit(n);
@@ -3343,6 +3340,7 @@ function localHitCheck(now){
   }
 }
 function doHit(s, dmg, opts={}){
+  if (s.zone && s.zone !== ses.myZone) return;   // transplant: my blade is only ever in MY zone
   if (s.kind==='metal'){
     /* METAL SLIME: exactly 1 damage from EVERY hit instance — swings, crits,
        splash, actives, skills, bombs, waves, spears all just chip it. */
@@ -3368,7 +3366,7 @@ function doHit(s, dmg, opts={}){
   const spR = Math.max(ses.stats.splash, (myWeapon().splash||0) + treeSplash);   // swing weapons splash natively; passive + tree add more
   if (!opts.noSplash && spR>0){
     for (const o of world.slimes.values())
-      if (o!==s && dist2(o.x,o.y,s.x,s.y) < spR*spR)
+      if (o!==s && o.zone===s.zone && dist2(o.x,o.y,s.x,s.y) < spR*spR)
         setTimeout(()=>{ if (world.slimes.get(o.id)===o) doHit(o, Math.max(1,Math.ceil(dmg*.5)), {noSplash:true}); }, 40);
   }
   if (!opts.noDouble && ses.stats.double>0 && Math.random()<ses.stats.double){
@@ -3389,7 +3387,7 @@ function hostApplyHit(slimeId, dmg, byId){
   // splash (warhammer)
   const w = byId===me.id ? myWeapon() : WEAPONS.find(w=>w.id===(world.peers.get(byId)?.weaponId)) || WEAPONS[1];
   const splashDead = [];
-  if (w.splash){ for (const o of world.slimes.values()) if (o!==s && dist2(o.x,o.y,s.x,s.y) < w.splash*w.splash){ if (o.kind==='boss' && now < (o.guardUntil||0)) continue; o.hp -= o.kind==='metal' ? 1 : Math.ceil(dmg*.5); if (o.hp <= 0) splashDead.push(o); } }
+  if (w.splash){ for (const o of world.slimes.values()) if (o!==s && o.zone===s.zone && dist2(o.x,o.y,s.x,s.y) < w.splash*w.splash){ if (o.kind==='boss' && now < (o.guardUntil||0)) continue; o.hp -= o.kind==='metal' ? 1 : Math.ceil(dmg*.5); if (o.hp <= 0) splashDead.push(o); } }
   if (s.hp<=0) hostKill(s, byId);
   else queueWorld();
   /* splash can KILL: a neighbour taken to <=0 HP by the splash used to stay
@@ -3413,12 +3411,12 @@ function hostKill(s, byId){
   if (world.sendKillFx && hasPeers()) world.sendKillFx(fx);
   onKillFx(fx);
   if (s.kind==='splitter'){   // bursts into two babies where it died
-    spawnSlime({ kind:'baby', x:clamp(s.x+rand(-.04,.04), .06, WORLD-.06), y:clamp(s.y+rand(-.04,.04), .1, WORLD-.06) });
-    spawnSlime({ kind:'baby', x:clamp(s.x+rand(-.04,.04), .06, WORLD-.06), y:clamp(s.y+rand(-.04,.04), .1, WORLD-.06) });
+    spawnSlime({ kind:'baby', zone: s.zone, x:clamp(s.x+rand(-.04,.04), .06, WORLD-.06), y:clamp(s.y+rand(-.04,.04), .1, WORLD-.06) });
+    spawnSlime({ kind:'baby', zone: s.zone, x:clamp(s.x+rand(-.04,.04), .06, WORLD-.06), y:clamp(s.y+rand(-.04,.04), .1, WORLD-.06) });
   }
   if (s.kind==='guardian' && s.guardian==='wilds'){   // ROTBLOOM COLOSSUS: the splitter's death, at boss scale — three mids seed from the husk
     for (let i=0;i<3;i++)
-      spawnSlime({ kind:'mid', x:clamp(s.x+rand(-.07,.07), .06, WORLD-.06), y:clamp(s.y+rand(-.07,.07), .1, WORLD-.06) });
+      spawnSlime({ kind:'mid', zone: s.zone, x:clamp(s.x+rand(-.07,.07), .06, WORLD-.06), y:clamp(s.y+rand(-.07,.07), .1, WORLD-.06) });
   }
   spawnSlime(); queueWorld();
 }
@@ -4304,7 +4302,7 @@ function damagePlayer(amount, now){
        cover you. Everywhere else — and Thornwick and Rotwatch entire —
        stays absolutely safe, as always. */
     const grd = guardianAlive();
-    if (!(mySafeZone.id === 'town' && grd && dist2(me.x, me.y, grd.x, grd.y) < .65*.65)) return;
+    if (!(grd && grd.zone === ses.myZone && dist2(me.x, me.y, grd.x, grd.y) < .65*.65)) return;
   }
   if (now < me.shieldUntil) return;        // Aegis Charm blocks ALL damage
   if (now <= me.invulnUntil) return;
@@ -4322,12 +4320,13 @@ function death(){
   const lost = prog().purse ? Math.floor(prog().coins*.25) : Math.floor(prog().coins/2);   // Coin Purse softens the blow; banked coins are NEVER touched
   act.addCoins(-lost);
   me.hp = me.maxHp;
-  const sp = prog().spawnAt || { x: TOWN.x, y: TOWN.y + .1 };   // inn-saved respawn, else town centre
-  me.x = sp.x; me.y = sp.y; me.px = me.x; me.py = me.y;
+  const sp = prog().spawnAt;
+  if (sp && ZONES_DEF[sp.zone]){ ses.myZone = sp.zone; me.x = sp.x; me.y = sp.y; }   // inn-saved respawn (zone + point)
+  else { ses.myZone = ALTAR.zone; me.x = ALTAR_SPAWN.x; me.y = ALTAR_SPAWN.y; }        // no inn respawn bought: back to the summoning altar
+  me.px = me.x; me.py = me.y;
   pinPtr(me.x, me.y, now);   // respawn teleport: restart the pointer stream here, or the frame evaluator would drag the sword back to wherever the mouse sits
-  const vw = W/UNIT(), vh = H/UNIT();
-  ses.cam.x = clamp(me.x - vw/2, 0, Math.max(0, WORLD - vw));
-  ses.cam.y = clamp(me.y - vh/2, 0, Math.max(0, WORLD - vh));
+  ses.cam.x = me.x; ses.cam.y = me.y;
+  ses.waves.length = 0; ses.meteors.length = 0; ses.shots.length = 0;   // zone-local projectiles die with the jump
   ses.combo = 0; ses.comboUntil = 0; updateComboBadge(false);
   me.invulnUntil = now + 3000;
   me.trailBreak = true; ses.myTrail.length = 0;
@@ -4379,9 +4378,9 @@ function spawnGuardian(shrine){
      and the delayed nameplate in drawSlime. */
   let gx = pos.x, gy = pos.y;
   for (const [ox, oy] of [[0, .55], [0, -.55], [.55, 0], [-.55, 0]]){
-    if (onLand(pos.x + ox, pos.y + oy)){ gx = pos.x + ox; gy = pos.y + oy; break; }
+    if (canStandZ(pos.zone, pos.x + ox, pos.y + oy)){ gx = pos.x + ox; gy = pos.y + oy; break; }
   }
-  const s = spawnSlime({ kind:'guardian', x:gx, y:gy });
+  const s = spawnSlime({ kind:'guardian', zone: pos.zone, x:gx, y:gy });
   s.bornAt = performance.now();
   let topLevel = prog().level;
   for (const p of world.peers.values()) if (p.level && p.level > topLevel) topLevel = p.level;
@@ -4415,7 +4414,7 @@ function summonGuardian(shrine){
    this player, across reloads), burst, and let the ENGINE count it. */
 function collectSprout(id){
   const st = prog().story; if (!st) return;
-  if (st.quest === 'prologue' || st.sproutsDone || st.sprouts >= 3 || st.sproutsFound.includes(id)) return;
+  if (st.quest === 'prologue' || st.quest === 'arrival' || st.sproutsDone || st.sprouts >= 3 || st.sproutsFound.includes(id)) return;
   const spot = SPROUT_SPOTS.find(sp => sp.id === id); if (!spot) return;
   act.setStory(s2 => ({ sproutsFound: [...s2.sproutsFound, id] }));
   spawnPopFx(spot.x, spot.y, '#57d93d', 18, .015);
@@ -4442,13 +4441,39 @@ function pokeBarrier(key){
    flavour line floats at the arrival. ---- */
 const SHRINE_NAMES = { meadow:'MEADOW SHRINE', grove:'GROVE SHRINE', wilds:'WILDS SHRINE', root:'ROOT SHRINE' };
 function travelDestinations(fromKey){
-  const dests = [{ label:'TOWN — THE PLAZA', x:TOWN.x, y:TOWN.y + .1 }];
+  const dests = [{ label:'ALDERWAKE — THE PLAZA', zone:'town', x:TOWN.x, y:TOWN.y + .1 }];
   for (const key of Object.keys(SHRINE_POS)){
     if (key === fromKey || !shrineDone(key)) continue;
     const p = SHRINE_POS[key];
-    dests.push({ label:SHRINE_NAMES[key], x:p.x, y:p.y + .18 });
+    dests.push({ label:SHRINE_NAMES[key], zone:p.zone, x:p.x, y:p.y + .18 });
   }
   return dests;
+}
+/* Zone travel (exits + shrine doors share it): fade, swap the zone,
+   land, snap the camera, banner. Local FX are zone-local — they die at
+   the border. The pos stream simply carries the new home at 20Hz. */
+function doZoneTravel(zoneId, x, y, flavour){
+  if (ses.zoneFading) return;
+  ses.zoneFading = true;
+  const f = $('#travelFade');
+  f.style.opacity = '1';
+  playJingle('quest');
+  setTimeout(() => {
+    const now = performance.now();
+    ses.myZone = zoneId;
+    const p = projectToZone(zoneId, x, y);
+    me.x = p.x; me.y = p.y; me.px = me.x; me.py = me.y;
+    pinPtr(me.x, me.y, now);
+    ses.cam.x = me.x; ses.cam.y = me.y;
+    me.trailBreak = true; ses.myTrail.length = 0;
+    ses.waves.length = 0; ses.meteors.length = 0; ses.shots.length = 0;
+    ses.particles.length = 0; ses.floats.length = 0; ses.popRings.length = 0; ses.dmgFloats.length = 0;
+    spawnPopFx(me.x, me.y, '#ffd94d', 18, .02);
+    if (flavour) addFloat(me.x, me.y - .14, flavour, '#ffd94d', { big:true });
+    checkZone(true);
+    f.style.opacity = '0';
+    ses.zoneFading = false;
+  }, 220);
 }
 function openTravelPanel(fromKey){
   ses.travelFrom = fromKey;
@@ -4469,22 +4494,8 @@ function closeTravelPanel(){
 }
 function doTravel(dest){
   closeTravelPanel();
-  const f = $('#travelFade');
-  f.style.opacity = '1';
-  playJingle('quest');
-  setTimeout(() => {
-    const now = performance.now();
-    me.x = dest.x; me.y = dest.y; me.px = me.x; me.py = me.y;
-    pinPtr(me.x, me.y, now);   // teleport: restart the pointer stream here, like a respawn
-    const vw = W/UNIT(), vh = H/UNIT();
-    ses.cam.x = clamp(me.x - vw/2, 0, Math.max(0, WORLD - vw));
-    ses.cam.y = clamp(me.y - vh/2, 0, Math.max(0, WORLD - vh));
-    me.trailBreak = true; ses.myTrail.length = 0;
-    spawnPopFx(me.x, me.y, '#ffd94d', 18, .02);
-    addFloat(me.x, me.y - .14, 'THE SIGILS REMEMBER THE ROAD', '#ffd94d', { big:true });
-    playJingle('sigil');
-    f.style.opacity = '0';
-  }, 200);
+  doZoneTravel(dest.zone, dest.x, dest.y, 'THE SIGILS REMEMBER THE ROAD');
+  playJingle('sigil');
 }
 /* ---- the ending: three chapter cards in sequence. playEnding queues
    them; a watcher in frame() feeds the next card whenever the previous
@@ -4551,8 +4562,8 @@ function openBuilding(id){
    exactly the historical point). */
 function innDoor(spot){
   const s = spot || buildingSpot('hospital');
-  const z = SAFE_ZONES.find(z => z.id === s.zone) || SAFE_ZONES[0];
-  const dx = z.x - s.pos.x, dy = z.y - s.pos.y, d = Math.hypot(dx, dy) || 1e-4;
+  const home = s.zone === 'camp' ? VILLAGE : s.zone === 'hollow' ? ROTWATCH : TOWN;   // the settlement heart of the door's zone
+  const dx = home.x - s.pos.x, dy = home.y - s.pos.y, d = Math.hypot(dx, dy) || 1e-4;
   return { x: +(s.pos.x + dx / d * .28).toFixed(3), y: +(s.pos.y + dy / d * .28).toFixed(3) };
 }
 function panelButtons(panel){
@@ -5037,7 +5048,7 @@ function joinWorld(roomCode){
     { urls:'turn:openrelay.metered.ca:443', username:'openrelayproject', credential:'openrelayproject' },
     { urls:'turns:openrelay.metered.ca:443?transport=tcp', username:'openrelayproject', credential:'openrelayproject' },
   ] } }, roomCode);
-  world.room.onPeerJoin(id=>{ world.peers.set(id,{x:.5,y:.5,tx:.5,ty:.5,angle:0,name:'Knight',color:`hsl(${hashHue(id)} 80% 60%)`,weapon:1,level:1,trail:[],lastSeen:performance.now()}); electHost(); if(world.isHost) setTimeout(broadcastWorld,300); refreshPeers(); });
+  world.room.onPeerJoin(id=>{ world.peers.set(id,{x:.5,y:.5,tx:.5,ty:.5,angle:0,name:'Knight',color:`hsl(${hashHue(id)} 80% 60%)`,weapon:1,level:1,trail:[],lastSeen:performance.now(),zone:'glade'}); electHost(); if(world.isHost) setTimeout(broadcastWorld,300); refreshPeers(); });
   world.room.onPeerLeave(id=>{ world.peers.delete(id); delete world.scores[id]; electHost(); refreshPeers(); });
 
   const [sendP, onP] = world.room.makeAction('pos');  world.sendPos = sendP;
@@ -5047,6 +5058,7 @@ function joinWorld(roomCode){
     if (d.n) p.name=cleanName(d.n); if (d.c) p.color=String(d.c).slice(0,32);
     p.whirling = !!d.s; p.lastSeen=performance.now();
     if (typeof d.l==='number') p.level = clamp(d.l|0, 1, 999);   // peer level rides the pos payload — the host scales the Emperor to the strongest player present
+    if (typeof d.z==='string' && ZONES_DEF[d.z]) p.zone = d.z;   // transplant: the peer's zone rides the same payload
     if (world.scores[id]) world.scores[id].name=p.name;
   });
   const [sendH, onH] = world.room.makeAction('hit'); world.sendHit = sendH;
@@ -5069,7 +5081,7 @@ function joinWorld(roomCode){
   setTimeout(refreshPeers, 15500);
 }
 setInterval(()=>{ // sword state @ ~20Hz
-  if (ses.started && world.sendPos && hasPeers()){ const bl = bladeAt(performance.now()); world.sendPos({ x:+me.x.toFixed(3), y:+me.y.toFixed(3), a:+bl.ang.toFixed(2), e:+bl.ext.toFixed(2), w:prog().weapon, n:prog().name, c:me.color, s: performance.now()<me.whirlUntil, l: prog().level }); }
+  if (ses.started && world.sendPos && hasPeers()){ const bl = bladeAt(performance.now()); world.sendPos({ x:+me.x.toFixed(3), y:+me.y.toFixed(3), a:+bl.ang.toFixed(2), e:+bl.ext.toFixed(2), w:prog().weapon, n:prog().name, c:me.color, s: performance.now()<me.whirlUntil, l: prog().level, z: ses.myZone }); }
 }, 50);
 
 /* ============================================================ input */
@@ -5116,9 +5128,10 @@ addEventListener('pointermove', e=>{
     // tap-gate travel from RAW client deltas (a constant touch lift cancels out of a delta)
     if (ses.lastClient && ses.downInfo) ses.downInfo.travel += Math.hypot(ev.clientX - ses.lastClient.x, ev.clientY - ses.lastClient.y);
     ses.lastClient = { x:ev.clientX, y:ev.clientY };
+    const zp = screenToZone(ev.clientX, ptrY(ev));   // iso world: the stream stores ZONE coords (the projection is affine, so stream interpolation is exact)
     pushPtrSample(
-      clamp(ses.cam.x + ev.clientX/UNIT(), .02, WORLD-.02),
-      clamp(ses.cam.y + ptrY(ev)/UNIT(), .02, WORLD-.02),
+      clamp(zp.x, .02, WORLD-.02),
+      clamp(zp.y, .02, WORLD-.02),
       ev.timeStamp || now);
   }
   ses.lastMoveT = now;
@@ -5160,11 +5173,12 @@ function updatePointer(now){
      the nearest shore. Combat reads the same committed segment, so hit
      tests/trail/speed all see the clamped path. */
   const wantX = ex - me.x, wantY = ey - me.y;   // the intended displacement, captured before the clamp trims it (Batch B)
-  if (!canStand(ex, ey)){
-    if (canStand(ex, me.y)) ey = me.y;
-    else if (canStand(me.x, ey)) ex = me.x;
-    else if (canStand(me.x, me.y)){ ex = me.x; ey = me.y; }
-    else { const p = projectToLand(ex, ey); ex = p.x; ey = p.y; }
+  const standHere = (x, y) => canStandZ(ses.myZone, x, y);
+  if (!standHere(ex, ey)){
+    if (standHere(ex, me.y)) ey = me.y;
+    else if (standHere(me.x, ey)) ex = me.x;
+    else if (standHere(me.x, me.y)){ ex = me.x; ey = me.y; }
+    else { const p = projectToZone(ses.myZone, ex, ey); ex = p.x; ey = p.y; }
     /* TANGENTIAL BIAS (Batch B): axis-slide alone PINS on concave
        shores — pushing diagonally into a bay whose both axis moves
        leave land stops the blade dead, even with an opening (a bridge
@@ -5178,14 +5192,15 @@ function updatePointer(now){
     const wantL = Math.hypot(wantX, wantY), gotL = Math.hypot(gotX, gotY);
     if (wantL > .004 && gotL < wantL * .8){
       let bx = 0, by = 0, bd = 1.2;
-      for (const s of [BRIDGE_A, BRIDGE_B]){
-        const sd = segDist(me.x, me.y, s);
-        if (sd.d < bd){ bd = sd.d; bx = sd.qx - me.x; by = sd.qy - me.y; }
+      for (const e of EXITS){
+        if (e.zone !== ses.myZone) continue;
+        const d = Math.hypot(me.x - e.x, me.y - e.y);
+        if (d < bd){ bd = d; bx = e.x - me.x; by = e.y - me.y; }
       }
       if (bd >= 1.2){
-        // no bridge mouth near: probe both shore tangents of the push
+        // no exit mouth near: probe both shore tangents of the push
         const il = 1 / wantL, tx = -wantY * il, ty = wantX * il;
-        const lOk = canStand(me.x + tx*.3, me.y + ty*.3), rOk = canStand(me.x - tx*.3, me.y - ty*.3);
+        const lOk = standHere(me.x + tx*.3, me.y + ty*.3), rOk = standHere(me.x - tx*.3, me.y - ty*.3);
         if (lOk && !rOk){ bx = tx; by = ty; }
         else if (rOk && !lOk){ bx = -tx; by = -ty; }
       }
@@ -5196,10 +5211,10 @@ function updatePointer(now){
         // a teleport, not a drift — .05u/frame is a slide, not a jump
         const step = Math.min(wantL * .55, .05);
         const nx = me.x + bx/bl*step, ny = me.y + by/bl*step;
-        if (canStand(nx, ny)){ ex = nx; ey = ny; }
+        if (standHere(nx, ny)){ ex = nx; ey = ny; }
         else {
           const hx = me.x + bx/bl*step*.5, hy = me.y + by/bl*step*.5;
-          if (canStand(hx, hy)){ ex = hx; ey = hy; }
+          if (standHere(hx, hy)){ ex = hx; ey = hy; }
         }
       }
     }
@@ -5227,12 +5242,12 @@ function updatePointer(now){
       const wl = Math.hypot(wantX, wantY), tx = -wantY / wl, ty = wantX / wl;
       let sign = ses.stuckSign || 1;
       let nx = me.x + tx * sign * step, ny = me.y + ty * sign * step;
-      if (!canStand(nx, ny)){
+      if (!standHere(nx, ny)){
         if (now - (ses.stuckFlipAt || 0) > 350){ sign = -sign; ses.stuckSign = sign; ses.stuckFlipAt = now; }
         nx = me.x + tx * sign * step; ny = me.y + ty * sign * step;
-        if (!canStand(nx, ny)){ nx = me.x + tx * sign * step * .5; ny = me.y + ty * sign * step * .5; }
+        if (!standHere(nx, ny)){ nx = me.x + tx * sign * step * .5; ny = me.y + ty * sign * step * .5; }
       } else ses.stuckSign = sign;
-      if (canStand(nx, ny)){ ex = nx; ey = ny; }
+      if (standHere(nx, ny)){ ex = nx; ey = ny; }
     }
   }
   const prevX = me.x, prevY = me.y;
@@ -5240,15 +5255,17 @@ function updatePointer(now){
   if (snap) me.trailBreak = true;   // teleports don't streak the trail across the gap
   const fdt = ses.ptrEvalT ? clamp(now - ses.ptrEvalT, 1, 100) : 16.7;
   ses.ptrEvalT = now;
-  const dxPx = (ex - prevX) * UNIT(), dyPx = (ey - prevY) * UNIT();
+  const dxu = ex - prevX, dyu = ey - prevY;
+  const dxPx = (dxu - dyu) * 80 * _ZK, dyPx = (dxu + dyu) * 40 * _ZK;   // the segment's true on-screen length (iso projection) — bladeLive's px/s reads this
   const distPx = Math.hypot(dxPx, dyPx);
   const spd = snap ? 0 : distPx / fdt * 1000;
   me.speed = spd;
   if (spd > (me.ptrSpeedPx||0)) me.ptrSpeedPx = spd;   // frame() already applied this frame's decay — same max() contract the event feed had
   if (distPx > 1.5){
     // heading: angular-lerp toward the segment direction (~32ms constant)
-    // instead of the old per-event snap of me.angle
-    const heading = Math.atan2(dyPx, dxPx);
+    // instead of the old per-event snap of me.angle — in ZONE axes, the
+    // space hit tests and the sword render both live in
+    const heading = Math.atan2(dyu, dxu);
     let dA = heading - me.angle;
     /* FREEZE HARDENING (Batch D): heading is atan2-bounded and me.angle
        is lerped toward it every frame, so |dA| stays under ~3PI; the
@@ -5277,8 +5294,9 @@ addEventListener('pointerdown', e=>{
     if (!prog().rackCollapsed) toggleRack();
     // snap the sword to the (touch-lifted) tap point so the skill tap lands there
     me.px=me.x; me.py=me.y;
-    me.x=clamp(ses.cam.x + e.clientX/UNIT(), .02, WORLD-.02);
-    me.y=clamp(ses.cam.y + ptrY(e)/UNIT(), .02, WORLD-.02);
+    const zp = screenToZone(e.clientX, ptrY(e));
+    me.x=clamp(zp.x, .02, WORLD-.02);
+    me.y=clamp(zp.y, .02, WORLD-.02);
     me.trailBreak = true;   // sword teleported to the tap point — don't streak the trail across the screen
     pinPtr(me.x, me.y, performance.now());   // restart the sample stream at the tap point — the frame evaluator must hold the sword here, not glide in from the last drag position
     // the weapon skill fires on pointerUP, and only for a genuine tap
@@ -8958,6 +8976,7 @@ function frame(now){
   if (ses.started && !ses.paused){
     if (now > me.invulnUntil){
       for (const s of world.slimes.values()){
+        if (s.zone !== ses.myZone) continue;
         const rr = s.r + .022;
         if (dist2(me.x,me.y,s.x,s.y) < rr*rr){ damagePlayer(s.kind==='boss' ? (s.bCon || CONTACT_DMG.boss) : (CONTACT_DMG[s.kind]||6), now); break; }
       }
@@ -8966,7 +8985,7 @@ function frame(now){
       const b = world.bullets[i];
       b.x += b.vx*dt/1000; b.y += b.vy*dt/1000;
       if (now-b.born > b.life || b.x<-.1 || b.y<-.1 || b.x>WORLD+.1 || b.y>WORLD+.1){ world.bullets.splice(i,1); continue; }
-      if (now > me.invulnUntil && dist2(b.x,b.y,me.x,me.y) < .032*.032){ world.bullets.splice(i,1); damagePlayer(bossOrbDmg(), now); }
+      if (b.zone === ses.myZone && now > me.invulnUntil && dist2(b.x,b.y,me.x,me.y) < .032*.032){ world.bullets.splice(i,1); damagePlayer(bossOrbDmg(), now); }
     }
     for (let i=world.spiralEmitters.length-1;i>=0;i--){
       const em = world.spiralEmitters[i];
@@ -8977,8 +8996,8 @@ function frame(now){
         em.nextAt += 90;
         if (bossS){
           const es = .3 * (em.sm || 1);
-          spawnBullet(bossS.x, bossS.y, Math.cos(em.ang)*es, Math.sin(em.ang)*es, now);
-          spawnBullet(bossS.x, bossS.y, Math.cos(em.ang+Math.PI)*es, Math.sin(em.ang+Math.PI)*es, now);
+          spawnBullet(bossS.x, bossS.y, Math.cos(em.ang)*es, Math.sin(em.ang)*es, now, bossS.zone);
+          spawnBullet(bossS.x, bossS.y, Math.cos(em.ang+Math.PI)*es, Math.sin(em.ang+Math.PI)*es, now, bossS.zone);
           em.ang += .42;
         }
       }
@@ -8988,7 +9007,7 @@ function frame(now){
       if (now < v.nextAt) continue;
       v.nextAt = now + 170; v.left--;
       const bossS = bossAt(now);   // memoised per frame: was a 120-slime array spread per emitter per frame
-      if (bossS) for (let k=0;k<4;k++){ const a = v.aim + (k-1.5)*.18; spawnBullet(bossS.x, bossS.y, Math.cos(a)*.42*(v.sm||1), Math.sin(a)*.42*(v.sm||1), now); }
+      if (bossS) for (let k=0;k<4;k++){ const a = v.aim + (k-1.5)*.18; spawnBullet(bossS.x, bossS.y, Math.cos(a)*.42*(v.sm||1), Math.sin(a)*.42*(v.sm||1), now, bossS.zone); }
       if (v.left<=0) world.pendingVolleys.splice(i,1);
     }
     for (let i=world.pendingBursts.length-1;i>=0;i--){
@@ -8999,14 +9018,17 @@ function frame(now){
       if (bossS){
         // AIMED BURST: target re-picked at VOLLEY time from this client's
         // replicated player positions, so the shot tracks a moving player
-        let tx=me.x, ty=me.y, td=dist2(bossS.x,bossS.y,me.x,me.y);
+        let tx=me.x, ty=me.y, td = ses.myZone === bossS.zone ? dist2(bossS.x,bossS.y,me.x,me.y) : Infinity;
         for (const pp of world.peers.values()){
+          if (pp.zone !== bossS.zone) continue;
           const px=(pp.tx!==undefined?pp.tx:pp.x), py=(pp.ty!==undefined?pp.ty:pp.y);
           const dd=dist2(bossS.x,bossS.y,px,py);
           if (dd<td){ td=dd; tx=px; ty=py; }
         }
-        const a = Math.atan2(ty-bossS.y, tx-bossS.x), sp = .55 * (bst.sm || 1);
-        spawnBullet(bossS.x, bossS.y, Math.cos(a)*sp, Math.sin(a)*sp, now);
+        if (td < Infinity){
+          const a = Math.atan2(ty-bossS.y, tx-bossS.x), sp = .55 * (bst.sm || 1);
+          spawnBullet(bossS.x, bossS.y, Math.cos(a)*sp, Math.sin(a)*sp, now, bossS.zone);
+        }
       }
       if (bst.left<=0) world.pendingBursts.splice(i,1);
     }
@@ -9016,7 +9038,7 @@ function frame(now){
     // an extra, larger sparkle while it sits in its spawn-in freeze.
     // (client-local: every client sparkles the metals it can see)
     for (const s of world.slimes.values()){
-      if (s.kind!=='metal' || now < (s._sparkAt||0)) continue;
+      if (s.kind!=='metal' || s.zone !== ses.myZone || now < (s._sparkAt||0)) continue;
       s._sparkAt = now + 90;
       ses.particles.push({ x:s.x+rand(-s.r,s.r), y:s.y+rand(-s.r,s.r), vx:rand(-.02,.02), vy:rand(-.05,-.01), life:1, color:'#eef3f7', r:rand(3,6) });
       if (s.guaranteed && now - (s.bornAt||0) < 1500)
@@ -9036,7 +9058,7 @@ function frame(now){
         capParticles();
       }
       for (const s of world.slimes.values()){
-        if (sh.hitSet.has(s.id)) continue;
+        if (s.zone !== ses.myZone || sh.hitSet.has(s.id)) continue;
         if (dist2(sh.x,sh.y,s.x,s.y) < .05*.05){ sh.hitSet.add(s.id); doHit(s, sh.dmg); }
       }
     }
@@ -9053,9 +9075,10 @@ function frame(now){
   // (updatePointer places the blade on the pointer stream 1:1), so fine
   // control near the blade is untouched — only the far/edge catch-up slows.
   {
-    const vw = W/UNIT(), vh = H/UNIT();
-    const tx = clamp(me.x - vw/2, 0, Math.max(0, WORLD - vw));
-    const ty = clamp(me.y - vh/2, 0, Math.max(0, WORLD - vh));
+    // centre camera (iso world): the ease constant IS the edge-travel
+    // speed — Handler's quartered TAU 960ms stands, unchanged.
+    const tx = clamp(me.x, 1.2, WORLD - 1.2);
+    const ty = clamp(me.y, 1.2, WORLD - 1.2);
     const k = 1 - Math.exp(-dt/960);
     ses.cam.x += (tx - ses.cam.x) * k; ses.cam.y += (ty - ses.cam.y) * k;
   }
