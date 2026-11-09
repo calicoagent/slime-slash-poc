@@ -1258,11 +1258,11 @@ const BURST_IMG = new Image(); BURST_IMG.src = 'assets/fx/crit-bursts.png';
 // much higher crit chance and crit damage. Base crit: 5% x1.75.
 const WEAPONS = [
   { id:'dagger', price:0, name:'Dagger',     dmg:6,  reach:.085, cd:110, unlock:1, color:'#cfd8dc', motion:'stab',  crit:.25, critDmg:2.2, desc:'STAB · crit monster, fast thrusts' },
-  { id:'sword', price:150,  name:'Sword',      dmg:11, reach:.125, cd:170, unlock:1, color:'#ffe082', motion:'swing', crit:.05, critDmg:1.75, desc:'SWING · balanced arcs' },
-  { id:'katana', price:400, name:'Katana',     dmg:16, reach:.165, cd:150, unlock:2, color:'#f8bbd0', motion:'swing', crit:.08, critDmg:1.75, desc:'SWING · long swift arcs' },
-  { id:'spear', price:450,  name:'Spear',      dmg:19, reach:.215, cd:210, unlock:2, color:'#a5d6a7', motion:'stab',  crit:.20, critDmg:2.2, desc:'STAB · longest reach, big crits' },
-  { id:'great', price:900,  name:'Greatsword', dmg:30, reach:.205, cd:300, unlock:3, color:'#b0bec5', motion:'swing', crit:.05, critDmg:1.75, splash:.05, desc:'SWING · AoE chops with splash' },
-  { id:'hammer', price:1400, name:'Warhammer', dmg:42, reach:.150, cd:380, unlock:4, color:'#ffcc80', motion:'swing', crit:.05, critDmg:1.75, splash:.07, desc:'SWING · splash smash' },
+  { id:'sword', price:15000,  name:'Sword',      dmg:11, reach:.125, cd:170, unlock:1, color:'#ffe082', motion:'swing', crit:.05, critDmg:1.75, desc:'SWING · balanced arcs' },
+  { id:'katana', price:40000, name:'Katana',     dmg:16, reach:.165, cd:150, unlock:2, color:'#f8bbd0', motion:'swing', crit:.08, critDmg:1.75, desc:'SWING · long swift arcs' },
+  { id:'spear', price:45000,  name:'Spear',      dmg:19, reach:.215, cd:210, unlock:2, color:'#a5d6a7', motion:'stab',  crit:.20, critDmg:2.2, desc:'STAB · longest reach, big crits' },
+  { id:'great', price:90000,  name:'Greatsword', dmg:30, reach:.205, cd:300, unlock:3, color:'#b0bec5', motion:'swing', crit:.05, critDmg:1.75, splash:.05, desc:'SWING · AoE chops with splash' },
+  { id:'hammer', price:140000, name:'Warhammer', dmg:42, reach:.150, cd:380, unlock:4, color:'#ffcc80', motion:'swing', crit:.05, critDmg:1.75, splash:.07, desc:'SWING · splash smash' },
   { id:'pick', price:0, name:'Pickaxe', dmg:9, reach:.135, cd:210, unlock:1, color:'#ffca28', motion:'swing', crit:.05, critDmg:1.75, desc:'Cracks ore rocks. Slimes, less so.' },
 ];
 const WEAPON_IMGS = {};
@@ -1296,11 +1296,11 @@ const NODE_WEIGHTS = [4,3,2,2,1];   // spawn weights per NODE_TYPES index
 /* Forge recipes (weapon index -> cost) and promotion costs (target level ->
    cost). Promotion also requires the weapon's XP bar to be full. */
 const CRAFT_RECIPES = {
-  1:{ coins:100,  gems:{ emerald:2 } },
-  2:{ coins:300,  gems:{ sapphire:3, emerald:2 } },
-  3:{ coins:350,  gems:{ topaz:3, sapphire:2 } },
-  4:{ coins:700,  gems:{ ruby:4, topaz:3 } },
-  5:{ coins:1100, gems:{ amethyst:5, ruby:4 } },
+  1:{ coins:10000,  gems:{ emerald:2 } },
+  2:{ coins:30000,  gems:{ sapphire:3, emerald:2 } },
+  3:{ coins:35000,  gems:{ topaz:3, sapphire:2 } },
+  4:{ coins:70000,  gems:{ ruby:4, topaz:3 } },
+  5:{ coins:110000, gems:{ amethyst:5, ruby:4 } },
 };
 /* ---- weapon progression (Handler's ruling): weapons level up FREE-FLOW
    from XP — no cost, no button — up to Lv 50. Every 10 levels is a GATE
@@ -1310,13 +1310,13 @@ const CRAFT_RECIPES = {
 const WLV_MAX = 50;
 const GATE_LEVELS = [10, 20, 30, 40];
 const BREAKTHROUGH_COSTS = {
-  10:{ coins:1500,  gems:{ emerald:3, sapphire:3 } },
-  20:{ coins:4000,  gems:{ ruby:4, amethyst:3 } },
-  30:{ coins:10000, gems:{ diamond:3, ruby:5 } },
-  40:{ coins:25000, gems:{ diamond:6, amethyst:6 } },
+  10:{ coins:150000,  gems:{ emerald:3, sapphire:3 } },
+  20:{ coins:400000,  gems:{ ruby:4, amethyst:3 } },
+  30:{ coins:1000000, gems:{ diamond:3, ruby:5 } },
+  40:{ coins:2500000, gems:{ diamond:6, amethyst:6 } },
 };
 function isGate(lv){ return GATE_LEVELS.includes(lv); }
-function xpNeed(lv){ return 60 * lv; }   // weapon XP to fill the bar at any level
+function xpNeed(lv){ return 6000 * lv; }   // weapon XP to fill the bar at any level (×100 rescale: was 60*lv, gains scaled to match — pace identical)
 /* A weapon's {lv,xp} record. A weapon with no record gets one written on
    first read (as it always has — so saves list it), through the store. */
 function wxpOf(i){ const w = prog().wxp[i]; if (w) return w; act.setWxp(i, { lv:1, xp:0 }); return prog().wxp[i]; }
@@ -1745,7 +1745,7 @@ const QUESTS = [
       { type:'killCount', n:8, text:'Slay slimes — prove the Blade still cuts' },
       { type:'return', to:'elder', text:'Return to Elder Mirra' },
     ],
-    rewards:{ coins:100, sp:1 } },
+    rewards:{ coins:10000, sp:1 } },
   { id:'meadow', chapter:'CHAPTER I', title:'Sigil of the Meadow', giver:'elder',
     summary:'The Verdant Warden fell at the Meadow Shrine, and the first Sigil woke.',
     intro:[
@@ -1757,7 +1757,7 @@ const QUESTS = [
       { type:'guardian', shrine:'meadow', text:'Defeat the Verdant Warden at the Meadow Shrine' },
       { type:'return', to:'elder', text:'Bring the Sigil to Elder Mirra' },
     ],
-    rewards:{ coins:150, sp:1, relic:'pauldron' } },
+    rewards:{ coins:15000, sp:1, relic:'pauldron' } },
   { id:'bell', chapter:'CHAPTER II', title:'The Thornwick Bell', giver:'elder',
     summary:'The Hermit at Thornwick told of the First Garden, and of the guardian who took the sickness into himself.',
     intro:[
@@ -1769,7 +1769,7 @@ const QUESTS = [
       { type:'talk', to:'hermit', text:'Ask the Hermit at Thornwick what the Rot is' },
       { type:'return', to:'elder', text:'Carry the Hermit\'s words back to Elder Mirra' },
     ],
-    rewards:{ coins:200, sp:1 } },
+    rewards:{ coins:20000, sp:1 } },
   { id:'grove', chapter:'CHAPTER III', title:'Sigil of the Grove', giver:'elder',
     summary:'The Thorn Regent\'s court dissolved, and the second Sigil woke.',
     intro:[
@@ -1781,7 +1781,7 @@ const QUESTS = [
       { type:'guardian', shrine:'grove', text:'Defeat the Thorn Regent at the Grove Shrine' },
       { type:'return', to:'elder', text:'Bring the Sigil to Elder Mirra' },
     ],
-    rewards:{ coins:250, sp:1, relic:'crown' } },
+    rewards:{ coins:25000, sp:1, relic:'crown' } },
   { id:'scout', chapter:'CHAPTER IV', title:'What the Scout Saw', giver:'elder',
     summary:'Scout Vex followed the Emperor by night and saw him keep a grave-watch at the Root Shrine on the far shore.',
     intro:[
@@ -1792,7 +1792,7 @@ const QUESTS = [
     objectives:[
       { type:'talk', to:'vex', text:'Hear Scout Vex\'s report at Rotwatch' },
     ],
-    rewards:{ coins:300, sp:1 } },
+    rewards:{ coins:30000, sp:1 } },
   { id:'wilds', chapter:'CHAPTER V', title:'Sigil of the Wilds', giver:'elder',
     summary:'The Rotbloom Colossus burst, and the third Sigil woke.',
     intro:[
@@ -1804,7 +1804,7 @@ const QUESTS = [
       { type:'guardian', shrine:'wilds', text:'Defeat the Rotbloom Colossus at the Wilds Shrine' },
       { type:'return', to:'elder', text:'Bring the Sigil to Elder Mirra' },
     ],
-    rewards:{ coins:400, sp:2, relic:'heart' } },
+    rewards:{ coins:40000, sp:2, relic:'heart' } },
   { id:'herald', chapter:'CHAPTER VI', title:'The Fourth Sigil', giver:'elder',
     summary:'The Root Herald fell at the far shore, and no Sigil woke — only the truth. The way below stands open.',
     intro:[
@@ -1815,7 +1815,7 @@ const QUESTS = [
     objectives:[
       { type:'guardian', shrine:'root', sigil:false, text:'Defeat the Root Herald at the Root Shrine' },
     ],
-    rewards:{ coins:600, sp:2, relic:'eye' } },
+    rewards:{ coins:60000, sp:2, relic:'eye' } },
   { id:'finale', chapter:'CHAPTER VII', title:'The Root of Rot', giver:'elder',
     summary:'The Chaos Emperor fell, the Rot was cut at its root, and the Tree bloomed again.',
     intro:[
@@ -1827,14 +1827,14 @@ const QUESTS = [
       { type:'talk', to:'elder', text:'Speak with Elder Mirra — set the Sigils' },
       { type:'emperorFinale', text:'Destroy the CHAOS EMPEROR' },
     ],
-    rewards:{ coins:1000, sp:3, relic:'eye' } },
+    rewards:{ coins:100000, sp:3, relic:'eye' } },
 ];
 /* Side tale (tracked separately from the chain): available once the
    prologue is done; story.sprouts counts finds, story.sproutsDone the
    return to the Child. */
 const SPROUT_QUEST = { id:'sprouts', chapter:'SIDE TALE', title:'Three Lost Sproutlings',
   summary:'The Child\'s three sproutlings came home, and the grove remembers kindness.',
-  rewards:{ coins:120, relic:'sprout' } };
+  rewards:{ coins:12000, relic:'sprout' } };
 /* ---- stage 4: shrines + guardians (static data; runtime lives in the
    world slice, story progress in progress.story). ARCHIPELAGO: one
    shrine per isle. Meadow 4.6u east of the town centre — outside TOWN_R,
@@ -1930,6 +1930,7 @@ const store = createStore((set, get) => {
       const p = get().progress, b = p.bounty;
       try{
         localStorage.setItem(SAVE_KEY, JSON.stringify({
+          econV:2,   // economy unit version: 2 = ×100-rescaled units. Absent/<2 in a save = pre-rescale units; loadProgress migrates ×100 exactly once.
           level:p.level, xp:p.xp, coins:p.coins, kills:p.kills, sp:p.sp, spBuys:p.spBuys,
           unlocked:[...p.unlocked], weapon:p.weapon, name:p.name, muted:p.muted, hintsSeen:p.hintsSeen,
           banked:p.banked, items:p.items, purse:p.purse, owned:[...p.owned],
@@ -1992,6 +1993,23 @@ const store = createStore((set, get) => {
       if (d.bounty && d.bounty.key && (d.bounty.type==='color' || d.bounty.type==='kind'))
         next.bounty = { type:d.bounty.type, key:d.bounty.key, label:String(d.bounty.label||'').slice(0,16) || 'SLIME',
                         need:Math.max(1, d.bounty.need|0 || 8), have:Math.max(0, d.bounty.have|0), reward:Math.max(0, d.bounty.reward|0 || 40) };
+      /* ECONOMY RESCALE MIGRATION (Handler, 2026-11-09): saves written
+         before the ×100 rescale (no econV flag — persistProgress now
+         always writes econV:2) hold coins, banked, player xp and weapon
+         xp in the OLD units. Multiply those four by 100 exactly once:
+         purchasing power and progress share are preserved exactly (the
+         level and weapon levels themselves do not change — only the
+         residue inside the current bar, against thresholds that also
+         grew ×100). The stored bounty reward needs NO scaling: it was
+         always the nominal value and the payout formula dropped its
+         ×0.01, so it already reads correctly in new units. If no
+         persist happens after this load, the stored save is still
+         un-flagged and simply migrates again from its original values
+         next load — never twice on the same stored numbers. */
+      if ((d.econV|0) < 2){
+        next.coins *= 100; next.banked *= 100; next.xp *= 100;
+        for (const k of Object.keys(next.wxp)) next.wxp[k] = { lv: next.wxp[k].lv, xp: next.wxp[k].xp * 100 };
+      }
       /* RPG story: additive — old saves (no story field) keep the fresh
          defaults untouched. Validated: known quest id, clamped counters,
          relic ids filtered to the RELICS table, equipped ⊆ owned, max 2. */
@@ -2171,18 +2189,21 @@ function npcDef(id){ return NPC_DEFS.find(d => d.id === id) || null; }
 
 /* ---- polish pass state ---- */
 /* ============================================================ slimes */
-/* ECONOMY RULING (Handler, 2026-11-09): AoE farming made progression
-   trivial, so every FARMABLE reward pays ×0.01 — kill XP, weapon XP,
-   kill coins, bounty payouts, and soul-gem drop chances all scale by
-   REWARD_MULT at their credit choke points (onKillFx / gainXp), with
-   zone/elite/boss/stat multipliers composing on top as before. Balances
-   (coins, xp, weapon xp) accumulate FRACTIONALLY and displays floor.
-   NOT scaled: one-time story/quest rewards (grantQuestRewards), shop /
-   inn / breakthrough prices, the bank SP exchange, and mining yields. */
-const REWARD_MULT = 0.01;
-/* Granted-amount text: whole coins floored; a sub-coin grant shows to
-   the cent so a ×0.01 reward never reads as '+0'. Balances always floor. */
-const fmtGrant = n => n >= 1 ? '' + Math.floor(n) : n.toFixed(2);
+/* ECONOMY (Handler, 2026-11-09): AoE farming made progression trivial,
+   so farmable rewards were first cut ×0.01 at their credit choke points
+   (the REWARD_MULT era — fractional balances, floored displays). Then,
+   decimals being hard to read, the SAME balance was RESCALED ×100 into
+   whole numbers: coin/XP grants are back at their base table values,
+   every coin price and every XP threshold is ×100, quest rewards are
+   ×100, and old saves migrate ×100 once (econV in loadProgress) — the
+   hardened earnings:prices ratio is unchanged, only the units grew.
+   Balances can still carry fractions from stat bonuses; displays floor.
+   Soul-gem drop CHANCES keep the ×0.01 cut via DROP_MULT — a probability
+   is not money and does not rescale. SP is not money either: untouched. */
+const DROP_MULT = 0.01;   // gem drop chance scale: king/boss/metal 1% each, elite 0.3%, normal 0.05%
+/* Granted-amount text: whole coins, floored (post-rescale every grant
+   is >= 1c by construction; stat-bonus fractions floor like balances). */
+const fmtGrant = n => '' + Math.floor(n);
 const SLIME_KINDS = [
   { kind:'baby',  hp:12,  r:.020, coins:4,  xp:8,  speed:.014, weight:45, hopCycle:640,  hopDist:.030 },
   { kind:'mid',   hp:30,  r:.030, coins:9,  xp:16, speed:.011, weight:35, hopCycle:720,  hopDist:.034 },
@@ -2789,7 +2810,7 @@ function minedFx(d){
     addFloat(d.x, d.y-.1, '+1 ' + GEMS[d.g].name.toUpperCase(), GEMS[d.g].col, rare ? { big:true } : {});
     sfx.gem();
   }
-  gainWxp(6, 6);   // the chunk is the work — pickaxe XP even when no gem pops
+  gainWxp(6, 600);   // the chunk is the work — pickaxe XP even when no gem pops (×100 rescale: mining wxp was 6/chunk against the old 60*lv bar; both sides ×100, ratio preserved)
   saveGame(); refreshHUD();
 }
 function worldPayload(){
@@ -3262,15 +3283,16 @@ function onKillFx(f){
   if (f.kind==='boss') notify('THE EMPEROR HAS FALLEN!', { type:'king' });
   if (f.by===me.id){
     const now = performance.now();
-    /* ECONOMY RULING ×0.01 (see REWARD_MULT): kill coins are FRACTIONAL
-       now — no rounding, the balance accumulates the fractions and every
-       display floors. Zone/elite/boss scaling already composed into
-       f.coins; the coin stat and GOLD RUSH compose on top as before. */
-    let cg = f.coins * REWARD_MULT * (1 + ses.stats.coin);
+    /* ECONOMY RESCALE ×100 (see DROP_MULT note): kill coins pay their
+       base table value again — no rounding, stat-bonus fractions still
+       accumulate in the balance and every display floors. Zone/elite/
+       boss scaling already composed into f.coins; the coin stat and
+       GOLD RUSH compose on top as before. */
+    let cg = f.coins * (1 + ses.stats.coin);
     if (now < me.goldRushUntil) cg *= 2;   // GOLD RUSH: double coins
     act.patchProgress(p => ({ coins: p.coins + cg, kills: p.kills + 1 }));
     me.mp = Math.min(me.maxMp, me.mp + 2);   // +2 MP per kill (own kills only)
-    gainWxp(prog().weapon, 10 * REWARD_MULT);   // weapon XP from kills scales too (mining's gainWxp call does NOT — mining is unscaled)
+    gainWxp(prog().weapon, 10);   // weapon XP from kills: 10/kill (×100 rescale — was 10 × 0.01 against the old 60*lv bar; mining's 600/chunk preserves the same live ratio)
     /* SPHERE POINTS from the big kills (Handler: 'Sphere point gained from
        farming emperor') — the Emperor pays +3 SP, a Slime King +1 SP,
        awarded HERE, the same single place soul gems drop. */
@@ -3279,15 +3301,16 @@ function onKillFx(f){
     /* SOUL GEM drops — rolled HERE, the single place local kill rewards
        are granted (remote kills and host/client overlap can't double-fire:
        this block runs once, for my kills only) */
-    /* ECONOMY RULING ×0.01: drop CHANCES scale — the old guaranteed
-       king/boss/metal gems were a 100% chance, now a 1% roll each (the
-       boss rolls his 3 floor-Rare gems independently); rarity floors as
-       rolled. Normal .05 -> .0005, elite .30 -> .003. */
-    if (f.kind==='boss'){ for (let gi = 0; gi < 3; gi++) if (Math.random() < REWARD_MULT) grantGem(2, f.x, f.y); }   // 3 gems, floor Rare — each a 1% roll
-    else if (f.kind==='king'){ if (Math.random() < REWARD_MULT) grantGem(1, f.x, f.y); }          // 1 gem, floor Fine — 1% roll
-    else if (f.kind==='metal'){ if (Math.random() < REWARD_MULT) grantGem(2, f.x, f.y); }         // 1 gem, floor Rare — 1% roll
-    else if (f.elite){ if (Math.random() < .30 * REWARD_MULT) grantGem(0, f.x, f.y); }
-    else if (Math.random() < .05 * REWARD_MULT) grantGem(0, f.x, f.y);
+    /* DROP CHANCES keep the ×0.01 cut (DROP_MULT) — probabilities are
+       not money and did NOT rescale: the old guaranteed king/boss/metal
+       gems are a 1% roll each (the boss rolls his 3 floor-Rare gems
+       independently); rarity floors as rolled. Normal .05 -> .0005,
+       elite .30 -> .003. */
+    if (f.kind==='boss'){ for (let gi = 0; gi < 3; gi++) if (Math.random() < DROP_MULT) grantGem(2, f.x, f.y); }   // 3 gems, floor Rare — each a 1% roll
+    else if (f.kind==='king'){ if (Math.random() < DROP_MULT) grantGem(1, f.x, f.y); }          // 1 gem, floor Fine — 1% roll
+    else if (f.kind==='metal'){ if (Math.random() < DROP_MULT) grantGem(2, f.x, f.y); }         // 1 gem, floor Rare — 1% roll
+    else if (f.elite){ if (Math.random() < .30 * DROP_MULT) grantGem(0, f.x, f.y); }
+    else if (Math.random() < .05 * DROP_MULT) grantGem(0, f.x, f.y);
     /* STAGE 4 story credit — the KILLER's client only (this whole block
        is by-me): a guardian's fall wakes its Sigil through the engine
        and marks the shrine done (its crystal glows from then on); the
@@ -3301,7 +3324,7 @@ function onKillFx(f){
       if (prog().story.complete && !ses.endingPlayed){ ses.endingPlayed = true; playEnding(); }
     }
     gainXp(f.xp); sfx.coin();
-    if (cg >= 1) addFloat(f.x, f.y-.04, '+'+Math.floor(cg)+' coins', '#ffd94d');   // sub-coin grants accumulate silently — a '+0 coins' float is noise
+    if (cg >= 1) addFloat(f.x, f.y-.04, '+'+Math.floor(cg)+' coins', '#ffd94d');   // post-rescale every kill grant is >= 1c by construction; the guard stays so a hypothetical sub-coin grant never prints '+0 coins' noise
     if (f.kind==='king'){ bubble('KING SLAYER!', me.x, me.y); }
     if (f.kind==='boss'){ bubble('EMPEROR SLAYER!', me.x, me.y); }
     // combo chain: kills within the window of each other keep it alive (Combo Charm stretches it)
@@ -3315,7 +3338,7 @@ function onKillFx(f){
     if (prog().bounty && ((prog().bounty.type==='color' && f.c===prog().bounty.key) || (prog().bounty.type==='kind' && f.kind===prog().bounty.key))){
       act.bountyStep();
       if (prog().bounty.have >= prog().bounty.need){
-        const payout = prog().bounty.reward * REWARD_MULT * (1 + ses.stats.bounty);   // ECONOMY RULING ×0.01: bounties repeat, so they scale — fractional like kill coins; Bounty Hunter passive composes on top
+        const payout = prog().bounty.reward * (1 + ses.stats.bounty);   // ×100 rescale: the stored reward IS the payout again (it paid reward × 0.01 in the fractional era — same ratio, whole numbers); Bounty Hunter passive composes on top
         act.patchProgress(p => ({ coins: p.coins + payout, sp: p.sp + 1 })); saveGame();   // SP + coins: persist on the event (the +1 SP is NOT scaled — SP is not exp/money/drops)
         notify('BOUNTY COMPLETE! +' + fmtGrant(payout) + ' coins +1 SP', { type:'success' });
         sfx.buy();
@@ -3329,27 +3352,28 @@ function onKillFx(f){
   }
 }
 function gainXp(n){
-  /* ECONOMY RULING ×0.01 (see REWARD_MULT): kill XP is FRACTIONAL — no
-     rounding (rounding would zero a 0.08 XP baby kill and lose the
-     residue). Tiny gains park in the bar; the capped level loop below
-     only wakes when a full level has accumulated. The XP stat bonus
-     composes on top of the scaled base as before. Kill credit is the
-     only caller — story grants never pass through here. */
-  act.patchProgress(p => ({ xp: p.xp + n * REWARD_MULT * (1 + ses.stats.xp) }));
-  /* LOOP, not if: one grant can span several levels — a scaled Emperor
-     pays 1200 x 1.5 x bScale XP (~15.8k at Lv38 vs 3.8k per level), and
-     the old single `if` levelled ONCE and parked the rest of the bar until
+  /* ECONOMY RESCALE ×100: kill XP pays its base table value again (a
+     baby kill is 8 XP, not 0.08) — no rounding, so stat-bonus fractions
+     still park in the bar un-lost; the capped level loop below only
+     wakes when a full level has accumulated. The XP stat bonus composes
+     on top as before. Kill credit is the only caller — story grants
+     never pass through here. */
+  act.patchProgress(p => ({ xp: p.xp + n * (1 + ses.stats.xp) }));
+  /* LOOP, not if: one grant can span several levels — an Emperor pays
+     1200 x zone x boss-scale XP (many levels' worth at high level), and
+     a single `if` would level ONCE and park the rest of the bar until
      later kills drained it one level at a time. Every level still pays
      its own SP (+1, +2 on every 3rd) and its +10 max HP top-up. */
   let leveled = false;
   /* FREEZE HARDENING (Batch D): each pass strictly reduces xp by
-     level*100, so finite xp always terminates — the 512 cap makes that
-     true by construction even for a corrupt save (a legit Emperor grant
-     spans <100 levels; any residue stays parked in the bar, un-lost). */
+     level*10000 (the ×100-rescaled curve — was level*100), so finite xp
+     always terminates — the 512 cap makes that true by construction
+     even for a corrupt save (a legit Emperor grant spans <100 levels;
+     any residue stays parked in the bar, un-lost). */
   let xpGuard = 0;
-  while (prog().xp >= prog().level*100 && xpGuard++ < 512){
+  while (prog().xp >= prog().level*10000 && xpGuard++ < 512){
     const maxBefore = me.maxHp;
-    act.patchProgress(p => ({ xp: p.xp - p.level*100, level: p.level + 1, sp: p.sp + 1 })); leveled = true;
+    act.patchProgress(p => ({ xp: p.xp - p.level*10000, level: p.level + 1, sp: p.sp + 1 })); leveled = true;
     recalc();   // re-derive maxHp at the new level
     me.hp += me.maxHp - maxBefore;   // top up by the capacity gained (+10/level) — never a free full heal
     let spMsg = '+1 Sphere Point';
@@ -3487,11 +3511,11 @@ function grantQuestRewards(q, label){
   if (r.coins) act.addCoins(r.coins);
   if (r.sp) act.patchProgress(p => ({ sp: p.sp + r.sp }));
   if (r.relic && !relicHeld) act.grantRelic(r.relic);
-  if (r.relic && relicHeld) act.addCoins(150);
+  if (r.relic && relicHeld) act.addCoins(15000);
   const bits = [];
   if (r.coins) bits.push('+' + r.coins + ' coins');
   if (r.sp) bits.push('+' + r.sp + ' SP');
-  if (r.relic && relicHeld) bits.push('+150 coins');
+  if (r.relic && relicHeld) bits.push('+15000 coins');
   else if (r.relic && RELICS[r.relic]) bits.push('RELIC: ' + RELICS[r.relic].name);
   notify(label + ' — ' + q.title.toUpperCase(), { type:'story', sub: bits.join(' · ') });
   playJingle('quest');
@@ -4422,10 +4446,10 @@ function openBank(){ showBuildingPanel('#bankPanel'); updateBankPanel(); startPa
 function openShop(){ showBuildingPanel('#shopPanel'); buildShopRows(); startPanelFocus($('#shopPanel'), document.querySelector('#shopRows button')); }
 /* Bank SP exchange — ESCALATING price (Handler: SP comes from farming the
    Emperor, 'or increasingly more expensive'): the Nth lifetime purchase
-   costs round(300 * 1.5^N). spBuys persists in the save. Kings grant +1 SP
+   costs round(30000 * 1.5^N) (×100 rescale; was 300). spBuys persists in the save. Kings grant +1 SP
    and the Emperor +3 SP on kill (onKillFx) — the farm is the real source;
    the Bank is the expensive shortcut. */
-function spPrice(){ return Math.round(300 * Math.pow(1.5, prog().spBuys || 0)); }
+function spPrice(){ return Math.round(30000 * Math.pow(1.5, prog().spBuys || 0)); }   // ×100 rescale: was round(300 * 1.5^N)
 function updateBankPanel(){
   $('#bankCarried').textContent = Math.floor(prog().coins);   // balances are fractional (×0.01 ruling) — displays floor, the fractions stay in the save
   $('#bankBanked').textContent = Math.floor(prog().banked);
@@ -4441,10 +4465,10 @@ function buySpherePoint(){
   updateBankPanel(); refreshHUD(); saveGame();
 }
 const SHOP_ITEMS = [
-  { id:'potion', name:'Potion',      price:50,  desc:'Heal 60 HP' },
-  { id:'bomb',   name:'Bomb',        price:80,  desc:'Blast every slime near your sword' },
-  { id:'shield', name:'Aegis Charm', price:100, desc:'Shield: 6s invulnerable' },
-  { id:'purse',  name:'Coin Purse',  price:500, desc:'PERMANENT: death takes only 25% of carried coins' },
+  { id:'potion', name:'Potion',      price:5000,  desc:'Heal 60 HP' },
+  { id:'bomb',   name:'Bomb',        price:8000,  desc:'Blast every slime near your sword' },
+  { id:'shield', name:'Aegis Charm', price:10000, desc:'Shield: 6s invulnerable' },
+  { id:'purse',  name:'Coin Purse',  price:50000, desc:'PERMANENT: death takes only 25% of carried coins' },
 ];
 /* Panel rows are built ONCE on open; while a panel stays open, values
    refresh IN PLACE via these updaters (text + disabled on the SAME
@@ -4555,8 +4579,8 @@ function buyItem(id){
 }
 /* ============================================================ THE INN: sleep to full, or sleep & save your respawn */
 function openHospital(){ showBuildingPanel('#hospitalPanel'); buildHospitalRows(); startPanelFocus($('#hospitalPanel'), document.querySelector('#hospRows button')); }
-function fullHealPrice(){ return Math.max(15, Math.ceil((me.maxHp - me.hp) * .8)); }
-function sleepSavePrice(){ return (me.hp < me.maxHp ? fullHealPrice() : 0) + 25; }   // heal (if hurt) + 25c flat for the respawn
+function fullHealPrice(){ return Math.max(25, Math.ceil((me.maxHp - me.hp) * .25)); }   // Handler amendment (2026-11-09, 'inn too expensive'): the inn does NOT take the naive ×100 — a full heal from empty at high level is ~150c, a top-up is pocket change
+function sleepSavePrice(){ return (me.hp < me.maxHp ? fullHealPrice() : 0) + 100; }   // heal (if hurt) + 100c flat for the respawn (amendment: not 2500)
 /* Is THIS inn (the door that opened the panel) already your respawn? */
 function spawnIsHere(){
   const sp = prog().spawnAt; if (!sp) return false;
@@ -4578,7 +4602,7 @@ function buildHospitalRows(){
       disabled:()=> me.hp >= me.maxHp || prog().coins < fullHealPrice() },
     { id:'save',  name:'SLEEP & SAVE', btn:'SAVE', desc:'Heal to full + respawn here',
       price:()=>sleepSavePrice(),
-      // at full HP this stays buyable (flat 25c) UNLESS this inn is already your respawn
+      // at full HP this stays buyable (flat 100c) UNLESS this inn is already your respawn
       disabled:()=> (me.hp >= me.maxHp && spawnIsHere()) || prog().coins < sleepSavePrice() },
   ];
   for (const r of rows){
@@ -5178,7 +5202,7 @@ function refreshHUD(){
   setText($('#coins'), Math.floor(prog().coins));   // fractional balance, floored display
   setText($('#lvl'), prog().level);
   setText($('#kills'), prog().kills+' kills');
-  setStyle($('#xpFill'), 'width', pct(prog().xp, prog().level*100));
+  setStyle($('#xpFill'), 'width', pct(prog().xp, prog().level*10000));
   // player HP (local only)
   setStyle($('#hpFill'), 'width', pct(me.hp, me.maxHp));
   setText($('#hpText'), Math.max(0, Math.ceil(me.hp)) + ' / ' + me.maxHp);   // overlaid ON the bar — numbers only, no 'HP' prefix
@@ -5555,7 +5579,7 @@ function rollGemRarity(floor){
   return 4;
 }
 function grantGem(floor, x, y){
-  if (prog().gemBag.length >= 99){ act.addCoins(15 * REWARD_MULT); addFloat(x, y - .16, 'GEM → COINS (BAG FULL)', '#ffd94d'); return; }   // bag cap 99: the drop converts to coins — a kill-drop coin grant, so it scales ×0.01 like the rest (the float drops its number: the grant is sub-coin)
+  if (prog().gemBag.length >= 99){ act.addCoins(1500); addFloat(x, y - .16, 'GEM → +1500 COINS (BAG FULL)', '#ffd94d'); return; }   // bag cap 99: the drop converts to coins — 1500c in rescaled units (the ×0.01-era code constant was 15, paid 0.15c after the mult; per the rescale brief this path converts at 1500)
   const stats = Object.keys(GEM_STATS);
   const gem = { id:'g' + Date.now().toString(36) + (ses.gemSeq++), stat:stats[Math.floor(Math.random()*stats.length)], rarity:rollGemRarity(floor) };
   act.addToGemBag(gem);
@@ -5937,7 +5961,7 @@ function rollBounty(){
 function updateBountyUI(){
   if (!prog().bounty) return;
   $('#bountyText').textContent = 'Slay '+prog().bounty.need+' '+prog().bounty.label+' slimes';
-  $('#bountyProg').textContent = prog().bounty.have+'/'+prog().bounty.need+' · Reward '+fmtGrant(prog().bounty.reward * REWARD_MULT)+'c + 1 SP';   // advertise the SCALED payout (the ×0.01 ruling) — what completes is what is paid
+  $('#bountyProg').textContent = prog().bounty.have+'/'+prog().bounty.need+' · Reward '+fmtGrant(prog().bounty.reward)+'c + 1 SP';   // advertise the actual payout (post-rescale the stored reward IS the payout) — what completes is what is paid
 }
 
 /* ---------- king banner ---------- */
