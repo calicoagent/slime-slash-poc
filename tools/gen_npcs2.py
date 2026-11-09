@@ -53,12 +53,30 @@ def bramble():
     d.ellipse([58, 30, 115, 152], fill=SPD)                                      # shaded right mass
     d.ellipse([20, 28, 104, 150], fill=SP)
     import math
-    for row in range(6):                                                         # spike texture rows
-        y = 38 + row * 19
-        for i in range(7):
-            x = 24 + i * 13 + (row % 2) * 6
-            if (x - 64) ** 2 / 46 ** 2 + (y - 92) ** 2 / 62 ** 2 > .92: continue
-            d.polygon([(x - 5, y + 6), (x + 5, y + 6), (x, y - 7)], fill=SPL if (i + row) % 2 else SP)
+    # DENSE spine field (basics gate: ~15 sparse triangles read as a
+    # bald dome). ~120 small spikes in staggered rows, hash-varied in
+    # size and tone, kept strictly INSIDE the dome silhouette (the
+    # grade pass asserts the shipped alpha never changes).
+    DOMES = ((13, 24, 115, 158), (58, 30, 115, 152), (20, 28, 104, 150))
+    def in_dome(px, py):
+        return any(((px - (a + c) / 2) / ((c - a) / 2 - 1)) ** 2 +
+                   ((py - (b + e) / 2) / ((e - b) / 2 - 1)) ** 2 < 1
+                   for a, b, c, e in DOMES)
+    srow = 0
+    y = 34
+    while y < 152:
+        x = 18 + (srow % 2) * 3.5
+        while x < 112:
+            hv = ((int(x) * 73856093) ^ (int(y) * 19349663)) % 5
+            w = 2.6 + hv * .45            # half-width 2.6..4.4
+            h = 8 + (hv % 3) * 2.2        # height 8..12.4
+            pts = [(x - w, y + h * .38), (x + w, y + h * .38), (x, y - h * .62)]
+            if all(in_dome(px, py) for px, py in pts):
+                tone = SPL if hv % 3 == 0 else (SPD if x > 84 and hv % 2 else SP)
+                d.polygon(pts, fill=tone)
+            x += 7
+        y += 9
+        srow += 1
     E(d, 33, 52, 13, 13, SP); E(d, 95, 52, 13, 13, SP)                           # ears under spines
     E(d, 33, 52, 7, 7, CRM); E(d, 95, 52, 7, 7, CRM)
     E(d, 26, 122, 13, 22, SP); E(d, 102, 122, 13, 22, SP)                        # side arms (spiny)
