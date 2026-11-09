@@ -1,0 +1,189 @@
+/* The quest tracker (hud/quest-tracker.ts, ruling 61 WI-6): the right edge,
+   under the top-right corner's column (the online count, then the invite
+   egg at top 46 on a desktop, 42 / 38 on a phone, invite.css, and its
+   label under it; measured in a browser pass 2026-09-28), where the
+   HUD spec puts the minimap. No z-index on the slot, like every HUD layer
+   (hud.css): document order paints it.
+
+   The card's colours are tokens here, opaque, so contrast.test.ts computes
+   every text pair against the surface it sits on (K1-K3, 4.5:1). The kit's
+   dark glass and gold (defeat, gauge) set the look. */
+.isw-hud__quests {
+  --isw-quest-surface: #17120c;
+  --isw-quest-text: #eadfc6;
+  --isw-quest-muted: #b3a585;
+  --isw-quest-gold: #e9c46a;
+  --isw-quest-good: #7fd88a;
+  --isw-quest-edge: #8a6a2c;
+  position: absolute;
+  top: 124px;
+  right: 12px;
+  width: 232px;
+  pointer-events: auto;
+}
+.isw-hud__quests[hidden] { display: none; }
+
+/* Phones, the HUD's own phone condition (invite.css): under the 46 px egg. */
+@media (max-width: 900px), (max-height: 500px) {
+  .isw-hud__quests { top: 108px; width: 212px; }
+}
+@media (max-width: 720px) {
+  .isw-hud__quests { top: 104px; right: 8px; }
+}
+/* A short (landscape) phone: the hotbar stands up on the right edge from
+   near the top (hotbar.css, 16 px inset, --isw-hotbar-w wide) and the egg
+   and Daily buttons move beside the online count (invite.css), so the card
+   goes under that row and left of the hotbar column, never over a key. */
+@media (max-height: 500px) {
+  .isw-hud__quests { top: 80px; right: calc(16px + var(--isw-hotbar-w, 46px) + 8px); }
+}
+
+/* Two hit areas (#595): the body is one button that opens the Quests tab;
+   the right edge is a second, the collapse toggle, 44 px wide and the
+   card's full height (C5), set off by a divider so the two read apart. */
+.isw-quest {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid var(--isw-quest-edge);
+  border-radius: 8px;
+  background: var(--isw-quest-surface);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 45%);
+  color: var(--isw-quest-text);
+  font: 600 13px/1.25 system-ui, sans-serif;
+}
+.isw-quest__open {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 46px;
+  margin: 0;
+  padding: 8px 52px 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.isw-quest__toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--isw-quest-edge);
+  border-radius: 0 8px 8px 0;
+  background: none;
+  cursor: pointer;
+}
+.isw-quest__open:focus-visible,
+.isw-quest__toggle:focus-visible { outline: 2px solid var(--isw-quest-gold); outline-offset: 2px; }
+
+.isw-quest__title {
+  color: var(--isw-quest-gold);
+  font-weight: 700;
+  font-size: 13px;
+}
+.isw-quest__rows { display: flex; flex-direction: column; gap: 3px; }
+.isw-quest__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 4px;
+}
+.isw-quest__label { flex: 1; min-width: 0; }
+.isw-quest__row[data-done='true'] .isw-quest__label { color: var(--isw-quest-muted); }
+.isw-quest__count { font-variant-numeric: tabular-nums; color: var(--isw-quest-text); }
+[data-collapsed='true'] .isw-quest__label,
+.isw-quest__chain,
+.isw-quest__reward { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-collapsed='false'] .isw-quest__chain { white-space: normal; }
+
+/* The check box: an empty square, ticked when done -- a shape, not a colour (C9). */
+.isw-quest__check {
+  flex: none;
+  position: relative;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--isw-quest-muted);
+  border-radius: 2px;
+}
+.isw-quest__check--done { border-color: var(--isw-quest-good); }
+.isw-quest__check--done::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 0;
+  width: 3px;
+  height: 7px;
+  border: solid var(--isw-quest-good);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* Complete: the status word, the title, the reward figure (S11). */
+.isw-quest__head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.isw-quest__status { color: var(--isw-quest-good); font-weight: 700; }
+.isw-quest[data-state='complete'] .isw-quest__title { flex-basis: 100%; }
+.isw-quest__reward { color: var(--isw-quest-gold); }
+.isw-quest[data-state='complete'] { border-color: var(--isw-quest-good); }
+
+.isw-quest__chain { color: var(--isw-quest-text); font-style: italic; }
+
+/* The collapse caret, top right; points down when collapsed (tap opens). */
+.isw-quest__caret {
+  position: absolute;
+  top: 50%;
+  right: 18px;
+  width: 7px;
+  height: 7px;
+  margin-top: -6px;
+  border: solid var(--isw-quest-muted);
+  border-width: 0 2px 2px 0;
+  transform: rotate(-135deg);
+}
+.isw-quest[data-collapsed='true'] .isw-quest__caret { transform: rotate(45deg); margin-top: -7px; }
+
+/* Complete: the invite / daily hanko (isw-ui ui.css .isw-ui-invite__hanko,
+   @keyframes isw-inv-stamp), stamped in as the card turns, left of the toggle. */
+.isw-quest[data-state='complete'] .isw-quest__open { padding-right: 96px; }
+/* the reward figure is the point of the Complete card (S11): it wraps rather than cut off beside the stamp */
+.isw-quest[data-state='complete'] .isw-quest__reward { white-space: normal; }
+.isw-ui-invite__hanko.isw-quest__hanko { right: 50px; pointer-events: none; }
+
+/* Progress tick: the changed count pulses once, 300 ms (S8). */
+.isw-quest__count--pulse { animation: isw-quest-pulse 300ms ease-out; display: inline-block; }
+.isw-quest__row--pulse { animation: isw-quest-flash 300ms ease-out; }
+@keyframes isw-quest-pulse {
+  0% { transform: scale(1); color: var(--isw-quest-gold); }
+  40% { transform: scale(1.35); color: var(--isw-quest-gold); }
+  100% { transform: scale(1); }
+}
+@keyframes isw-quest-flash {
+  0% { background: rgb(233 196 106 / 0%); }
+  30% { background: rgb(233 196 106 / 22%); }
+  100% { background: rgb(233 196 106 / 0%); }
+}
+
+/* The next quest slides in from the right edge. */
+.isw-quest--enter { animation: isw-quest-enter 320ms ease-out; }
+@keyframes isw-quest-enter {
+  from { transform: translateX(24px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .isw-quest--enter { animation: none; }
+  .isw-quest__count--pulse { animation: none; }
+  .isw-quest__hanko { animation: none; }
+}

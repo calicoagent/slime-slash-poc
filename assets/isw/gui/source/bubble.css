@@ -1,0 +1,34 @@
+/* The T4 thought bubble's slot (hud/bubble.ts, #348). A zero-size box at
+   the page origin, moved to the tamer's head with one translate3d per
+   changed pixel; the kit's .isw-ui-thought draws up and to the right of it.
+   Only the bubble's own tap targets take the pointer (the kit's ui.css), so
+   the world around the tamer stays walkable. */
+.isw-hud__world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  will-change: transform;
+}
+
+.isw-hud__world[hidden] { display: none; }
+
+/* A Fish or Sleep refusal, over the bubble: the oval is 96 px wide and
+   78.72 px tall one action up, sitting 6 px over the anchor and 12 px right
+   of it (isw-ui thought-bubble.ts THOUGHT_BUBBLE_*). */
+.isw-hud-bubble__notice {
+  position: absolute;
+  left: 12px;
+  bottom: 96px;
+  width: max-content;
+  max-width: 240px;
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: rgba(14, 11, 8, 0.86);
+  color: #eadfc6;
+  font: 13px/1.3 system-ui, sans-serif;
+}
+
+.isw-hud-bubble__notice[hidden] { display: none; }

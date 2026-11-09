@@ -1,0 +1,51 @@
+/* The hotbar (hud/hotbar.ts): one row of twelve keys, bottom centre, on
+   the same 16 px inset as the other corners. The kit draws the gold
+   chrome (ui.css .isw-ui-hotbar); this only places it. */
+.isw-hud__hotbar {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+.isw-hud__hotbar:empty { display: none; }
+
+/* The kit's row is a ten-column grid; this bar is one row of twelve
+   (vault ruling 2026-09-25), so it lays every slot out in one line at
+   whatever width the kit gives a slot. */
+.isw-hud__hotbar .isw-ui-hotbar__row { grid-template-columns: repeat(12, auto); }
+
+/* Mobile (Handler, 2026-09-26): a phone in either orientation. A
+   horizontal bar of twelve 46 px keys is 618 px wide -- wider than a
+   portrait phone and, in landscape, laid over the chat. The bar stands up
+   instead: one column on the right edge, centred vertically, full 46 px
+   keys so each stays a 44 px touch target. Only the first six keys (1-6)
+   show (Handler, 2026-09-26): 6 x 46 + 5 x 6 = 306 px, which fits a 390 px
+   landscape phone in one column. Its width is --isw-hotbar-w so the
+   fishing HUD (fishing.css) can sit beside it rather than under it. */
+@media (max-width: 900px), (max-height: 500px) {
+  #isw-hud { --isw-hotbar-w: 46px; }
+  .isw-hud__hotbar {
+    left: auto;
+    right: 16px;
+    top: 50%;
+    bottom: auto;
+    transform: translateY(-50%);
+  }
+  .isw-hud__hotbar .isw-ui-hotbar__row {
+    grid-template-columns: repeat(1, 46px);
+    padding-bottom: 0;
+  }
+  .isw-hud__hotbar .isw-ui-hotbar__slot:nth-child(n + 7) { display: none; }
+  /* the name plate opens to the left of the key, not over the next one */
+  .isw-hud__hotbar .isw-ui-hotbar__plate,
+  .isw-hud__hotbar .isw-ui-hotbar__row:first-child .isw-ui-hotbar__plate {
+    top: 50%;
+    bottom: auto;
+    left: auto;
+    right: calc(100% + 6px);
+    transform: translateY(-50%);
+  }
+}
+

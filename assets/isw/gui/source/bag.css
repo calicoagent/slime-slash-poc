@@ -1,0 +1,28 @@
+/* The B5 bag / slime window (hud/bag.ts): centred over the world, above
+   the corner slots and under the NPC dialogue (z 30) and the shop (z 31).
+   The window's own size is the kit's (ui.css .isw-ui-bagwin, 372 px high);
+   the refusal line sits under it so the window never changes height. */
+.isw-hud__center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 32px);
+  pointer-events: auto;
+}
+.isw-hud__center[hidden] { display: none; }
+
+.isw-hud-bag__notice {
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: rgba(14, 11, 8, 0.86);
+  color: #eadfc6;
+  font: 13px/1.3 system-ui, sans-serif;
+  white-space: pre-line;
+}
+.isw-hud-bag__notice[hidden] { display: none; }

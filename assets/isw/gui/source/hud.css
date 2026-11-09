@@ -1,0 +1,299 @@
+/* The in-world HUD root (hud/index.ts). Fixed over the canvas and click-
+   through everywhere except the slots, so the world under it stays
+   walkable. No z-index, like every other layer on this page (style.css):
+   it comes right after #game-container in index.html, so the field
+   loading screen, the cutscene overlay, the NPC dialogue, the shop and the
+   account panel all paint over it. Corner insets are the kit's own HUD
+   shell (ui.css .isw-ui-hud__top-left: 16px). */
+#isw-hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+#isw-hud[hidden] { display: none; }
+
+.isw-hud__top-left {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  pointer-events: auto;
+}
+
+.isw-hud__top-left[hidden] { display: none; }
+
+/* B4, the effect chip row (hud/effects.ts): directly under the gauge's CP
+   orbs, same 16 px inset column as the gauge and the Bag/gear menu below
+   it. Measured (browser pass, 2026-09-25, `.isw-ui-gauge__cp`'s own
+   `getBoundingClientRect()`): the CP orb row's bottom edge sits at y 180
+   from the viewport with the gauge at its default (16, 16), so this slot
+   starts a clear 8 px under that at y 188. `.isw-hud__menu` (below) is
+   pushed from its old y 196 to y 244 to keep the ~42 px a chip plus its
+   time caption needs (30 px chip + a caption under it) clear of it -- see
+   that rule's own comment for why 196 was chosen and how this one keeps
+   the same "under the gauge" reasoning. */
+.isw-hud__effects {
+  position: absolute;
+  top: 188px;
+  left: 16px;
+  pointer-events: auto;
+}
+.isw-hud__effects[hidden] { display: none; }
+.isw-hud-effects__row { padding-bottom: 2px; }
+.isw-hud-effects__card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+}
+
+
+/* CH4, the Nearby log and its typing panel (hud/chat.ts, #406): bottom
+   left, on the same 16 px inset as the gauge (the mock's .isw-game__chat).
+   The speech balloons ride their own .isw-hud__world slots (bubble.css). */
+.isw-hud__bottom-left {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  pointer-events: auto;
+  /* The kit lifts the panel's × (z-index 7); kept inside this corner, the
+     bag and rebirth windows, later in the HUD, paint over all of it. */
+  isolation: isolate;
+}
+
+.isw-hud__bottom-left:empty { display: none; }
+
+/* The D1 defeat window (hud/defeat.ts): a full-screen layer, last in the
+   HUD so it paints over every other slot. Click-through itself; the kit's
+   overlay (.isw-ui-defeat, inset 0) takes every click while it is up, so
+   Return is the only thing a downed party can press. */
+.isw-hud__defeat {
+  position: absolute;
+  inset: 0;
+  /* over any slot or balloon the HUD appends later */
+  z-index: 1;
+  pointer-events: none;
+}
+.isw-hud__defeat[hidden] { display: none; }
+.isw-hud__defeat .isw-ui-defeat { pointer-events: auto; }
+
+/* While the defeat window is up it is modal: the HUD lifts over the
+   signed-in account panel (which otherwise paints over it by document
+   order and, on a phone in landscape, over the window itself). Return is
+   the only thing a downed party can press; the panel is back once the
+   party is up. */
+#isw-hud:has(.isw-hud__defeat .isw-ui-defeat) { z-index: 1; }
+
+/* The same lift while the bag window (the centre slot) or the rebirth
+   window is open: the account panel comes after #isw-hud, so at 1280 x 720
+   it painted over the bag's × and the rebirth window's right edge, and a
+   click on the × landed on the panel (browser pass, 2026-09-25). Closing
+   the window gives the panel back. */
+#isw-hud:has(.isw-hud__center:not([hidden])),
+#isw-hud:has(.isw-hud__rebirth:not([hidden])) { z-index: 1; }
+
+/* The Bag button (hud/menu.ts): the kit menubar, 44 px tiles, in the
+   top-left column under the gauge (dial 128 px + the maturity dots, from
+   the 16 px inset) and under the B4 effect chip row (`.isw-hud__effects`,
+   above -- pushed from 196 to 244 the day that row shipped, to keep its
+   30 px chip plus its time caption clear of the top tile). */
+.isw-hud__menu {
+  position: absolute;
+  top: 244px;
+  left: 16px;
+  /* the 4 px gold ring drawn outside each tile */
+  padding: 4px;
+  pointer-events: auto;
+}
+
+.isw-hud__menu[hidden] { display: none; }
+
+/* The Bag and gear tiles (hud/menu.ts): the game's gold chrome, the B5
+   window's and F1 medallion's tokens (isw-ui ui.css), not the kit menubar's
+   dark tile (Handler, 2026-09-25). 44 px each, stacked. */
+.isw-hud-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.isw-hud-menu__btn {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: radial-gradient(circle at 50% 40%, #3a2a17, #1a130b 70%);
+  box-shadow: 0 0 0 1px #000, 0 0 0 2px #6b4712, 0 0 0 3px #e9c46a, 0 0 0 4px #6b4712, 0 4px 10px #000a;
+  cursor: pointer;
+}
+.isw-hud-menu__btn:hover { background: radial-gradient(circle at 50% 40%, #4a3620, #221810 70%); }
+.isw-hud-menu__btn[aria-expanded='true'] {
+  background: radial-gradient(circle at 50% 40%, #5a4322, #2a1d0e 70%);
+  box-shadow: 0 0 0 1px #000, 0 0 0 2px #6b4712, 0 0 0 3px #fff4c8, 0 0 0 4px #6b4712, 0 0 12px #e9c46a88;
+}
+.isw-hud-menu__btn:focus-visible { outline: 2px solid #fff4c8; outline-offset: 4px; }
+.isw-hud-menu__icon {
+  width: 28px;
+  height: 28px;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+
+/* The game menu (hud/game-menu.ts): a small gold-chrome window in the
+   centre, over the centre windows (the defeat window still over it). */
+.isw-hud__game-menu {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.isw-hud__game-menu[hidden] { display: none; }
+#isw-hud:has(.isw-hud__game-menu:not([hidden])) { z-index: 1; }
+.isw-hud-gamemenu {
+  position: relative;
+  box-sizing: border-box;
+  width: min(280px, calc(100vw - 32px));
+  padding: 14px 18px 16px;
+  border-radius: 6px;
+  background: rgb(14 11 8 / .9);
+  color: #eadfc6;
+  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  box-shadow: 0 0 0 1px #000, 0 0 0 2px #6b4712, 0 0 0 3px #e9c46a, 0 0 0 4px #6b4712, 0 10px 30px #000c;
+  pointer-events: auto;
+}
+.isw-hud-gamemenu__title {
+  margin: 0 30px 12px 0;
+  color: #fff4c8;
+  font: 700 16px/1.2 Georgia, 'Times New Roman', serif;
+  letter-spacing: .04em;
+}
+/* the chrome × straddles the top-right corner, like the bag and rebirth windows */
+.isw-hud-chromebtn {
+  position: absolute;
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, #1a130b 0 58%, transparent 60%),
+    linear-gradient(160deg, #fff4c8, #e9c46a 35%, #6b4712 60%, #e9c46a 85%, #b8862b);
+  color: #fff4c8;
+  font: 700 13px/1 system-ui, sans-serif;
+  box-shadow: 0 1px 3px #000a;
+  cursor: pointer;
+}
+.isw-hud-chromebtn::before { content: ""; position: absolute; left: -9px; top: -9px; width: 44px; height: 44px; }
+.isw-hud-chromebtn:focus-visible { outline: 2px solid #fff4c8; outline-offset: 2px; }
+.isw-hud-gamemenu__close { right: -10px; top: -10px; z-index: 7; }
+.isw-hud-gamemenu__controls { display: flex; flex-direction: column; gap: 12px; }
+.isw-hud-gamemenu__volume { display: flex; flex-direction: column; gap: 4px; color: #eadfc6; }
+.isw-hud-gamemenu__volume-row { display: flex; align-items: center; gap: 10px; }
+.isw-hud-gamemenu__volume input { flex: 1; min-width: 0; accent-color: #e9c46a; cursor: pointer; }
+.isw-hud-gamemenu__volume output { min-width: 3ch; text-align: right; font-variant-numeric: tabular-nums; }
+/* Effects: Auto / Low / High (#549). Native radios as one segmented control,
+   framed like the language select below it; the chosen segment is one step
+   brighter than its track plus bold text, so the state never rests on colour
+   alone (WCAG 1.4.1). Each segment is a 44 px target. */
+.isw-hud-gamemenu__effects { margin: 0; padding: 0; border: 0; min-width: 0; }
+.isw-hud-gamemenu__effects-head { display: flex; justify-content: space-between; width: 100%; padding: 0; margin-bottom: 4px; color: #eadfc6; }
+.isw-hud-gamemenu__effects-head output { color: #a89a7c; font-size: 12px; }
+.isw-hud-gamemenu__segments {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border: 1px solid rgb(233 196 106 / .35);
+  border-radius: 4px;
+  background: #0006;
+  overflow: hidden;
+}
+.isw-hud-gamemenu__segment {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 44px;
+  color: #cfc2a4;
+  cursor: pointer;
+  user-select: none;
+}
+.isw-hud-gamemenu__segment + .isw-hud-gamemenu__segment { border-left: 1px solid rgb(233 196 106 / .2); }
+.isw-hud-gamemenu__segment input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.isw-hud-gamemenu__segment:hover { color: #fff4c8; }
+.isw-hud-gamemenu__segment:has(input:checked) {
+  background: rgb(233 196 106 / .2);
+  box-shadow: inset 0 -2px 0 #e9c46a;
+  color: #fff4c8;
+  font-weight: 700;
+}
+.isw-hud-gamemenu__segment:has(input:focus-visible) { outline: 2px solid #fff4c8; outline-offset: -3px; }
+.isw-hud-gamemenu__controls .languages { margin: 0; }
+.isw-hud-gamemenu__controls .language-select {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid rgb(233 196 106 / .35);
+  border-radius: 4px;
+  background: #0006;
+  color: #eadfc6;
+  font-size: 14px;
+}
+.isw-hud-gamemenu__controls #sign-out {
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  border: 0;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #fff4c8, #e9c46a 45%, #b8862b 55%, #e9c46a);
+  box-shadow: 0 0 0 1px #6b4712, 0 2px 3px #0008;
+  color: #1a130b;
+  font: 700 14px/1 Georgia, 'Times New Roman', serif;
+  letter-spacing: .04em;
+  cursor: pointer;
+}
+.isw-hud-gamemenu__controls #sign-out:disabled { filter: grayscale(1) brightness(.7); cursor: wait; }
+.isw-hud-gamemenu__privacy {
+  display: inline-block;
+  margin-top: 12px;
+  color: #a89a7c;
+  font-size: 12px;
+  text-underline-offset: 4px;
+}
+.isw-hud-gamemenu__privacy:hover { color: #fff4c8; }
+.isw-hud-gamemenu .isw-hud-gamemenu__discord { display: inline-flex; margin-left: 12px; vertical-align: middle; color: #eadfc6; }
+.isw-hud-gamemenu__discord:hover { color: #fff4c8; }
+
+/* Mobile (Handler, 2026-09-26): a phone in either orientation, the same
+   condition as hotbar.css and fishing.css. The whole unit frame (the gauge
+   dial, the party portraits and the CP orbs) draws at half size from the
+   16 px corner. Measured at full size, 2026-09-25: the gauge ends at x 269
+   and its CP orb row at y 180; halved from the (16, 16) origin that is
+   x 142 and y 98. The Bag and gear tiles move into a row beside it
+   (x 152), and the effect chips sit a clear 6 px under the orbs. */
+@media (max-width: 900px), (max-height: 500px) {
+  .isw-hud__top-left { transform: scale(0.5); transform-origin: top left; }
+  .isw-hud__menu { top: 12px; left: 152px; }
+  .isw-hud-menu { flex-direction: row; }
+  .isw-hud__effects { top: 104px; left: 16px; }
+  /* The open chat panel (kit width 340 px) stops 8 px short of the halved
+     fishing HUD, which sits left of the upright hotbar (fishing.css):
+     16 hotbar inset + the column + 8 gap + 48 fishing + 8 gap + 16 chat
+     inset = the column + 96. Browser pass 2026-09-26: at 390 x 844 the
+     full 340 px panel ran 28 px into the hotbar column. */
+  .isw-hud__bottom-left { --isw-chat-w: min(340px, calc(100vw - var(--isw-hotbar-w, 46px) - 96px)); }
+}
+
+/* Phone landscape (844 x 390, browser pass 2026-09-25): the chat panel's
+   214 px rose over the top-left column. It shrinks so its top stays under
+   the full-size gauge's y 185 -- under the halved column too (effect chips
+   end at y 146). */
+@media (max-height: 500px) {
+  .isw-hud__bottom-left { --isw-chat-h: min(214px, calc(100dvh - 204px)); }
+}

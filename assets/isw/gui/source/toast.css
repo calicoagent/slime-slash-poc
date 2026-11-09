@@ -1,0 +1,132 @@
+/* The HUD toast stack (hud/toast.ts): toastify-js, reskinned. Its own
+   stylesheet (toastify.css) is never imported; every class it draws is
+   styled here from the game's tokens, so there is no default gradient,
+   no blue shadow and no fixed-position toast.
+
+   The root (#isw-toasts, toastify's `selector`) is the last layer in
+   index.html, so by this page's document-order stacking it paints over the
+   account panel and the HUD corners; a HUD window that lifts itself
+   (z-index 1: the bag, rebirth, game menu, defeat) still paints over it,
+   so a toast never sits on a modal a player is answering. Click-through
+   everywhere except the toasts themselves.
+
+   Chrome is the game menu's (hud.css .isw-hud-gamemenu): a dark plate,
+   #eadfc6 text, the gold ring on a toast that wants something (the update
+   notice), the gold #sign-out button for its action. Contrast (WCAG,
+   computed): #eadfc6 on #0e0b08 is 14.6:1; #1a130b on #e9c46a is 11.2:1. */
+#isw-toasts {
+  position: fixed;
+  top: calc(16px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: min(420px, calc(100vw - 32px));
+  pointer-events: none;
+}
+#isw-toasts[hidden] { display: none; }
+
+/* toastify positions each toast itself (position: fixed, an inline top per
+   toast, z-index max); in this column they are ordinary flex items and the
+   column stacks them, so its inline offsets have nothing to act on. */
+#isw-toasts .toastify {
+  position: static;
+  z-index: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  max-width: none;
+  min-height: 52px;
+  margin: 0;
+  padding: 4px 4px 4px 14px;
+  border-radius: 6px;
+  background: rgb(14 11 8 / .92);
+  color: #eadfc6;
+  font: 14px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif;
+  text-decoration: none;
+  box-shadow: 0 0 0 1px #000, 0 0 0 2px rgb(233 196 106 / .45), 0 8px 24px #000a;
+  cursor: default;
+  pointer-events: auto;
+  opacity: 0;
+  transition: opacity 400ms ease;
+  animation: isw-toast-in 180ms ease-out;
+}
+#isw-toasts .toastify.on { opacity: 1; }
+/* The update notice (sticky, with an action): the full gold ring, so it
+   reads as the one that wants something. */
+#isw-toasts .isw-toast--sticky {
+  box-shadow: 0 0 0 1px #000, 0 0 0 2px #6b4712, 0 0 0 3px #e9c46a, 0 0 0 4px #6b4712, 0 8px 24px #000a;
+}
+
+.isw-toast__body {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.isw-toast__text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.isw-toast__action {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #fff4c8, #e9c46a 45%, #b8862b 55%, #e9c46a);
+  box-shadow: 0 0 0 1px #6b4712, 0 2px 3px #0008;
+  color: #1a130b;
+  font: 700 14px/1 Georgia, 'Times New Roman', serif;
+  letter-spacing: .04em;
+  cursor: pointer;
+}
+.isw-toast__action:hover { filter: brightness(1.08); }
+
+#isw-toasts .toast-close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #eadfc6;
+  font: 700 20px/1 system-ui, sans-serif;
+  opacity: 1;
+  cursor: pointer;
+}
+#isw-toasts .toast-close:hover { background: rgb(233 196 106 / .12); color: #fff4c8; }
+.isw-toast__action:focus-visible,
+#isw-toasts .toast-close:focus-visible { outline: 2px solid #fff4c8; outline-offset: 2px; }
+
+@keyframes isw-toast-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #isw-toasts .toastify { animation: none; transition: none; }
+}
+
+/* Mobile (the same condition as hud.css, hotbar.css, fishing.css): the
+   stack sits right at the top edge, as on desktop, spanning the width less
+   the 16 px gutters. It covers the gauge, the Bag and gear row and the
+   account panel while it is up -- Handler's ruling of 2026-09-26: a toast
+   may block the top UI, an accepted exception. */
+@media (max-width: 900px), (max-height: 500px) {
+  #isw-toasts .toastify { font-size: 13px; }
+}
