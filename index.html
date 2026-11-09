@@ -6353,6 +6353,7 @@ function coachNearDist(){
 function coachComplete(){
   const c = ses.coach; if (c){ c.chip = ''; c.stage = 6; }
   act.patchProgress({ coachV: 1 }); saveGame();
+  updateHint();   // hand the hint slot back to the tutorial sequence
 }
 /* A landed BLADE hit (localHitCheck only — splash/skill damage does not
    call this): the swing lesson is over, whichever chip was up. */
@@ -6391,6 +6392,10 @@ function coachTick(now){
     if (isNear){ c.cShown += dtF; if (c.cShown >= 4000) coachComplete(); }
     else if (now - c.cAt > 1200){ c.chip = ''; c.stage = 4; }   // walked away unread — offer it again on the next approach
   }
+  /* Slot discipline, enforced per frame (updateHint itself is
+     event-driven): while a coach chip is up, the DOM tutorial hint
+     stays hidden — the two lessons never share the screen. */
+  if (c.chip){ const h = $('#hint'); if (h && !h.classList.contains('hidden')) h.classList.add('hidden'); }
 }
 /* The coach chip: an in-world plate floating over the player's head,
    styled after the #hint chip (white plate, dark border, hard shadow,
