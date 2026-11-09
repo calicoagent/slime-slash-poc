@@ -8964,6 +8964,14 @@ function frame(now){
   }
 
   if (ses.started) updateInteract();   // every frame — the OPEN prompt and panel auto-close must never lag
+  /* WALK-IN TRAVEL: dragging your blade across an open exit's core
+     walks the road — no key needed (E works too). Arrivals land .9u
+     inside the far zone, well clear of the .42u core, so a crossing
+     can never bounce straight back. */
+  if (ses.started && ses.nearExit && ses.downInfo && !ses.dialogue && !buildingPanelOpen() && !ses.paused && !ses.zoneFading
+      && dist2(me.x, me.y, ses.nearExit.x, ses.nearExit.y) < .42 * .42){
+    travelThroughExit(ses.nearExit);
+  }
   if (ses.started) updatePoiNotices();   // Batch C: POI name floats on first approach
   if (ses.started) updateDialogue(now);   // the speech bubble tracks its speaker + the typewriter runs
   /* ---- stage 4 ambient beats ---- */
