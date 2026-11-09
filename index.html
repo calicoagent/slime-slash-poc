@@ -1604,10 +1604,8 @@ const freshSession = () => ({
     hp:100, maxHp:100, invulnUntil:0, lastDmgAt:0, shieldUntil:0,
     mp:100, maxMp:100, wSkillCdUntil:0,   // MP is LOCAL only too — never networked, never persisted (loads full, like HP)
     gemRushUntil:0,
-    stabT0:0, stabAng:0,
-    ptrSpeedPx:0,   // latest pointer speed (px/s, max of recent events, decayed per frame) — an idle blade must not cut
+    ptrSpeedPx:0,   // decayed peak pointer speed (px/s) — RENDER ONLY (trail thinning). The damage gate reads me.speed: THIS frame's evaluated segment speed (manual-sword rule)
     lastHitAt:new Map(), whirlUntil:0, trail:[],   // whirlUntil: WHIRLWIND skill render state only — the tap Spin Slash is gone
-    swingT0:0, swingDir:1,
   },
   stats: null,               // derived stat totals (Sphere nodes + equipped weapon's soul gems) — rebuilt by recalc(), never a source of truth
   // run lifecycle
@@ -2023,29 +2021,18 @@ const ses = store.getState().session;
 const me = ses.player;
 const prog = () => store.getState().progress;   // ALWAYS read progress fresh: it is replaced on every write
 const act = Object.fromEntries(Object.entries(store.getState()).filter(([, v]) => typeof v === 'function'));   // the store actions (stable functions only — no state)
-// The sword sweeps an ARC when you flick: it cocks back, then whips past
-// your heading — direction follows the swipe (right swipe = clockwise arc…).
+// MANUAL SWORD (Handler, 2026-11-09: 'Remove sword auto swing. Player
+// must swing swords. Stab etc.'): there is NO scripted swing arc and NO
+// scripted stab lunge any more. The blade pose is exactly what the
+// player's hand does — it points along the (angularly smoothed) movement
+// heading and reaches exactly myReach(), never beyond it. swordAngleAt /
+// bladeAt remain the single pose source for rendering, hit tests and the
+// pos broadcast, so what peers see is the motion the player truly made.
 function swordAngleAt(now){
-  if (now < me.whirlUntil) return me.angle;   // WHIRLWIND render: pose frozen while drawSword spins the blade
-  const el = now - me.swingT0;
-  if (me.swingT0 && el < 190){
-    const p = el/190, e = 1-Math.pow(1-p,3);
-    return me.angle + me.swingDir * (-2.05 + 2.65*e);
-  }
   return me.angle;
 }
-// Unified blade pose: SWING weapons arc; STAB weapons (knife, polearm)
-// lunge straight along the flick direction and snap back.
 function bladeAt(now){
-  if (myWeapon().motion === 'stab'){
-    const el = now - me.stabT0;
-    if (me.stabT0 && el < 150){
-      const p = el/150;
-      return { ang: me.stabAng, ext: Math.sin(p*Math.PI)*.55 };
-    }
-    return { ang: me.angle, ext: 0 };
-  }
-  return { ang: swordAngleAt(now), ext: 0 };
+  return { ang: me.angle, ext: 0 };
 }
 /* ---- survival pass state ---- */
 const CONTACT_DMG = { baby:4, dart:4, mid:6, gold:2, metal:5, splitter:7, big:9, tank:13, king:16, boss:26, guardian:16 };   // guardian: king tier
@@ -3072,17 +3059,16 @@ function myCd(){
   return Math.max(50, wCd * Math.max(.5, 1 + ses.stats.cd)) * (performance.now()<me.frenzyUntil ? .55 : 1);   // cooldown multiplier floored at .5x (gem haste + Sphere Quick Hands can never push it lower); 50ms absolute floor stays
 }
 
-// The blade only cuts while it is being WIELDED: mid-swing-arc
-// (same 190ms window swordAngleAt animates), mid-stab-lunge (same 150ms
-// window bladeAt animates), or the pointer itself moving fast right now.
-// A parked sword is scenery — slimes that wander into it must NOT die.
-function bladeLive(now){
-  if (myWeapon().motion==='stab') { if (me.stabT0 && now-me.stabT0<150) return true; }
-  else if (me.swingT0 && now-me.swingT0<190) return true;
-  return (me.ptrSpeedPx||0) > 240;
+// MANUAL SWORD ONLY (Handler, 2026-11-09): the blade cuts only while
+// the player's own pointer motion gives THIS frame's evaluated segment
+// real speed (> 240 px/s, the long-standing threshold). No window opens
+// on a press or a flick: a stopped hand stops cutting the same frame,
+// and a sword resting on a slime does nothing, forever.
+function bladeLive(){
+  return (me.speed||0) > 240;
 }
 function localHitCheck(now){
-  if (!bladeLive(now)) return;   // idle/AFK sword cuts nothing — no free kills
+  if (!bladeLive()) return;   // idle/AFK sword cuts nothing — no free kills
   /* lastHitAt hygiene: it gains an entry for every slime/ore id ever hit
      and ids are never reused, so without pruning it grows for the whole
      session. Every few seconds, once it is fat, drop entries whose
@@ -3094,37 +3080,43 @@ function localHitCheck(now){
       else if (!world.slimes.has(k)) me.lastHitAt.delete(k);
     }
   }
-  // blade = segment from hand (pointer) to tip along the sword's CURRENT
-  // angle; SWING weapons also test the swept arc since last frame so fast
-  // arcs can't tunnel through slimes between frames
+  // The blade is the segment hand(pointer) -> tip. Between last frame
+  // and this one it sweeps a quad; test the quad's four edges — the
+  // current segment, the previous segment, and the paths the HAND and
+  // the TIP travelled. A lateral swing registers across the swept arc,
+  // and a pure axial STAB registers too: the tip's own path is one of
+  // the edges, so driving the point forward through a slime connects
+  // exactly like sweeping across it. Nothing outside the area the
+  // player's hand actually crossed can be hit.
   const blade = bladeAt(now);
   const sa = blade.ang;
   const reach = myReach() * (1 + blade.ext);
-  const thick = myWeapon().motion==='stab' ? .006 : .012 + ses.stats.arcWide;   // stab = thin line, swing = wide arc
-  const segHit = (s, ang) => {
-    const bx = me.x + Math.cos(ang)*reach, by = me.y + Math.sin(ang)*reach;
-    const dx = bx-me.x, dy = by-me.y, L2 = dx*dx+dy*dy||1e-6;
-    const t = clamp(((s.x-me.x)*dx+(s.y-me.y)*dy)/L2, 0, 1);
-    return dist2(me.x+dx*t, me.y+dy*t, s.x, s.y) < (s.r+thick)**2;
+  const thick = myWeapon().motion==='stab' ? .006 : .012 + ses.stats.arcWide;   // stab = thin precise line, swing = wider body
+  const pa = (me.prevSa!==undefined && Number.isFinite(me.prevSa)) ? me.prevSa : sa;
+  const tipX = me.x + Math.cos(sa)*reach, tipY = me.y + Math.sin(sa)*reach;
+  const ptipX = me.px + Math.cos(pa)*reach, ptipY = me.py + Math.sin(pa)*reach;
+  const segs = [
+    me.x, me.y, tipX, tipY,          // the blade, this frame
+    me.px, me.py, ptipX, ptipY,      // the blade, last frame
+    ptipX, ptipY, tipX, tipY,        // the tip's path (the stab line)
+    me.px, me.py, me.x, me.y,        // the hand's path
+  ];
+  const segD2 = (px, py, ax, ay, bx, by) => {
+    const dx = bx-ax, dy = by-ay, L2 = dx*dx+dy*dy||1e-6;
+    const t = clamp(((px-ax)*dx+(py-ay)*dy)/L2, 0, 1);
+    return dist2(ax+dx*t, ay+dy*t, px, py);
   };
-  let testAngles = [sa];
-  if (myWeapon().motion==='swing' && me.prevSa!==undefined){
-    let dA = sa - me.prevSa;
-    /* FREEZE HARDENING (Batch D): both angles are atan2-derived, so
-       |dA| <= 2PI and one pass suffices in practice; the guard makes the
-       bound independent of that invariant (a NaN/Infinity angle can
-       never spin this — non-finite dA simply skips the sweep test). */
-    let dGuard = 0;
-    while (dA > Math.PI && dGuard++ < 4) dA -= Math.PI*2;
-    dGuard = 0;
-    while (dA < -Math.PI && dGuard++ < 4) dA += Math.PI*2;
-    if (Math.abs(dA) > .02 && Math.abs(dA) < 1.4) testAngles = [me.prevSa, me.prevSa + dA/2, sa];
-  }
+  const bladeHit = (s) => {
+    const rr = (s.r+thick)*(s.r+thick);
+    for (let i=0;i<segs.length;i+=4)
+      if (segD2(s.x, s.y, segs[i], segs[i+1], segs[i+2], segs[i+3]) < rr) return true;
+    return false;
+  };
   me.prevSa = sa;
   for (const s of world.slimes.values()){
     const last = me.lastHitAt.get(s.id)||0;
     if (now-last < myCd()) continue;
-    const hit = testAngles.some(ang => segHit(s, ang));
+    const hit = bladeHit(s);
     if (hit){
       me.lastHitAt.set(s.id, now);
       let dmg = myDamage();
@@ -3146,7 +3138,7 @@ function localHitCheck(now){
   for (const n of world.nodes.values()){
     const nk = 'node:'+n.id, nlast = me.lastHitAt.get(nk)||0;
     if (now - nlast < myCd()) continue;
-    const hit = testAngles.some(ang => segHit(n, ang));
+    const hit = bladeHit(n);
     if (!hit) continue;
     me.lastHitAt.set(nk, now);
     n.shakeT = now;   // prediction: the rock shakes on my screen right away
@@ -4940,9 +4932,8 @@ addEventListener('pointermove', e=>{
    motion evenly over rendered frames at ANY display rate; when the stream
    runs dry the newest point is HELD — no extrapolation, no overshoot.
    Combat keeps using the true path: this frame-to-frame evaluated segment
-   drives me.px/py -> me.x/y, ptrSpeed (the bladeLive gate), the swing/stab
-   flick triggers and the (smoothed) heading, exactly as the raw event feed
-   drove them before. */
+   drives me.px/py -> me.x/y, me.speed (the bladeLive gate) and the
+   (smoothed) heading, exactly as the raw event feed drove them before. */
 function updatePointer(now){
   if (!ses.ptrCount){ ses.ptrEvalT = now; return; }
   const evalT = now - PTR_DELAY;
@@ -5072,15 +5063,12 @@ function updatePointer(now){
     while (dA < -Math.PI && dGuard++ < 4) dA += Math.PI*2;
     me.angle += dA * (1 - Math.exp(-fdt/32));
   }
-  // flick triggers: same weapons, thresholds and cooldowns as the old event handler
-  if (ses.started && now >= me.whirlUntil){
-    if (myWeapon().motion==='stab'){
-      if (spd>950 && now-me.stabT0>170){ me.stabT0=now; me.stabAng=Math.atan2(dyPx,dxPx); }
-    } else if (spd>620 && now-me.swingT0>200){
-      me.swingT0=now;
-      me.swingDir = Math.abs(dxPx)>=Math.abs(dyPx) ? (dxPx>=0?1:-1) : (dyPx>=0?1:-1);
-    }
-  }
+  /* MANUAL SWORD (Handler, 2026-11-09): the old flick triggers lived
+     here — a fast segment used to ARM a scripted swing arc (620 px/s)
+     or stab lunge (950 px/s) that then swept the blade on its own for
+     150–190ms. Gone. This evaluator only reports the hand's real motion
+     (position, me.speed, heading); nothing downstream animates the
+     blade beyond it. */
 }
 addEventListener('pointerdown', e=>{
   ses.uiPointer = e.target !== cv;   // UI presses are for buttons/panels — flag them so pointermove ignores the drag
