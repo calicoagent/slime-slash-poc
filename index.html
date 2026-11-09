@@ -2530,6 +2530,17 @@ function spawnSlime(opts={}){
      level 5, no King spawns in a tier-0 zone at all — a new player's
      first fight must never be a King. The roll degrades to a Big. */
   if (k.kind === 'king' && zi === 0 && connectedTopLevel() < 5) k = SLIME_KINDS.find(m=>m.kind==='big');
+  /* MUSOU OFFICER CAP: at crowd scale the raw table fields ~9 kings a
+     zone and elites accumulate past their 8% roll (they outlive the
+     fodder) — officers stop reading as officers. Wild rolls only
+     (summons, guarantees and splitter children pass explicit kinds and
+     are exempt): a zone holds at most 3 kings; excess degrades to Big.
+     The kind table and every reward are untouched. */
+  if (!opts.kind && k.kind === 'king'){
+    let kings = 0;
+    for (const o of world.slimes.values()) if (o.zone === zid && o.kind === 'king') kings++;
+    if (kings >= 3) k = SLIME_KINDS.find(m=>m.kind==='big');
+  }
   const id = (world.hostId||me.id).slice(0,4)+'-'+(world.slimeSeq++);
   const hp = k.kind==='boss' ? k.hp : Math.round(k.hp * zone.hp);   // the Emperor keeps his true 4000 HP — no zone scaling
   const s = { id, kind:k.kind, hp, max:hp, r:k.r,
@@ -2537,8 +2548,16 @@ function spawnSlime(opts={}){
     color: k.kind==='gold' ? '#ffe066' : k.kind==='metal' ? '#cfd8dc' : SLIME_COLORS[Math.floor(Math.random()*SLIME_COLORS.length)],
     seed:seedForId(id), squish:0, flash:0, mul: k.kind==='boss' ? 1.5 : zone.mul, elite:false, zone: zid, isle: zi };   // zone: home zone (host sim + payload); isle: its tier, kept for legacy readers
   if (k.kind==='metal') world.lastMetalAt = performance.now();   // THE guarantee clock: a metal entering the world is the only thing that resets it
-  // ELITES: rare, tougher, much richer (never kings, the Emperor, or metal slimes)
-  if (k.kind !== 'king' && k.kind !== 'boss' && k.kind !== 'metal' && Math.random() < .08){
+  // ELITES: rare, tougher, much richer (never kings, the Emperor, or metal slimes).
+  // The zone census caps wild elites at ~8% of the zone's crowd (they
+  // outlive fodder, so the raw roll drifts richer over time).
+  let eliteCapped = false;
+  if (!opts.kind){
+    let ez = 0, tz = 0;
+    for (const o of world.slimes.values()) if (o.zone === zid){ tz++; if (o.elite) ez++; }
+    eliteCapped = ez >= Math.max(4, tz * .08);
+  }
+  if (k.kind !== 'king' && k.kind !== 'boss' && k.kind !== 'metal' && !eliteCapped && Math.random() < .08){
     s.elite = true;
     s.hp = s.max = Math.round(s.hp * 3);
     s.r = k.r * 1.35;
