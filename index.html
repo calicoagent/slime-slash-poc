@@ -1415,10 +1415,10 @@ const ZONE_U = 14.4;
 const WORLD = ZONE_U;
 const ZONES_DEF = {
   town:     { name:'ALDERWAKE',       sub:'Town of Beginnings', plate:'alderwake.png',        mask:true,  tier:0, safe:true,  sparkle:.60, speed:.50, graph:{ x:.46, y:.38 } },
-  glade:    { name:'LANDING GLADE',   sub:'The Summoning Meadow', plate:'landing_glade.png',  mask:true,  tier:0, safeDiscs:[{ x:8.5, y:6.4, r:1.15 }], sparkle:.75, speed:.50, graph:{ x:.18, y:.38 } },
+  glade:    { name:'LANDING GLADE',   sub:'The Summoning Meadow', plate:'landing_glade.png',  mask:true,  tier:0, safeDiscs:[{ id:'glade', x:8.5, y:6.4, r:1.15 }], sparkle:.75, speed:.50, graph:{ x:.18, y:.38 } },
   camp:     { name:'THORNWICK',       sub:'Lakeside Camp',      plate:'lakeside_camp.png',    tier:1, safe:true,  sparkle:.70, speed:.45, graph:{ x:.18, y:.68 } },
   grove:    { name:'SOUTHWEST GROVE', sub:'',                   plate:'southwest_grove.png',  tier:1, sparkle:.60, speed:.50, graph:{ x:.18, y:.12 } },
-  hollow:   { name:'ROTWATCH',        sub:'The Scout Camp',     plate:'redbracken_hollow.png', tier:2, safeDiscs:[{ x:5.2, y:11.6, r:1.7 }], sparkle:.55, speed:.50, graph:{ x:.42, y:.88 } },
+  hollow:   { name:'ROTWATCH',        sub:'The Scout Camp',     plate:'redbracken_hollow.png', tier:2, safeDiscs:[{ id:'hollow', x:5.2, y:11.6, r:1.7 }], sparkle:.55, speed:.50, graph:{ x:.42, y:.88 } },
   wilds:    { name:'CINDERFELL',      sub:'The Ash Wilds',      plate:'cinderfell.png',       tier:2, blocks:[{ x:1.2, y:12.6, r:1.35 }], sparkle:.55, speed:.55, graph:{ x:.64, y:.82 } },
   treasure: { name:'WITHERBRIAR MOOR', sub:'',                  plate:'witherbriar_moor.png', tier:3, darkWater:true, blocks:[{ x:10.8, y:10.6, r:1.5 }], sparkle:.60, speed:.50, graph:{ x:.84, y:.58 } },
   hermit:   { name:'THE HERMIT PATH', sub:'',                   plate:'forest_path_1.png',    tier:3, sparkle:.65, speed:.45, graph:{ x:.82, y:.14 } },
@@ -1506,6 +1506,12 @@ function onScr(x, y, m){
   const p = SP(x, y);
   return p[0] > -m && p[0] < W + m && p[1] > -m && p[1] < H + m;
 }
+/* on-screen length (px) of a zone-space segment — used wherever the old
+   code measured (delta * UNIT()) */
+function segPx(ax, ay, bx, by){
+  const dx = ax - bx, dy = ay - by;
+  return Math.hypot((dx - dy) * 80 * _ZK, (dx + dy) * 40 * _ZK);
+}
 /* ---- plates, water sampling, walkability ----
    Each plate's painted water is sampled ONCE at load into a coarse
    48x48 grid (0.3u blocks): the alpha of the plate's .water.png mask
@@ -1516,6 +1522,7 @@ const PLATE_IMGS = {}, PLATE_MASKS = {}, NPC_SHEET_IMGS = {};
 const CAUSTICS_IMG = new Image(); CAUSTICS_IMG.src = 'assets/isw/fx/caustics.png';
 const WATER_GRID_N = 48;
 const zoneWater = {};        // zoneId -> Uint8Array(48*48)
+const zoneWaterCells = {};   // zoneId -> [blockIndex] of water blocks (water FX + glints)
 const PROPS = {};            // zoneId -> [{ t, x, y, s }] (seeded scatter, built with the water grid)
 function plateOf(zoneId){ return PLATE_IMGS[zoneId]; }
 function tryBuildWaterGrid(zoneId){
@@ -1551,6 +1558,9 @@ function tryBuildWaterGrid(zoneId){
     grid[by * WATER_GRID_N + bx] = water ? 1 : 0;
   }
   zoneWater[zoneId] = grid;
+  const cells = [];
+  for (let i = 0; i < grid.length; i++) if (grid[i]) cells.push(i);
+  zoneWaterCells[zoneId] = cells;
   genProps(zoneId);
 }
 function waterAt(zoneId, x, y){
@@ -2387,11 +2397,6 @@ const ZONES = [
   { name:'WILDS ISLE',   hp:3.2, mul:2.8, blurb:'deadly, but the richest hunting' },
   { name:'TREASURE ISLET', hp:3.2, mul:2.8, blurb:'a king-haunted rock in the open sea' },
 ];
-function zoneOf(x,y){
-  const r = landRegion(x, y);
-  if (r) return r.zone;   // isle disc: its own zone; a bridge strip: the NEAR isle's zone (you have not crossed until the far disc)
-  return ISLES[nearestIsle(x, y)].zone;   // open water reads as its nearest shore's tier
-}
 /* Highest level among EVERY connected blade (mine + peers) — the same
    read the Emperor and the guardians scale from, in one place. */
 function connectedTopLevel(){
@@ -3089,7 +3094,7 @@ function drawDmgFloats(now){
     const ws = frs.map(fr => baseH * fr.w / fr.h);
     let rowW = 0;
     for (let k = 0; k < ws.length; k++) rowW += ws[k] * (k < ws.length-1 ? .8 : 1);
-    const ax = NX(f.x) + f.jx, ay = NY(f.y) - f.stack + yOff;
+    const fp = SP(f.x, f.y), ax = fp[0] + f.jx, ay = fp[1] - f.stack + yOff;
     ctx.save();
     ctx.globalAlpha = Math.max(0, alpha);
     if (f.crit && imgOk(BURST_IMG)){   // crit burst starburst behind the glyphs
@@ -4217,14 +4222,14 @@ function updateDialogue(now){
   const p = npcPositionAt(def, now);
   if (dist2(me.x, me.y, p.x, p.y) > .9 * .9){ closeDialogueUI(); return; }   // the PLAYER walked away mid-talk (>0.9u — the speaker is pinned, so only the player's own feet can end a talk now): close, no completion hooks
   const b = $('#npcBubble');
-  const x = NX(p.x), y = NY(p.y) - def.head * UNIT() - npcBobPx(def, now) - 4;
+  const pp = SP(p.x, p.y), x = pp[0], y = pp[1] - 150 * ZK() - 8;   // above the ISW sheet's head
   /* keep the bubble ON screen: clamp x inside the viewport, and if the
      space above the head would push it into the top toast stack, flip it
      below the speaker's feet instead (tail up, .below) */
   const bw = b.offsetWidth || 340, bh = b.offsetHeight || 110;
   const cx = clamp(x, bw / 2 + 6, W - bw / 2 - 6);
   const below = (y - bh - 12) < 56;
-  const top = below ? clamp(NY(p.y) + 16, 8, Math.max(8, H - bh - 8)) : y;
+  const top = below ? clamp(pp[1] + 16, 8, Math.max(8, H - bh - 8)) : y;
   if (Math.abs((updateDialogue._x || 0) - cx) > .5 || Math.abs((updateDialogue._y || 0) - top) > .5 || updateDialogue._below !== below){
     updateDialogue._x = cx; updateDialogue._y = top; updateDialogue._below = below;
     b.classList.toggle('below', below);
@@ -4425,11 +4430,22 @@ function collectSprout(id){
 /* E on a locked ROT BARRIER: it answers with its refusal line as an
    in-world float + a shiver of rot motes. Purely local — the gate itself
    is derived from story state (bridgeOpen), never from this poke. */
-function pokeBarrier(key){
-  const b = BARRIERS.find(v => v.key === key); if (!b) return;
-  addFloat(b.x, b.y - .18, b.line, '#d9b3ff', { big:true });
-  spawnPopFx(b.x, b.y, '#7b4fa6', 14, .02);
+function pokeExit(exit){
+  addFloat(exit.x, exit.y - .18, GATE_LINES[exit.gate], '#d9b3ff', { big:true });
+  spawnPopFx(exit.x, exit.y, '#7b4fa6', 14, .02);
   beep(140, .12, 'sawtooth', .07, -60);   // a low rot growl — no dedicated deny sfx exists
+}
+/* Walk an open exit: land just inside the matching exit of the
+   destination zone, ~.9u toward its heart. */
+function travelThroughExit(exit){
+  if (!gateOpen(exit)){ pokeExit(exit); return; }
+  const back = EXITS.find(e => e.zone === exit.to && e.to === exit.zone);
+  let ax = 7.2, ay = 7.2;
+  if (back){
+    const dx = 7.2 - back.x, dy = 7.2 - back.y, L = Math.hypot(dx, dy) || 1;
+    ax = back.x + dx / L * .9; ay = back.y + dy / L * .9;
+  }
+  doZoneTravel(exit.to, ax, ay, ZONES_DEF[exit.to].name);
 }
 /* ---- SHRINE FAST-TRAVEL (Batch B): a WON shrine (its Guardian beaten —
    story.shrinesDone) is a door on the Sigil path. Standing at one, E
@@ -4470,6 +4486,7 @@ function doZoneTravel(zoneId, x, y, flavour){
     ses.particles.length = 0; ses.floats.length = 0; ses.popRings.length = 0; ses.dmgFloats.length = 0;
     spawnPopFx(me.x, me.y, '#ffd94d', 18, .02);
     if (flavour) addFloat(me.x, me.y - .14, flavour, '#ffd94d', { big:true });
+    for (const sel of ['#bankPanel', '#shopPanel', '#hospitalPanel', '#travelPanel']) hideBuildingPanel(sel);
     checkZone(true);
     f.style.opacity = '0';
     ses.zoneFading = false;
@@ -4595,7 +4612,8 @@ function interactPressed(){
   }
   if (ses.nearTravel){ openTravelPanel(ses.nearTravel); return true; }
   if (ses.nearShrine){ summonGuardian(ses.nearShrine); return true; }
-  if (ses.nearBarrier){ pokeBarrier(ses.nearBarrier); return true; }
+  if (ses.nearExit){ travelThroughExit(ses.nearExit); return true; }
+  if (ses.nearBarrier){ pokeExit(ses.nearBarrier); return true; }
   if (ses.nearNpc){ startDialogue(ses.nearNpc); return true; }
   if (ses.nearBuilding){ openBuilding(ses.nearBuilding); return true; }
   if (ses.nearSprout){ collectSprout(ses.nearSprout); return true; }   // last (round 4): a pickup never eats an interact's E
@@ -4814,7 +4832,7 @@ function buyInn(id){
 }
 function updateInteract(){
   const pr = $('#interactPrompt');
-  if (!ses.started){ pr.classList.add('hidden'); ses.nearBuilding = null; ses.nearNpc = null; ses.nearShrine = null; ses.nearTravel = null; ses.nearSprout = null; ses.nearBarrier = null; updateInteract._pr = null; return; }
+  if (!ses.started){ pr.classList.add('hidden'); ses.nearBuilding = null; ses.nearNpc = null; ses.nearShrine = null; ses.nearTravel = null; ses.nearSprout = null; ses.nearBarrier = null; ses.nearExit = null; updateInteract._pr = null; return; }
   /* DOORS (Settlements): every door in the world competes by the same
      rule — the nearest IN-RANGE spot wins the prompt. A spot is in
      range within .34u, or at any distance while the sword stands inside
@@ -4838,6 +4856,7 @@ function updateInteract(){
   let npcId = null, npcDist = Infinity;
   const nowNpc = performance.now();
   for (const def of NPC_DEFS){
+    if (def.zone !== ses.myZone) continue;
     const p = npcPositionAt(def, nowNpc), d = Math.sqrt(dist2(me.x, me.y, p.x, p.y));
     if (d < npcDist){ npcDist = d; npcId = def.id; }
   }
@@ -4862,7 +4881,7 @@ function updateInteract(){
      SHRINE: only while the current quest objective targets it and no
      guardian stands. SPROUT: only while the side tale can still count
      it and this player has not gathered that one. */
-  let shrineId = null, shrineDist = Infinity, travelId = null, travelDist = Infinity, sproutId = null, sproutDist = Infinity, barrierId = null, barrierDist = Infinity;
+  let shrineId = null, shrineDist = Infinity, travelId = null, travelDist = Infinity, sproutId = null, sproutDist = Infinity, barrierId = null, barrierDist = Infinity, exitId = null, exitDist = Infinity;
   if (!ses.dialogue && !panelOpen){
     const objNow = currentObjective();
     /* SHRINES wear two faces (Batch B): the one the quest points at is a
@@ -4873,25 +4892,31 @@ function updateInteract(){
     const summonKey = (objNow && objNow.type === 'guardian' && !guardianAlive()) ? objNow.shrine : null;
     for (const key of Object.keys(SHRINE_POS)){
       const p = SHRINE_POS[key];
+      if (p.zone !== ses.myZone) continue;
       const d = Math.sqrt(dist2(me.x, me.y, p.x, p.y));
       if (d > .55) continue;
       if (key === summonKey){ shrineId = key; shrineDist = d; }
       else if (shrineDone(key) && d < travelDist){ travelId = key; travelDist = d; }
     }
     const stNow = prog().story;
-    if (stNow && stNow.quest !== 'prologue' && !stNow.sproutsDone && stNow.sprouts < 3){
+    if (stNow && stNow.quest !== 'prologue' && stNow.quest !== 'arrival' && !stNow.sproutsDone && stNow.sprouts < 3){
       for (const sp of SPROUT_SPOTS){
+        if (sp.zone !== ses.myZone) continue;
         if (stNow.sproutsFound.includes(sp.id)) continue;
         const d = Math.sqrt(dist2(me.x, me.y, sp.x, sp.y));
         if (d <= .45 && d < sproutDist){ sproutId = sp.id; sproutDist = d; }
       }
     }
-    /* ROT BARRIERS (archipelago): a locked bridge's far-end barrier is an
-       interactable — E reads its refusal line. Open bridges have none. */
-    for (const b of BARRIERS){
-      if (bridgeOpen(b.isle + 1)) continue;
-      const d = Math.sqrt(dist2(me.x, me.y, b.x, b.y));
-      if (d <= .55 && d < barrierDist){ barrierId = b.key; barrierDist = d; }
+    /* ZONE GATES: a locked exit wears the rot-vine barrier — E reads
+       its refusal line (the old bridge barriers' language). An OPEN
+       exit is itself an interactable: E walks the road (walking
+       straight in works too). */
+    for (const e of EXITS){
+      if (e.zone !== ses.myZone) continue;
+      const d = Math.sqrt(dist2(me.x, me.y, e.x, e.y));
+      if (d > .55) continue;
+      if (e.gate && !gateOpen(e)){ if (d < barrierDist){ barrierId = e; barrierDist = d; } }
+      else if (d < exitDist){ exitId = e; exitDist = d; }
     }
   }
   let winKind = null, winId = null, winDist = Infinity;
@@ -4899,6 +4924,7 @@ function updateInteract(){
   if (shrineId && shrineDist < winDist){ winKind = 'shrine'; winId = shrineId; winDist = shrineDist; }
   if (travelId && travelDist < winDist){ winKind = 'travel'; winId = travelId; winDist = travelDist; }
   if (barrierId && barrierDist < winDist){ winKind = 'barrier'; winId = barrierId; winDist = barrierDist; }
+  if (exitId && exitDist < winDist){ winKind = 'exit'; winId = exitId; winDist = exitDist; }
   const winBeatsBuilding = winKind && (!building || winDist < nd);
   /* PROMPT PRIORITY (round 4): dialogue first (prompts are suppressed
      while one is open) > shrine / building / NPC / barrier interacts >
@@ -4921,8 +4947,9 @@ function updateInteract(){
   ses.nearShrine = (winBeatsBuilding && winKind === 'shrine') ? winId : null;
   ses.nearTravel = (winBeatsBuilding && winKind === 'travel') ? winId : null;
   ses.nearBarrier = (winBeatsBuilding && winKind === 'barrier') ? winId : null;
+  ses.nearExit = (winBeatsBuilding && winKind === 'exit') ? winId : null;
   ses.nearSprout = sproutWins ? sproutId : null;
-  ses.nearBuilding = (targetNpc || ses.nearShrine || ses.nearTravel || ses.nearSprout || ses.nearBarrier) ? null : building;
+  ses.nearBuilding = (targetNpc || ses.nearShrine || ses.nearTravel || ses.nearSprout || ses.nearBarrier || ses.nearExit) ? null : building;
   // change-only DOM writes: this runs EVERY frame, and re-setting the
   // same textContent replaces the text node (layout work) every time
   const nearSpot = ses.nearBuilding ? buildingSpot(ses.nearBuilding) : null;
@@ -4936,7 +4963,8 @@ function updateInteract(){
     : ses.nearShrine ? cap + '|SHRINE|' + ses.nearShrine
     : ses.nearTravel ? cap + '|TRAVEL|' + ses.nearTravel
     : ses.nearSprout ? cap + '|SPROUT|' + ses.nearSprout
-    : ses.nearBarrier ? cap + '|BARRIER|' + ses.nearBarrier
+    : ses.nearBarrier ? cap + '|BARRIER|' + ses.nearBarrier.gate
+    : ses.nearExit ? cap + '|EXIT|' + ses.nearExit.to
     : (prName ? cap + '|BLD|' + ses.nearBuilding : null);
   if (wantPr !== updateInteract._pr){
     updateInteract._pr = wantPr;
@@ -4944,7 +4972,8 @@ function updateInteract(){
     else if (ses.nearShrine){ pr.innerHTML = '<span class="keycap">' + cap + '</span>' + SHRINE_NAMES[ses.nearShrine]; pr.classList.remove('hidden'); }
     else if (ses.nearTravel){ pr.innerHTML = '<span class="keycap">' + cap + '</span>TRAVEL'; pr.classList.remove('hidden'); }
     else if (ses.nearSprout){ pr.innerHTML = '<span class="keycap">' + cap + '</span>LOST SPROUTLING'; pr.classList.remove('hidden'); }
-    else if (ses.nearBarrier){ pr.innerHTML = '<span class="keycap">' + cap + '</span>ROT BARRIER'; pr.classList.remove('hidden'); }
+    else if (ses.nearBarrier){ pr.innerHTML = '<span class="keycap">' + cap + '</span>' + ses.nearBarrier.name; pr.classList.remove('hidden'); }
+    else if (ses.nearExit){ pr.innerHTML = '<span class="keycap">' + cap + '</span>' + ses.nearExit.name; pr.classList.remove('hidden'); }
     else if (prName){ pr.innerHTML = '<span class="keycap">' + cap + '</span>' + prName; pr.classList.remove('hidden'); }
     else pr.classList.add('hidden');
   }
@@ -6140,58 +6169,22 @@ function updateBountyUI(){
 
 /* ---------- king banner ---------- */
 function scanKings(){
-  if (!ses.started) return;
-  /* AWAKENED TIMING (Batch D): the banner used to fire ~3s after the
-     boss SPAWNED, wherever the player stood — the marquee entrance cue
-     announced a moment nobody saw, then was gone when the player
-     actually arrived. Now it fires ONCE per awakening, at the first
-     moment the awakening becomes the PLAYER's event: the boss enters
-     the camera view, or the player sets foot on his isle while he
-     lives — whichever comes first. seenBosses still prunes on death,
-     so the next awakening announces afresh. */
-  const u = UNIT(), vw = W/u, vh = H/u;
-  const myIsle = isleAt(me.x, me.y);
-  for (const s of world.slimes.values()){
-    if (s.kind !== 'boss' || ses.seenBosses.has(s.id)) continue;
-    const inView = s.x >= ses.cam.x - s.r && s.x <= ses.cam.x + vw + s.r &&
-                   s.y >= ses.cam.y - s.r && s.y <= ses.cam.y + vh + s.r;
-    const sameIsle = myIsle >= 0 && myIsle === isleAt(s.x, s.y);
-    if (inView || sameIsle){
-      ses.seenBosses.add(s.id);
-      notify(bossIsChaos() ? 'THE CHAOS EMPEROR HAS AWAKENED!' : 'THE SLIME EMPEROR HAS AWAKENED!', { type:'king' });
-    }
-  }
-  for (const id of [...ses.seenBosses]) if (!world.slimes.has(id)) ses.seenBosses.delete(id);
-}
-/* zone toast: fires when the PLAYER crosses into a different ring */
-function checkZone(){
-  if (!ses.started) return;
-  const z = zoneOf(me.x, me.y);
-  if (ses.myZone === -1){ ses.myZone = z; return; }   // entering the world sets the zone silently
-  if (z === ses.myZone) return;
-  ses.myZone = z;
-  const zn = ZONES[z];
-  notify(zn.name, { type:'zone', sub: zn.blurb });
-  /* first time this session the blade sets foot on a newly opened isle */
-  if (z > 0 && !ses.crossedIsles[z] && bridgeOpen(z + 1)){
-    ses.crossedIsles[z] = true;
-    addFloat(me.x, me.y - .12, 'The crossing is open.', '#ffe9a8');
+  // the Emperor AWAKENED toast fires once per awakening, the first
+  // time he is on screen in his zone (the wilds) — preserved latch
+  const b = bossNow();
+  if (b && !b.dead && b.hp > 0 && b.zone === ses.myZone && onScr(b.x, b.y, -40) && ses.emperorWakeAt !== b.bornAt){
+    ses.emperorWakeAt = b.bornAt;
+    notify('📣 The Chaos Emperor stirs in the Ashen Wilds!', '#ff9d5c');
   }
 }
-
-/* ---------- tutorial hints (one at a time, in sequence) ---------- */
-function updateHint(){
-  const h = $('#hint');
-  if (!ses.started || ses.paused || ses.nearBuilding || !$('#menuPanel').classList.contains('hidden')){ h.classList.add('hidden'); return; }
-  let txt = '';
-  if (!prog().hintsSeen.slash) txt = 'DRAG TO SLASH!';
-  else if (!prog().hintsSeen.skill) txt = 'CLICK / TAP — WEAPON SKILL';
-  else if (!prog().hintsSeen.sphere && (prog().level>=2 || prog().sp>0)) txt = 'F — OPEN THE SPHERE GRID';
-  if (!txt){ h.classList.add('hidden'); return; }
-  h.textContent = txt; h.classList.remove('hidden');
+function checkZone(force){
+  if (!force && ses.myZone === ses.zoneBannerFor) return;
+  ses.zoneBannerFor = ses.myZone;
+  if (!ses.started) return;   // the banner NEVER narrates before PLAY
+  const zd = ZONES_DEF[ses.myZone];
+  addFloat(me.x, me.y - .35, zd.name, '#ffe9a8', { big:true });
+  showZoneSub(zd.sub);
 }
-
-/* ---------- pause ---------- */
 function togglePause(force){
   if (!ses.started) return;
   ses.paused = (force!==undefined) ? !!force : !ses.paused;
@@ -6267,204 +6260,117 @@ document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState
 
 /* ============================================================ minimap */
 function drawMinimap(){
-  const c = $('#minimap'); if (!c || !ses.started) return;
-  const g = c.getContext('2d'), S2 = c.width / WORLD;
-  /* ARCHIPELAGO MAP: open sea, every landmass (sand rim + grass heart),
-     the two causeways as planks, a rot tick on a locked bridge's far rim. */
-  g.fillStyle = '#14616e'; g.fillRect(0,0,c.width,c.height);
-  for (const s of [BRIDGE_A, BRIDGE_B]){
-    g.strokeStyle = '#b08954'; g.lineWidth = Math.max(2, BRIDGE_W*S2*.8);
-    g.beginPath(); g.moveTo(s.x1*S2, s.y1*S2); g.lineTo(s.x2*S2, s.y2*S2); g.stroke();
+  const mc = $('#minimap'); if (!mc) return;
+  const g = mc.getContext('2d');
+  const MW = mc.width, MH = mc.height;
+  const zid = ses.myZone, zd = ZONES_DEF[zid];
+  g.clearRect(0, 0, MW, MH);
+  g.fillStyle = '#22301f'; g.fillRect(0, 0, MW, MH);
+  const img = PLATE_IMGS[zid];
+  let ox = 0, oy = 0, pw = MW, ph = MH;
+  if (imgOk(img)){
+    const sc = Math.min(MW / img.naturalWidth, MH / img.naturalHeight);
+    pw = img.naturalWidth * sc; ph = img.naturalHeight * sc;
+    ox = (MW - pw) / 2; oy = (MH - ph) / 2;
+    g.save(); g.imageSmoothingEnabled = true;
+    g.drawImage(img, ox, oy, pw, ph);
+    g.restore();
   }
-  // the earned sandbar crossings, while they stand (pale shallows)
-  for (const [seg, which] of [[SANDBAR_T, 'T'], [SANDBAR_H, 'H']]){
-    if (!sandbarOpen(which)) continue;
-    g.strokeStyle = '#e8d49a'; g.lineWidth = Math.max(2, BRIDGE_W*S2*.8);
-    g.beginPath(); g.moveTo(seg.x1*S2, seg.y1*S2); g.lineTo(seg.x2*S2, seg.y2*S2); g.stroke();
+  const plateW = imgOk(img) ? img.naturalWidth : 1536, plateH = imgOk(img) ? img.naturalHeight : 864;
+  // zone point -> thumbnail px, through the same plate transform as the world
+  const pt = (x, y) => [ox + ((x / CELL_U - y / CELL_U) * (plateW / 48) + plateW / 2) / plateW * pw,
+                        oy + ((x / CELL_U + y / CELL_U + 1) * (plateW / 96)) / plateH * ph];
+  const dot = (x, y, c, r) => { const p = pt(x, y); g.fillStyle = c; g.beginPath(); g.arc(p[0], p[1], r, 0, 7); g.fill(); };
+  for (const b of BUILDING_DEFS){
+    const spot = buildingSpot(b.key); if (spot.zone !== zid) continue;
+    dot(spot.x, spot.y, b.key === 'bank' ? '#ffd94d' : b.key === 'shop' ? '#ff9d5c' : '#ffffff', 2.6);
   }
-  for (const I of ISLES){
-    g.fillStyle = '#e8d49a';
-    g.beginPath(); g.arc(I.cx*S2, I.cy*S2, I.r*S2, 0, 7); g.fill();
-    g.fillStyle = '#79c25f';
-    g.beginPath(); g.arc(I.cx*S2, I.cy*S2, (I.r - SHORE)*S2, 0, 7); g.fill();
+  for (const key of Object.keys(SHRINE_POS)){
+    const sp2 = SHRINE_POS[key]; if (sp2.zone !== zid) continue;
+    dot(sp2.x, sp2.y, GUARDIANS[key] ? GUARDIANS[key].color : '#ffffff', 2.6);
   }
-  /* THE ISLETS (round 4): at 32u the two islets shrink to ~5px blobs
-     that read as slime dots — ring them in deep shore ink so they hold
-     as LAND on the chart. */
-  for (const I of [ISLES[3], ISLES[4]]){
-    g.strokeStyle = 'rgba(38,32,40,.55)'; g.lineWidth = 1.4;
-    g.beginPath(); g.arc(I.cx*S2, I.cy*S2, I.r*S2 + .8, 0, 7); g.stroke();
-    g.fillStyle = '#fff3b0'; g.beginPath(); g.arc(I.cx*S2, I.cy*S2, 1.3, 0, 7); g.fill();
-  }
-  for (const b of BARRIERS){
-    if (bridgeOpen(b.isle + 1)) continue;
-    g.strokeStyle = '#7b4fa6'; g.lineWidth = 2.5;
-    const px = -b.seg.uy*4, py = b.seg.ux*4;
-    g.beginPath(); g.moveTo(b.x*S2 - px, b.y*S2 - py); g.lineTo(b.x*S2 + px, b.y*S2 + py); g.stroke();
-  }
-  // town safe zone: sandy disc on Isle 1, under every dot
-  g.fillStyle = '#ecd9a2';
-  g.beginPath(); g.arc(TOWN.x*S2, TOWN.y*S2, TOWN_R*S2, 0, 7); g.fill();
-  g.strokeStyle = 'rgba(255,255,255,.8)'; g.lineWidth = 1.5;
-  g.strokeRect(ses.cam.x*S2, ses.cam.y*S2, (W/UNIT())*S2, (H/UNIT())*S2);
-  // building markers: BANK gold, SHOP red, HOSPITAL white with a red centre dot
-  g.fillStyle = '#ffd94d'; g.fillRect(BANK_POS.x*S2-2.5, BANK_POS.y*S2-2.5, 5, 5);
-  g.fillStyle = '#e5484d'; g.fillRect(SHOP_POS.x*S2-2.5, SHOP_POS.y*S2-2.5, 5, 5);
-  g.fillStyle = '#ffffff'; g.fillRect(HOSPITAL_POS.x*S2-2.5, HOSPITAL_POS.y*S2-2.5, 5, 5);
-  g.fillStyle = '#e5484d'; g.beginPath(); g.arc(HOSPITAL_POS.x*S2, HOSPITAL_POS.y*S2, 1.4, 0, 7); g.fill();
-  // settlements: Thornwick's disc + door dots (same colours as town), Rotwatch's disc + fire
-  g.fillStyle = '#ecd9a2';
-  g.beginPath(); g.arc(VILLAGE.x*S2, VILLAGE.y*S2, .85*S2, 0, 7); g.fill();
-  g.fillStyle = '#ffffff'; g.fillRect(V_INN_POS.x*S2-2, V_INN_POS.y*S2-2, 4, 4);
-  g.fillStyle = '#e5484d'; g.fillRect(V_SHOP_POS.x*S2-2, V_SHOP_POS.y*S2-2, 4, 4);
-  g.fillStyle = '#ffd94d'; g.fillRect(V_BANK_POS.x*S2-2, V_BANK_POS.y*S2-2, 4, 4);
-  g.fillStyle = '#ddcda2';
-  g.beginPath(); g.arc(ROTWATCH.x*S2, ROTWATCH.y*S2, .60*S2, 0, 7); g.fill();
-  g.fillStyle = '#ff8a3c'; g.beginPath(); g.arc(RW_FIRE_POS.x*S2, RW_FIRE_POS.y*S2, 2.6, 0, 7); g.fill();
-  // current story target: whatever the quest points at wears a gold
-  // diamond (Batch B: every objective type, via objectiveTarget()).
-  // Round 4: at 32u the old 5.5px diamond drowned — it is bigger now
-  // and breathes inside a soft pulse ring so the eye catches it.
-  {
-    const t = objectiveTarget();
-    if (t){
-      const dx = t.x*S2, dy = t.y*S2, dr = 7;
-      const pu = (performance.now() % 1400) / 1400;
-      g.strokeStyle = 'rgba(255,217,77,' + (.55 * (1 - pu)).toFixed(3) + ')'; g.lineWidth = 1.6;
-      g.beginPath(); g.arc(dx, dy, 4 + pu * 8, 0, 7); g.stroke();
-      g.fillStyle = '#ffd94d'; g.strokeStyle = '#5b3a1e'; g.lineWidth = 1.5;
-      g.beginPath(); g.moveTo(dx, dy-dr); g.lineTo(dx+dr, dy); g.lineTo(dx, dy+dr); g.lineTo(dx-dr, dy); g.closePath(); g.fill(); g.stroke();
-      g.fillStyle = '#fff8e7'; g.beginPath(); g.arc(dx, dy, 1.8, 0, 7); g.fill();
+  for (const e of EXITS){ if (e.zone !== zid) continue; dot(e.x, e.y, gateOpen(e) ? '#ffd94d' : '#b280ff', 2.4); }
+  g.fillStyle = '#ffe9a8';
+  for (const def of NPC_DEFS){ if (def.zone !== zid) continue; const p = pt(def.x, def.y); g.fillRect(p[0] - 1, p[1] - 1, 2, 2); }
+  for (const s of world.slimes.values()) if (s.metal && !s.dead && s.zone === zid) dot(s.x, s.y, '#e8f4ff', 2.6);
+  const nowMs = performance.now();
+  for (const p of world.peers.values()) if (p.zone === zid && nowMs - p.lastSeen < 6000) dot(p.x, p.y, p.color, 2.4);
+  const tg = objectiveTarget();
+  if (tg){
+    if (tg.zone === zid){
+      const p = pt(tg.x, tg.y);
+      g.strokeStyle = '#ffd94d'; g.lineWidth = 1.6;
+      g.beginPath(); g.arc(p[0], p[1], 4.6 + Math.sin(nowMs / 300) * .8, 0, 7); g.stroke();
+    } else {
+      const ex = exitToward(zid, tg.zone);
+      if (ex) dot(ex.x, ex.y, '#ffd94d', 3.6);
     }
   }
-  /* MARKERS ONLY (basics gate): the old loop dotted EVERY slime —
-     ~600 dark-green specks on the grass discs read as pure noise at
-     portrait size (Handler's screenshot). The minimap is a chart
-     now, with the MAP tab's marker philosophy: landmasses, bridges,
-     doors, the objective diamond — and of the slimes only the two
-     things worth steering by: the boss/guardians (gold) and the
-     metal (silver, white halo). Kings and elites stay off: at their
-     spawn rates (~20 kings, ~50 elites in a full world) their dots
-     re-created the speckle carpet this cleanup removed. */
-  for (const s of world.slimes.values()){
-    if (s.kind==='boss' || s.kind==='guardian'){ g.fillStyle = '#ffd94d'; g.beginPath(); g.arc(s.x*S2, s.y*S2, 6, 0, 7); g.fill(); }
-    else if (s.kind==='metal'){ g.fillStyle = '#c3ced4'; g.beginPath(); g.arc(s.x*S2, s.y*S2, 4, 0, 7); g.fill(); g.strokeStyle = '#ffffff'; g.lineWidth = 1.5; g.beginPath(); g.arc(s.x*S2, s.y*S2, 4, 0, 7); g.stroke(); }
-  }
-  for (const p of world.peers.values()){ g.fillStyle = '#4dabff'; g.beginPath(); g.arc(p.x*S2, p.y*S2, 3, 0, 7); g.fill(); }
-  g.fillStyle = '#fff'; g.strokeStyle = '#5b3a1e'; g.lineWidth = 2;
-  g.beginPath(); g.arc(me.x*S2, me.y*S2, 4, 0, 7); g.fill(); g.stroke();
-}
-
-/* ============================================================ world map (MAP tab)
-   The full 32u chart in the menu: same visual language as the minimap,
-   at menu scale, with the isles NAMED. The static geometry (sea, isles,
-   causeways, town, shrine stones) is painted ONCE into an offscreen
-   cache (a render cache, not state — the geometry never changes);
-   everything that moves or depends on story state (locked ticks, won
-   glows, peers, the pulsing objective, the player arrow) is drawn per
-   refresh on top. */
-let worldMapBase = null;
-function buildWorldMapBase(S){
-  const bc = document.createElement('canvas'); bc.width = bc.height = S;
-  const g = bc.getContext('2d'), S2 = S / WORLD;
-  g.fillStyle = '#14616e'; g.fillRect(0, 0, S, S);
-  const rng = mulberry32(20261107);   // sea glints: sparse pale speckle, deterministic
-  g.fillStyle = 'rgba(255,255,255,.06)';
-  for (let i = 0; i < 340; i++) g.fillRect(Math.floor(rng()*S), Math.floor(rng()*S), 3, 2);
-  for (const s of [BRIDGE_A, BRIDGE_B]){
-    g.strokeStyle = '#b08954'; g.lineWidth = Math.max(3, BRIDGE_W*S2*.8);
-    g.beginPath(); g.moveTo(s.x1*S2, s.y1*S2); g.lineTo(s.x2*S2, s.y2*S2); g.stroke();
-  }
-  ISLES.forEach((I) => {
-    g.fillStyle = '#e8d49a';
-    g.beginPath(); g.arc(I.cx*S2, I.cy*S2, I.r*S2, 0, 7); g.fill();
-    g.fillStyle = '#79c25f';
-    g.beginPath(); g.arc(I.cx*S2, I.cy*S2, (I.r - SHORE)*S2, 0, 7); g.fill();
-    g.textAlign = 'center'; g.textBaseline = 'middle';
-    if (I.r >= 2){   // a main isle's name rides inside its grass heart
-      g.font = '11px "Press Start 2P", monospace';
-      g.fillStyle = '#2e5b27';
-      /* GROVE rides HIGH (round 4): at the usual south anchor its name
-         collided with THORNWICK's label across the village clearing —
-         the name now sits in the isle's empty north-east grass. */
-      if (I.id === 'grove') g.fillText(I.name, (I.cx + 1.15)*S2, (I.cy - I.r*.55)*S2);
-      else g.fillText(I.name, I.cx*S2, (I.cy + I.r*.68)*S2);
-    } else {   // an islet is too small to hold its name — label the sea just south of it
-      g.font = '7px "Press Start 2P", monospace';
-      g.fillStyle = '#dff3e2';
-      g.fillText(I.name, I.cx*S2, (I.cy + I.r + .55)*S2);
-    }
-  });
-  // town: sandy disc + the three building dots, as on the minimap
-  g.fillStyle = '#ecd9a2';
-  g.beginPath(); g.arc(TOWN.x*S2, TOWN.y*S2, TOWN_R*S2, 0, 7); g.fill();
-  g.fillStyle = '#ffd94d'; g.fillRect(BANK_POS.x*S2-3, BANK_POS.y*S2-3, 6, 6);
-  g.fillStyle = '#e5484d'; g.fillRect(SHOP_POS.x*S2-3, SHOP_POS.y*S2-3, 6, 6);
-  g.fillStyle = '#ffffff'; g.fillRect(HOSPITAL_POS.x*S2-3, HOSPITAL_POS.y*S2-3, 6, 6);
-  g.fillStyle = '#e5484d'; g.beginPath(); g.arc(HOSPITAL_POS.x*S2, HOSPITAL_POS.y*S2, 1.6, 0, 7); g.fill();
-  g.font = '8px "Press Start 2P", monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillStyle = '#7a5a22'; g.fillText('TOWN', TOWN.x*S2, (TOWN.y - TOWN_R - .38)*S2);
-  // settlements (labels placed clear of the shrine diamonds: Thornwick's
-  // rides south of the village, Rotwatch's north of the camp)
-  g.fillStyle = '#ecd9a2';
-  g.beginPath(); g.arc(VILLAGE.x*S2, VILLAGE.y*S2, .85*S2, 0, 7); g.fill();
-  g.fillStyle = '#ffffff'; g.fillRect(V_INN_POS.x*S2-3, V_INN_POS.y*S2-3, 6, 6);
-  g.fillStyle = '#e5484d'; g.fillRect(V_SHOP_POS.x*S2-3, V_SHOP_POS.y*S2-3, 6, 6);
-  g.fillStyle = '#ffd94d'; g.fillRect(V_BANK_POS.x*S2-3, V_BANK_POS.y*S2-3, 6, 6);
-  g.fillStyle = '#7a5a22'; g.fillText('THORNWICK', VILLAGE.x*S2, (VILLAGE.y + 1.28)*S2);
-  g.fillStyle = '#ddcda2';
-  g.beginPath(); g.arc(ROTWATCH.x*S2, ROTWATCH.y*S2, .60*S2, 0, 7); g.fill();
-  g.fillStyle = '#ff8a3c'; g.beginPath(); g.arc(RW_FIRE_POS.x*S2, RW_FIRE_POS.y*S2, 3, 0, 7); g.fill();
-  g.fillStyle = '#7a5a22'; g.fillText('ROTWATCH', ROTWATCH.x*S2, (ROTWATCH.y - .95)*S2);
-  // shrine stones: a small diamond in the guardian's colour at each shrine
-  for (const key of Object.keys(SHRINE_POS)){
-    const p = SHRINE_POS[key], dx = p.x*S2, dy = p.y*S2, dr = 6;
-    g.fillStyle = GUARDIANS[key].color; g.strokeStyle = '#5b3a1e'; g.lineWidth = 1.5;
-    g.beginPath(); g.moveTo(dx, dy-dr); g.lineTo(dx+dr, dy); g.lineTo(dx, dy+dr); g.lineTo(dx-dr, dy); g.closePath(); g.fill(); g.stroke();
-  }
-  return bc;
-}
-function drawWorldMap(now){
-  const c = $('#worldMap'); if (!c) return;
-  const S = c.width, S2 = S / WORLD, g = c.getContext('2d');
-  if (!worldMapBase) worldMapBase = buildWorldMapBase(S);
-  g.drawImage(worldMapBase, 0, 0);
-  // the earned sandbar crossings, while they stand (dynamic — story state)
-  for (const [seg, which] of [[SANDBAR_T, 'T'], [SANDBAR_H, 'H']]){
-    if (!sandbarOpen(which)) continue;
-    g.strokeStyle = '#e8d49a'; g.lineWidth = Math.max(3, BRIDGE_W*S2*.8);
-    g.beginPath(); g.moveTo(seg.x1*S2, seg.y1*S2); g.lineTo(seg.x2*S2, seg.y2*S2); g.stroke();
-  }
-  // locked crossings: the rot tick on the far rim (dynamic — story state)
-  for (const b of BARRIERS){
-    if (bridgeOpen(b.isle + 1)) continue;
-    g.strokeStyle = '#7b4fa6'; g.lineWidth = 3;
-    const px = -b.seg.uy*(BRIDGE_W*S2*.55), py = b.seg.ux*(BRIDGE_W*S2*.55);
-    g.beginPath(); g.moveTo(b.x*S2 - px, b.y*S2 - py); g.lineTo(b.x*S2 + px, b.y*S2 + py); g.stroke();
-  }
-  // won shrines glow on the chart (flat layered discs — the pixel way)
-  for (const key of Object.keys(SHRINE_POS)){
-    if (!shrineDone(key)) continue;
-    const p = SHRINE_POS[key], dx = p.x*S2, dy = p.y*S2;
-    g.fillStyle = 'rgba(255,217,77,.25)'; g.beginPath(); g.arc(dx, dy, 15, 0, 7); g.fill();
-    g.fillStyle = 'rgba(255,217,77,.45)'; g.beginPath(); g.arc(dx, dy, 9, 0, 7); g.fill();
-    g.fillStyle = '#fff3b0'; g.beginPath(); g.arc(dx, dy, 3, 0, 7); g.fill();
-  }
-  for (const p of world.peers.values()){ g.fillStyle = '#4dabff'; g.beginPath(); g.arc(p.x*S2, p.y*S2, 3.5, 0, 7); g.fill(); }
-  // the current objective: a pulsing gold diamond
-  const t = objectiveTarget();
-  if (t){
-    const dx = t.x*S2, dy = t.y*S2, dr = 8 + 2.2*Math.sin(now/280);
-    g.fillStyle = '#ffd94d'; g.strokeStyle = '#5b3a1e'; g.lineWidth = 2;
-    g.beginPath(); g.moveTo(dx, dy-dr); g.lineTo(dx+dr, dy); g.lineTo(dx, dy+dr); g.lineTo(dx-dr, dy); g.closePath(); g.fill(); g.stroke();
-    g.fillStyle = '#fff8e7'; g.beginPath(); g.arc(dx, dy, 2.2, 0, 7); g.fill();
-  }
-  // the player: a white arrow riding the blade's heading
-  const px = me.x*S2, py = me.y*S2;
-  g.save(); g.translate(px, py); g.rotate(me.angle);
-  g.fillStyle = '#fff'; g.strokeStyle = '#5b3a1e'; g.lineWidth = 2;
-  g.beginPath(); g.moveTo(11, 0); g.lineTo(-8, -6.5); g.lineTo(-8, 6.5); g.closePath(); g.fill(); g.stroke();
+  // me: a white arrow at my blade heading (heading mapped through the iso axes)
+  const mp = pt(me.x, me.y), ma = bladeAt(nowMs).ang;
+  const hx = Math.cos(ma) - Math.sin(ma), hy = (Math.cos(ma) + Math.sin(ma)) * .5;
+  const hl = Math.hypot(hx, hy) || 1;
+  g.save(); g.translate(mp[0], mp[1]); g.rotate(Math.atan2(hy / hl, hx / hl));
+  g.fillStyle = '#ffffff'; g.strokeStyle = 'rgba(38,32,40,.8)'; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(5, 0); g.lineTo(-3.4, -3); g.lineTo(-1.4, 0); g.lineTo(-3.4, 3); g.closePath(); g.fill(); g.stroke();
   g.restore();
+  g.fillStyle = 'rgba(23,32,20,.72)'; g.fillRect(0, MH - 13, MW, 13);
+  g.fillStyle = '#ffe9a8'; g.font = '700 8.5px "Baloo 2",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(zd.name, MW / 2, MH - 6.5);
+}
+/* ============================================================ world map (MAP tab): the zone graph */
+/* the MAP tab: the zone graph — plate thumbnails at the graph
+   positions, links between neighbours (violet + broken while a gate
+   on that link is locked), the current zone ringed, the objective's
+   zone pulsing gold */
+function drawWorldMap(t){
+  const mc = $('#worldMap'); if (!mc) return;
+  const g = mc.getContext('2d');
+  if (mc.clientWidth && mc.width !== mc.clientWidth){ mc.width = mc.clientWidth; mc.height = mc.clientWidth; }
+  const MW = mc.width, MH = mc.height;
+  g.clearRect(0, 0, MW, MH);
+  const bg = g.createLinearGradient(0, 0, 0, MH);
+  bg.addColorStop(0, '#2c4630'); bg.addColorStop(1, '#1d2f22');
+  g.fillStyle = bg; g.fillRect(0, 0, MW, MH);
+  const pt = z => [ZONES_DEF[z].graph.x * MW, ZONES_DEF[z].graph.y * MH];
+  for (const [a, b] of ZONE_LINKS){
+    const pa = pt(a), pb = pt(b);
+    const ex = EXITS.find(e => (e.zone === a && e.to === b) || (e.zone === b && e.to === a));
+    const locked = !!(ex && ex.gate && !gateOpen(ex));
+    g.strokeStyle = locked ? 'rgba(178,128,255,.8)' : 'rgba(255,233,168,.55)';
+    g.lineWidth = locked ? 2 : 3; g.setLineDash(locked ? [5, 4] : []);
+    g.beginPath(); g.moveTo(pa[0], pa[1]); g.lineTo(pb[0], pb[1]); g.stroke();
+    g.setLineDash([]);
+    if (locked){
+      g.fillStyle = '#b280ff';
+      const mx = (pa[0] + pb[0]) / 2, my = (pa[1] + pb[1]) / 2;
+      g.beginPath(); g.moveTo(mx, my - 4); g.lineTo(mx + 4, my); g.lineTo(mx, my + 4); g.lineTo(mx - 4, my); g.closePath(); g.fill();
+    }
+  }
+  const tg = objectiveTarget();
+  let li = 0;
+  for (const z of ZONE_IDS){
+    const p = pt(z), img = PLATE_IMGS[z];
+    const w2 = 48, h2 = 27;
+    if (imgOk(img)){ g.save(); g.imageSmoothingEnabled = true; g.drawImage(img, p[0] - w2 / 2, p[1] - h2 / 2, w2, h2); g.restore(); }
+    else { g.fillStyle = '#41583c'; g.fillRect(p[0] - w2 / 2, p[1] - h2 / 2, w2, h2); }
+    g.strokeStyle = z === ses.myZone ? '#ffd94d' : 'rgba(38,32,40,.7)'; g.lineWidth = z === ses.myZone ? 2.5 : 1.5;
+    g.strokeRect(p[0] - w2 / 2, p[1] - h2 / 2, w2, h2);
+    if (tg && tg.zone === z){
+      g.strokeStyle = 'rgba(255,217,77,' + (.55 + .45 * Math.sin(t / 300)).toFixed(2) + ')'; g.lineWidth = 2;
+      g.strokeRect(p[0] - w2 / 2 - 3, p[1] - h2 / 2 - 3, w2 + 6, h2 + 6);
+    }
+    const labelAbove = (li++ % 2 === 0);
+    g.font = '700 8.5px "Baloo 2",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    const tw = g.measureText(ZONES_DEF[z].name).width;
+    const ly = labelAbove ? p[1] - h2 / 2 - 8 : p[1] + h2 / 2 + 9;
+    g.fillStyle = 'rgba(23,32,20,.78)'; g.fillRect(p[0] - tw / 2 - 3, ly - 6, tw + 6, 12);
+    g.fillStyle = '#ffe9a8'; g.fillText(ZONES_DEF[z].name, p[0], ly);
+    if (z === ses.myZone){
+      g.fillStyle = '#ffffff'; g.font = '700 7.5px "Baloo 2",sans-serif';
+      g.fillText('YOU ARE HERE', p[0], labelAbove ? p[1] + h2 / 2 + 9 : p[1] - h2 / 2 - 8);
+    }
+  }
 }
 
 /* ============================================================ active skills */
@@ -6503,7 +6409,7 @@ function tickActives(now, dt){
       if (w.hit.has(s.id)) continue;
       if (dist2(w.x,w.y,s.x,s.y) < (s.r+.035)**2){ w.hit.add(s.id); doHit(s, Math.round(myDamage()*(w.dmgMul||1.2))); }
     }
-    ctx.save(); ctx.translate(NX(w.x), NY(w.y)); ctx.rotate(w.ang);
+    const wp = SP(w.x, w.y); ctx.save(); ctx.translate(wp[0], wp[1]); ctx.rotate(w.ang);
     ctx.strokeStyle = w.col || '#bfe9ff'; ctx.globalAlpha = .9; ctx.lineWidth = 7; ctx.lineCap='round';
     ctx.beginPath(); ctx.arc(0, 0, SCALE()*.045, -.9, .9); ctx.stroke();
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5;
@@ -6516,7 +6422,7 @@ function tickActives(now, dt){
     const R = SCALE()*.13;
     if (now < m.at){
       const p = 1 - (m.at-now)/380;
-      ctx.save(); ctx.translate(NX(m.x), NY(m.y));
+      const mp2 = SP(m.x, m.y); ctx.save(); ctx.translate(mp2[0], mp2[1]);
       ctx.strokeStyle = 'rgba(255,80,60,.85)'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(0,0,R,0,7); ctx.stroke();
       ctx.beginPath(); ctx.arc(0,0,R*p,0,7); ctx.stroke();
@@ -6662,11 +6568,11 @@ const COLOR2IMG = {
 };
 /* ---- pixel world art: grass tile, decor and building sprites ---- */
 const WORLD_IMGS = {};
-for (const n of ['tile-grass','tile-water','tile-sand','tile-grass2','tile-dirt','tile-path','tile-stone','decor-tree','decor-rock','decor-pond','decor-grass','bld-bank','bld-shop','bld-hospital','bld-hut-a','bld-hut-b','bld-hut-c']){
+for (const n of ['decor-tree','decor-rock','bld-bank','bld-shop','bld-hospital','bld-hut-a','bld-hut-b','bld-hut-c']){
   const im=new Image(); im.src='assets/img/'+n+'.png'; WORLD_IMGS[n]=im;
 }
 const NPC_IMGS = {};
-for (const n of ['elder','forge','pike','child','bramble','tansy','vex','hermit']){
+for (const n of []){   // the animal-folk portraits are retired — the folk wear ISW sheets now (NPC_SHEET_IMGS)
   const im=new Image(); im.src='assets/img/npc-'+n+'.png'; NPC_IMGS[n]=im;
 }
 const SHRINE_IMGS = {};
@@ -6761,9 +6667,10 @@ function slimeSpriteGeom(s, t, baseR){
   const sqX = psx * bScaleX * (1 + s.squish * .28);
   const sqY = psy * bScaleY * (1 - s.squish * .35);
   const dw = baseR*2*1.04, dh = dw*0.88;   // rest footprint
-  let gx = NX(s.x);
+  const gp = SP(s.x, s.y);
+  let gx = gp[0];
   if (t < (s.flinchUntil||0)) gx += ((Math.floor(t/30)%2) ? -6 : 6) * UNIT()/1000;   // ISW flinch shudder: ±6px, flips every 30ms
-  const gy = NY(s.y) + baseR*.92;
+  const gy = gp[1] + baseR*.92;
   return { img, liftW, liftN, sqX, sqY, dw, dh, gx, gy };
 }
 /* Draw ONLY the slime's sprite image with the normal transform math (no
@@ -7143,7 +7050,7 @@ function drawVideoSlime(s,t,baseR){
   // soft ground shadow: shrinks and fades as the slime leaves the ground;
   // boosted on the pale town plaza, where .16 black washes out on the sand
   ctx.save();
-  ctx.globalAlpha = (Math.hypot(s.x-TOWN.x, s.y-TOWN.y) < TOWN_R ? .27 : .16) * (1 - g.liftN*.35);
+  ctx.globalAlpha = (s.zone === 'town' ? .27 : .16) * (1 - g.liftN*.35);
   ctx.fillStyle = '#262028';
   ctx.beginPath(); ctx.ellipse(g.gx, g.gy - baseR*.06, g.dw*.40*(1 - g.liftN*.22), baseR*.20, 0, 0, 7); ctx.fill();
   ctx.restore();
@@ -7186,93 +7093,8 @@ const SPROUT_SPOTS = [
 function windAt(x, y, t){ return Math.sin(t/1150 + x*2.2 + y*1.35) + .55*Math.sin(t/617 + x*4.7 + y*3.1); }
 /* Grass tufts: seeded scatter of little pixel grass clumps over the whole
    world, kept out of pond interiors and off the building pads. */
-function drawTufts(t){
-  const img = WORLD_IMGS['decor-grass'];
-  if (!imgOk(img)) return;                 // garnish only -- no fallback art
-  const u = UNIT(), vw = W/u, vh = H/u, asp = img.naturalHeight/img.naturalWidth;
-  for (const g of TUFTS){
-    if (g.x<ses.cam.x-.1 || g.x>ses.cam.x+vw+.1 || g.y<ses.cam.y-.1 || g.y>ses.cam.y+vh+.1) continue;   // view-culled
-    if (Math.hypot(g.x-TOWN.x, g.y-TOWN.y) < TOWN_R + .02) continue;   // no grass grows on the town plaza
-    if (Math.hypot(g.x-VILLAGE.x, g.y-VILLAGE.y) < .87 || Math.hypot(g.x-ROTWATCH.x, g.y-ROTWATCH.y) < .62) continue;   // ... nor on settlement ground
-    const w = .055*u*g.s, h = w*asp;
-    ctx.save();
-    ctx.translate(NX(g.x), NY(g.y));
-    ctx.rotate(windAt(g.x, g.y, t) * .055);   // lean with the gust (~+/-5 deg), base stays planted
-    if (g.flip) ctx.scale(-1, 1);             // mirrored twin (after rotate, so the lean direction survives)
-    ctx.drawImage(img, -w/2, -h, w, h);       // bottom-anchored
-    ctx.restore();
-  }
-}
-
-/* A pond's outline radius factor at angle a: linear blend of its 16
-   seeded wobble samples (1 for legacy ponds without them). */
-function pondWobAt(d, a){
-  if (!d.wob) return 1;
-  const n = d.wob.length, f = (((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) / (Math.PI * 2) * n;
-  const i0 = Math.floor(f) % n, fr = f - Math.floor(f);
-  return d.wob[i0] * (1 - fr) + d.wob[(i0 + 1) % n] * fr;
-}
-/* Trace the pond's wobbled shore as the current path (28 segments). */
-function pondPath(x, y, rx, ry, d){
-  ctx.beginPath();
-  for (let i = 0; i <= 28; i++){
-    const a = i / 28 * Math.PI * 2, w = pondWobAt(d, a);
-    const px = x + Math.cos(a) * rx * w, py = y + Math.sin(a) * ry * w;
-    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-  }
-  ctx.closePath();
-}
-function drawPonds(t){
-  const u = UNIT(), vw = W/u, vh = H/u;
-  for (const d of DECOR){
-    if (d.t === 'flowers'){   // Batch C: the Flower Grove is a flat ground patch, drawn with the ponds
-      if (d.x<ses.cam.x-.7 || d.x>ses.cam.x+vw+.7 || d.y<ses.cam.y-.7 || d.y>ses.cam.y+vh+.7) continue;   // view-culled
-      drawFlowerGrove(d, t);
-      continue;
-    }
-    if (d.t !== 'pond') continue;   // trees/rocks moved to the y-sorted entity pass
-    if (d.x<ses.cam.x-.4 || d.x>ses.cam.x+vw+.4 || d.y<ses.cam.y-.4 || d.y>ses.cam.y+vh+.4) continue;   // view-culled
-    const x = NX(d.x), y = NY(d.y);
-    const br = 1 + .010*Math.sin(t/1400 + d.x*3);   // water breathe: a slow +/-1% pulse around the centre
-    /* TILESET FLOOR: the pond's WATER is tile-map cells now (the map
-       classifies the pond's wobbled ellipse as WATER with a SAND rim) —
-       the painted pond sprite, its sand/waterline overtrace strokes and
-       the flat fallback fills are all gone. What remains here is not
-       floor: the shimmer fx clipped to the shore, and the rim dressing
-       (stones / reeds / sand patches), riding the sprite's old
-       footprint (rx = r*1.1, ry at its 259/300 aspect). */
-    const rx = d.r*1.1*u*br, ry = rx * 259/300;
-    drawPondFx(d, x, y, rx, ry, t);
-    drawPondRim(d, x, y, rx, ry, t);
-  }
-}
-/* Water life, clipped to the pond's own ellipse: two soft shimmer bands of
-   light drifting across the surface, plus three tiny seeded sparkles that
-   blink and wiggle. Stateless -- everything derives from the clock. */
-function drawPondFx(d, x, y, rx, ry, t){
-  ctx.save();
-  pondPath(x, y, rx, ry, d); ctx.clip();   // shimmer clips to the wobbled shore (Batch D), not a perfect ellipse
-  for (let i=0;i<2;i++){
-    const ox = Math.sin(t/900 + d.x*5 + d.y*3 + i*2.4) * rx*.5;   // drift +/-25% of the pond's width
-    ctx.fillStyle = i ? 'rgba(190,230,255,.10)' : 'rgba(220,245,255,.16)';
-    ctx.beginPath(); ctx.ellipse(x + ox, y + (i ? ry*.28 : -ry*.22), rx*.55, ry*.30, 0, 0, 7); ctx.fill();
-  }
-  const u = UNIT();
-  for (let i=0;i<3;i++){
-    const h1 = Math.sin(d.x*127.1 + d.y*311.7 + i*74.7) * 43758.5453, f1 = h1 - Math.floor(h1);
-    const h2 = Math.sin(d.x*269.5 + d.y*183.3 + i*39.4) * 28001.8384, f2 = h2 - Math.floor(h2);
-    const a = Math.max(0, Math.sin(t/700 + f1*9));
-    if (a <= .05) continue;
-    const sx = x + (f1-.5)*1.1*rx + Math.sin(t/500 + f1*9) * .008*u;
-    const sy = y + (f2-.5)*1.0*ry;
-    const ss = 2 + (i%2);
-    ctx.fillStyle = 'rgba(255,255,255,' + (a*.75).toFixed(3) + ')';
-    ctx.fillRect(sx-ss/2, sy-ss/2, ss, ss);
-  }
-  ctx.restore();
-}
 function drawTree(d, t){
-  const u = UNIT(), x = NX(d.x), y = NY(d.y);
+  const u = 440 * ZK(), pp = SP(d.x, d.y), x = pp[0], y = pp[1];
   if (d.dead){ drawDeadTree(d, x, y, u); return; }   // Batch C: the Deadwood's bare grey-brown trees (runtime-drawn, no sprite)
   const img = WORLD_IMGS['decor-tree'];
   if (imgOk(img)){   // pixel tree sprite, bottom-anchored on the spot
@@ -7330,7 +7152,7 @@ function drawDeadTree(d, x, y, u){
   if (seed > .5) branch(x, y - th * .52, x - th * .22, y - th * .60, tw * .3);        // seeded variety: half the dead trees carry a low limb
 }
 function drawRock(d){
-  const u = UNIT(), x = NX(d.x), y = NY(d.y);
+  const u = 440 * ZK(), pp = SP(d.x, d.y), x = pp[0], y = pp[1];
   const img = WORLD_IMGS['decor-rock'];
   if (imgOk(img)){   // pixel boulder, centred on the spot
     const w = .17*u*d.s, h = w * img.naturalHeight/img.naturalWidth;
@@ -7356,7 +7178,7 @@ function stoneBox(d){   // occluder box for a standing stone (drawStone's slab)
   return { cx:d.x, hw:w/2, top:baseY - h, baseY };
 }
 function drawStone(d){
-  const u = UNIT(), x = NX(d.x), y = NY(d.y) + .02 * u;
+  const u = 440 * ZK(), pp = SP(d.x, d.y), x = pp[0], y = pp[1] + .02 * u;
   const w = .14 * u * d.s, h = .31 * u * d.s;
   ctx.fillStyle = 'rgba(38,32,40,.18)';
   ctx.beginPath(); ctx.ellipse(x, y, w * .55, w * .16, 0, 0, 7); ctx.fill();
@@ -7381,7 +7203,7 @@ function drawStone(d){
    slime's silver family. Nothing grand: the Tree remembers him kindly,
    not loudly. */
 function drawGrave(d){
-  const u = UNIT(), x = NX(d.x), y = NY(d.y) + .03 * u;
+  const u = 440 * ZK(), pp = SP(d.x, d.y), x = pp[0], y = pp[1] + .03 * u;
   // the mound: a low worn rise the stone and sword stand in
   ctx.fillStyle = 'rgba(38,32,40,.16)';
   ctx.beginPath(); ctx.ellipse(x, y + .004*u, .17*u, .045*u, 0, 0, 7); ctx.fill();
@@ -7441,7 +7263,7 @@ function drawTent(d){
      greens), a hanging fringe at the eaves, and the shelter's shade
      beneath. All offsets hash-seeded off the spot: identical every
      frame, no shimmer. Footprint matches tentBox (.36w x .27h). */
-  const u = UNIT(), x = NX(d.x), y = NY(d.y) + .04 * u;
+  const u = 440 * ZK(), pp = SP(d.x, d.y), x = pp[0], y = pp[1] + .04 * u;
   const w = .36 * u, h = .27 * u;
   ctx.fillStyle = 'rgba(38,32,40,.18)';
   ctx.beginPath(); ctx.ellipse(x, y, w * .52, w * .13, 0, 0, 7); ctx.fill();
@@ -7489,7 +7311,7 @@ function drawTent(d){
    (onward, to the Meadow Shrine), the shorter lower board WEST (back
    to town). Painted wood tones match the log/bench props. */
 function drawSignpost(d){
-  const u = UNIT(), x = NX(d.x), y = NY(d.y);
+  const u = 440 * ZK(), pp = SP(d.x, d.y), x = pp[0], y = pp[1];
   const ph = .22 * u;
   ctx.fillStyle = 'rgba(38,32,40,.16)';
   ctx.beginPath(); ctx.ellipse(x, y, .055 * u, .017 * u, 0, 0, 7); ctx.fill();
@@ -7510,7 +7332,7 @@ function drawSignpost(d){
   board(y - ph * .64, -1, .095, '#b28a52', '#8a5a33');   // west, back to town (shorter, darker)
 }
 function drawLog(d){
-  const u = UNIT(), x = NX(d.x), y = NY(d.y);
+  const u = 440 * ZK(), pp = SP(d.x, d.y), x = pp[0], y = pp[1];
   const w = .17 * u * d.s, h = .038 * u;
   ctx.fillStyle = 'rgba(38,32,40,.15)';
   ctx.beginPath(); ctx.ellipse(x, y + h * .5, w * .52, h * .34, 0, 0, 7); ctx.fill();
@@ -7526,7 +7348,7 @@ function drawLog(d){
    rope-bound sack and a potion bottle riding on top — the camp's shop
    door. Painted in the log/signpost wood tones. */
 function drawCrate(d){
-  const u = UNIT(), x = NX(d.x), y = NY(d.y);
+  const u = 440 * ZK(), pp = SP(d.x, d.y), x = pp[0], y = pp[1];
   const w = .17 * u, h = .115 * u;
   ctx.fillStyle = 'rgba(38,32,40,.16)';
   ctx.beginPath(); ctx.ellipse(x, y + .012 * u, w * .56, h * .22, 0, 0, 7); ctx.fill();
@@ -7546,7 +7368,7 @@ function drawCrate(d){
   ctx.fillStyle = '#7a4d16'; ctx.fillRect(x + w * .16 + .006 * u, y - h - .044 * u, .008 * u, .010 * u);
 }
 function drawMushroom(d){
-  const u = UNIT(), x = NX(d.x), y = NY(d.y);
+  const u = 440 * ZK(), pp = SP(d.x, d.y), x = pp[0], y = pp[1];
   const s = d.s, cw = .052 * u * s, ch = .030 * u * s, sh = .026 * u * s;
   ctx.fillStyle = 'rgba(38,32,40,.14)';
   ctx.beginPath(); ctx.ellipse(x, y, cw * .55, cw * .16, 0, 0, 7); ctx.fill();
@@ -7560,7 +7382,7 @@ function drawMushroom(d){
   ctx.fillRect(x + cw * .26, y - sh - ch * .38, 2.4, 2);
 }
 function drawCampfire(d, t){
-  const u = UNIT(), x = NX(d.x), y = NY(d.y);
+  const u = 440 * ZK(), pp = SP(d.x, d.y), x = pp[0], y = pp[1];
   ctx.fillStyle = 'rgba(255,150,50,.10)';   // warm light pool on the ground
   ctx.beginPath(); ctx.ellipse(x, y, .11 * u, .05 * u, 0, 0, 7); ctx.fill();
   for (let i = 0; i < 6; i++){   // stone ring
@@ -7589,7 +7411,7 @@ function drawCampfire(d, t){
 /* FLOWER GROVE ground patch (Batch C): a soft meadow disc and a dense
    seeded burst of pixel flowers — far denser than the world scatter. */
 function drawFlowerGrove(d, t){
-  const u = UNIT(), x = NX(d.x), y = NY(d.y), r = d.r * u;
+  const u = 440 * ZK(), pp = SP(d.x, d.y), x = pp[0], y = pp[1], r = d.r * u;
   /* TILESET FLOOR: the grove's soft speckle ground patch is gone too —
      the floor under the flowers is tile-map grass like everywhere else.
      Only the flowers themselves (decor) remain. */
@@ -7642,17 +7464,18 @@ function drawNode(n, t){
     rot = Math.sin(t*.11) * .035 * k;
   }
   const img = WORLD_IMGS['decor-rock'];
-  const w = .21*u, h = imgOk(img) ? w * img.naturalHeight/img.naturalWidth : .16*u;
+  const w = 106 * ZK(), h = imgOk(img) ? w * img.naturalHeight/img.naturalWidth : .16*u;   // ~1.1 cells at the zone render scale
   const type = NODE_TYPES[n.t] || NODE_TYPES[0];
   const seed = seedForId(n.id);
   // ground shadow — same flat recipe as drawRock (rgba(38,32,40,.18) ellipse
   // at the base); the node path had none, so ore rocks floated while decor
   // boulders sat grounded. Drawn BEFORE the shake transform on purpose:
   // ground shadows don't wobble.
+  const pp = SP(n.x, n.y);
   ctx.fillStyle = 'rgba(38,32,40,.18)';
-  ctx.beginPath(); ctx.ellipse(NX(n.x), NY(n.y) + .075*u, w*.40, w*.11, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(pp[0], pp[1] + .075*u, w*.40, w*.11, 0, 0, 7); ctx.fill();
   ctx.save();
-  ctx.translate(NX(n.x) + dx*u, NY(n.y) + .07*u);   // origin at the rock's base (matches its y-sort anchor)
+  ctx.translate(pp[0] + dx*u, pp[1] + .07*u);   // origin at the rock's base (matches its y-sort anchor)
   ctx.rotate(rot);
   if (imgOk(img)) ctx.drawImage(img, -w/2, -h, w, h);
   else {
@@ -7692,996 +7515,6 @@ function drawNode(n, t){
    to sync or persist. Counts are capped by construction: 24 gulls,
    126 fireflies, 195 petal motes, 50 ripple spots (10 per landmass).
    All view-culled. (Pools +50% in scale-up 2 for the 32u sea.) */
-const GULLS = (()=>{
-  const rng = mulberry32(20261111), arr = [];
-  for (let i = 0; i < 24; i++){
-    const I = ISLES[i % 3], ca = rng() * Math.PI * 2, cd = I.r + .55 + rng() * .5;
-    arr.push({ cx:I.cx + Math.cos(ca) * cd, cy:I.cy + Math.sin(ca) * cd * .8, r:.30 + rng() * .35, sp:(rng() < .5 ? -1 : 1) * (.25 + rng() * .3), ph:rng() * 7, s:.8 + rng() * .5 });
-  }
-  return arr;
-})();
-const FIREFLIES = (()=>{
-  const rng = mulberry32(20261112), arr = [], I = ISLES[1];
-  for (let i = 0; i < 126; i++){
-    const a = rng() * Math.PI * 2, d = Math.sqrt(rng()) * I.r * .88;
-    arr.push({ x:I.cx + Math.cos(a) * d, y:I.cy + Math.sin(a) * d, ph:rng() * 7 });
-  }
-  return arr;
-})();
-const PETAL_MOTES = (()=>{
-  const rng = mulberry32(20261113), arr = [], I = ISLES[0];
-  for (let i = 0; i < 195; i++){
-    const a = rng() * Math.PI * 2, d = Math.sqrt(rng()) * (I.r - .1);
-    arr.push({ x:I.cx + Math.cos(a) * d, y:I.cy + Math.sin(a) * d, ph:rng() * 7, c: rng() < .6 ? '#ffd9e8' : '#fff3f6' });
-  }
-  return arr;
-})();
-const RIPPLE_SPOTS = (()=>{
-  const rng = mulberry32(20261114), arr = [];
-  for (const I of ISLES) for (let i = 0; i < 10; i++){
-    const a = rng() * Math.PI * 2, d = I.r + .16 + rng() * .45;   // just off the shore, in the sea
-    arr.push({ x:I.cx + Math.cos(a) * d, y:I.cy + Math.sin(a) * d });
-  }
-  return arr;
-})();
-function drawAmbientAir(t){
-  const u = UNIT(), vw = W/u, vh = H/u;
-  const inView = (wx, wy, m) => wx >= ses.cam.x - m && wx <= ses.cam.x + vw + m && wy >= ses.cam.y - m && wy <= ses.cam.y + vh + m;
-  // PETALS over Verdant — the light pre-bloom drift (the post-bloom
-  // particle petals in frame() still layer on top once the Cycle ends)
-  for (const p of PETAL_MOTES){
-    const wx = p.x + Math.sin(t/1500 + p.ph) * .06, wy = p.y + Math.cos(t/1900 + p.ph * 1.3) * .045;
-    if (!inView(wx, wy, .1)) continue;
-    ctx.save(); ctx.translate(NX(wx), NY(wy)); ctx.rotate(p.ph + t/1100);
-    ctx.globalAlpha = .75; ctx.fillStyle = p.c; ctx.fillRect(-2.2, -1.3, 4.4, 2.6);
-    ctx.restore();
-  }
-  ctx.globalAlpha = 1;
-  // FIREFLIES in the Grove shade: slow drift, pulsing glow (two stacked
-  // squares — no shadowBlur, per the perf rules)
-  for (const f of FIREFLIES){
-    const wx = f.x + Math.sin(t/2300 + f.ph) * .05, wy = f.y + Math.cos(t/1900 + f.ph * 1.3) * .04;
-    if (!inView(wx, wy, .1)) continue;
-    const pulse = .3 + .7 * Math.abs(Math.sin(t/640 + f.ph)), x = NX(wx), y = NY(wy);
-    ctx.globalAlpha = .16 * pulse; ctx.fillStyle = '#baff9e'; ctx.fillRect(x - 4, y - 4, 8, 8);
-    ctx.globalAlpha = .85 * pulse; ctx.fillStyle = '#eaffb0'; ctx.fillRect(x - 1.5, y - 1.5, 3, 3);
-  }
-  ctx.globalAlpha = 1;
-  // GULLS over the sea: white pixel birds circling the shores on sine paths
-  for (const g of GULLS){
-    const a = t/1000 * g.sp + g.ph;
-    const wx = g.cx + Math.cos(a) * g.r, wy = g.cy + Math.sin(a) * g.r * .55;
-    if (!inView(wx, wy, .2)) continue;
-    const flap = Math.sin(t/170 + g.ph), s = g.s;
-    ctx.save(); ctx.translate(NX(wx), NY(wy));
-    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(2, 3 * s); ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(-9 * s, -flap * 5);
-    ctx.quadraticCurveTo(-4 * s, 2, 0, 0);
-    ctx.quadraticCurveTo(4 * s, 2, 9 * s, -flap * 5);
-    ctx.stroke();
-    ctx.fillStyle = '#ffffff'; ctx.fillRect(-2 * s, -1, 4 * s, 2);
-    ctx.restore();
-  }
-}
-/* POI name floats: the first time the blade comes within .8u of a POI
-   centre, its name floats once — a session set keeps it to once. */
-function updatePoiNotices(){
-  for (const p of POIS){
-    if (ses.seenPois.has(p.id)) continue;
-    if (dist2(me.x, me.y, p.x, p.y) < .8 * .8){
-      ses.seenPois.add(p.id);
-      addFloat(p.x, p.y - .3, p.name, '#ffe9a8');
-      if (p.epitaph) setTimeout(()=>addFloat(p.x, p.y - .16, p.epitaph, '#dff3e2'), 1500);   // the grave speaks second, once the name has landed
-    }
-  }
-}
-function drawField(t){
-  const u=UNIT(), vw=W/u, vh=H/u;
-  /* ===== THE FLOOR (TILESET FLOOR, Handler ruling 2026-11-09): the
-     precomputed TILE MAP, drawn cell by cell over the visible range —
-     tiles only. A cell whose tile image failed falls back to that
-     cell's own palette fill (still a cell, never a plate or gradient).
-     Sandbar cells resolve by their strip's one story boolean. ===== */
-  {
-    const ts = TILE_PITCH*u;
-    const tx0 = Math.max(0, Math.floor(ses.cam.x/TILE_PITCH)), ty0 = Math.max(0, Math.floor(ses.cam.y/TILE_PITCH));
-    const tx1 = Math.min(TILEMAP.n - 1, Math.floor((ses.cam.x + vw)/TILE_PITCH)), ty1 = Math.min(TILEMAP.n - 1, Math.floor((ses.cam.y + vh)/TILE_PITCH));
-    const sbT = sandbarOpen('T'), sbH = sandbarOpen('H');
-    for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++){
-      let c = TILEMAP.cells[ty * TILEMAP.n + tx];
-      if (c === TC.SBT) c = sbT ? TC.SAND : TC.WATER;
-      else if (c === TC.SBH) c = sbH ? TC.SAND : TC.WATER;
-      const px = NX(tx * TILE_PITCH), py = NY(ty * TILE_PITCH);
-      const im = WORLD_IMGS[TILE_IMGS[c]];
-      if (imgOk(im)) ctx.drawImage(im, px, py, ts + 1, ts + 1);   // +1px kills seams
-      else { ctx.fillStyle = TILE_FILL[c]; ctx.fillRect(px, py, ts + 1, ts + 1); }
-    }
-  }
-  {
-    const wss = Math.max(2, Math.round(u*.004));
-    for (let i=0;i<4270;i++){   // sea glints, scaled with sea area (2,400 at 24u)
-      const wx = hash01(i*1.93)*WORLD, wy = hash01(i*4.37)*WORLD;
-      if (wx < ses.cam.x-.05 || wx > ses.cam.x+vw+.05 || wy < ses.cam.y-.05 || wy > ses.cam.y+vh+.05) continue;
-      if (onLand(wx, wy)) continue;   // glints belong to the sea
-      const tw = .5 + .5*Math.sin(t/800 + i*2.3);
-      ctx.fillStyle = 'rgba(190,240,245,' + (.08 + .22*tw).toFixed(3) + ')';
-      ctx.fillRect(NX(wx)-wss, NY(wy)-wss/2, wss*2, wss);   // a glint dash, wider than tall
-    }
-  }
-  /* ===== BRIDGES: plank causeways, drawn before the isles so the discs
-     cap their landings. ===== */
-  for (const s of [BRIDGE_A, BRIDGE_B]){
-    const ax = s.x1 - s.ux*.07, ay = s.y1 - s.uy*.07, bx = s.x2 + s.ux*.07, by = s.y2 + s.uy*.07;
-    const x1 = NX(ax), y1 = NY(ay), x2 = NX(bx), y2 = NY(by);
-    const ang = Math.atan2(y2-y1, x2-x1), len = Math.hypot(x2-x1, y2-y1), wdt = BRIDGE_W*u;
-    ctx.save(); ctx.translate(x1, y1); ctx.rotate(ang);
-    ctx.fillStyle = '#a06a35'; ctx.fillRect(0, -wdt/2, len, wdt);
-    ctx.fillStyle = 'rgba(38,32,40,.13)';
-    for (let d = .05*u; d < len; d += .11*u) ctx.fillRect(d, -wdt/2, 2, wdt);   // plank seams
-    ctx.fillStyle = '#7a4d16';
-    ctx.fillRect(0, -wdt/2 - 2, len, 5); ctx.fillRect(0, wdt/2 - 3, len, 5);   // twin rails
-    ctx.restore();
-  }
-  // flowers (only those in view, and only on land): tiny pixel squares
-  for (const f of FLOWERS){
-    if (f.x<ses.cam.x-.1 || f.x>ses.cam.x+vw+.1 || f.y<ses.cam.y-.1 || f.y>ses.cam.y+vh+.1) continue;
-    if (!onLand(f.x, f.y)) continue;   // no flowers bloom in the sea
-    const fs = f.s*1.5, fx = NX(f.x) + windAt(f.x, f.y, t) * .003 * u, fy = NY(f.y);   // flower heads nod in the wind (half-strength offset, no stem to bend)
-    ctx.fillStyle=f.c; ctx.fillRect(fx-fs/2, fy-fs/2, fs, fs);
-    ctx.fillStyle='rgba(176,120,20,.9)'; ctx.fillRect(fx-.8, fy-.8, 1.6, 1.6);   // pollen centre pixel
-  }
-  // grass tufts over the flowers, swaying in the same wind (never on the plaza)
-  drawTufts(t);
-  // ponds only -- flat ground decals (trees/rocks live in the y-sorted entity pass)
-  drawPonds(t);
-  /* THE BLOOM (stage 4): once the local player's Cycle is complete,
-     Verdant Isle wears golden speckles for good — seeded twinkling
-     squares scattered over Isle 1's disc, view-culled like the flowers. */
-  if (prog().story && prog().story.complete){
-    const bss = Math.max(2, Math.round(u*.004)), I0 = ISLES[0];
-    for (let i=0;i<1400;i++){   // bloom speckles over Isle 1's disc, scaled with its area (800 at r5.5)
-      const ba = hash01(i*3.17)*Math.PI*2, br = Math.sqrt(hash01(i*7.71)) * (I0.r - .05);
-      const wx = I0.cx + Math.cos(ba)*br, wy = I0.cy + Math.sin(ba)*br;
-      if (wx < ses.cam.x-.05 || wx > ses.cam.x+vw+.05 || wy < ses.cam.y-.05 || wy > ses.cam.y+vh+.05) continue;
-      ctx.fillStyle = 'rgba(255,205,80,' + (.5 * (.55 + .45*Math.sin(t/600 + i*1.7))).toFixed(3) + ')';
-      ctx.fillRect(NX(wx)-bss/2, NY(wy)-bss/2, bss, bss);
-    }
-  }
-  /* The world-edge fence is GONE: the sea is the boundary now. */
-}
-/* Bank & shop buildings in the Meadow near spawn — chunky canvas landmarks
-   (~.3 units wide) with ground pads, drawn after decor, before slimes. */
-function drawBuildings(only){
-  const u = UNIT();
-  const pad = (bx, by)=>{
-    // ground shadow ONLY: same flat recipe as the tree shadow
-    // (rgba(38,32,40,.18) ellipse), ANCHORED to the building's base:
-    // the sprite's content bottom sits at by+.10u, so the ellipse
-    // centres a hair below it with a small ry — a grounding rim, not
-    // the old .265u-wide plate centred .075u under the base, which
-    // spilled out beside the building (and read as a bystander's
-    // detached shadow next to Forge). (TILESET FLOOR: buildings stand
-    // on the tile map's dirt/stone cells.)
-    ctx.fillStyle = 'rgba(38,32,40,.18)';
-    ctx.beginPath(); ctx.ellipse(NX(bx), NY(by)+.112*u, .205*u, .046*u, 0, 0, 7); ctx.fill();
-  };
-  const sign = (x, y, text, bg, fg)=>{
-    ctx.font = '900 ' + Math.round(.030*u) + 'px "Baloo 2",sans-serif';
-    const tw = Math.max(ctx.measureText(text).width + .05*u, .13*u), th = .048*u;
-    ctx.fillStyle = bg; roundRect(x-tw/2, y-th/2, tw, th, 7); ctx.fill();
-    ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 3; roundRect(x-tw/2, y-th/2, tw, th, 7); ctx.stroke();
-    ctx.fillStyle = fg; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(text, x, y + 1);
-    ctx.textBaseline = 'alphabetic';
-  };
-  // pixel building sprite on its ground pad + a cream name board above it
-  const drawBld = (pos, img, name, sbg, sfg)=>{
-    pad(pos.x, pos.y);
-    const w = .36*u, h = w * img.naturalHeight/img.naturalWidth;
-    const x = NX(pos.x), yBot = NY(pos.y) + .10*u;
-    ctx.drawImage(img, x-w/2, yBot-h, w, h);
-    sign(x, yBot - h - .040*u, name, sbg, sfg);
-  };
-  // ---- BANK: cream walls, brown roof, gold coin sign ----
-  if (!only || only==='bank'){
-  if (imgOk(WORLD_IMGS['bld-bank'])) drawBld(BANK_POS, WORLD_IMGS['bld-bank'], 'BANK', '#fff8e7', '#5b3a1e');
-  else {
-    const x = NX(BANK_POS.x), y = NY(BANK_POS.y), w = .30*u, h = .19*u;
-    pad(BANK_POS.x, BANK_POS.y);
-    ctx.fillStyle = '#fff3d0'; roundRect(x-w/2, y-h/2, w, h, 6); ctx.fill();
-    ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 3; roundRect(x-w/2, y-h/2, w, h, 6); ctx.stroke();
-    ctx.fillStyle = '#8a5a12';
-    ctx.beginPath(); ctx.moveTo(x-w/2-.02*u, y-h/2); ctx.lineTo(x, y-h/2-.075*u); ctx.lineTo(x+w/2+.02*u, y-h/2); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 2.5; ctx.stroke();
-    // windows
-    ctx.fillStyle = '#ffe9a8';
-    roundRect(x-w/2+.024*u, y-h/2+.030*u, .048*u, .044*u, 3); ctx.fill();
-    roundRect(x+w/2-.072*u, y-h/2+.030*u, .048*u, .044*u, 3); ctx.fill();
-    // gold coin emblem on the wall
-    ctx.fillStyle = '#ffd94d'; ctx.beginPath(); ctx.arc(x, y-h/2+.052*u, .026*u, 0, 7); ctx.fill();
-    ctx.strokeStyle = '#b8860b'; ctx.lineWidth = 2.5; ctx.stroke();
-    ctx.beginPath(); ctx.arc(x, y-h/2+.052*u, .015*u, 0, 7); ctx.stroke();
-    // door
-    ctx.fillStyle = '#7a4d16'; roundRect(x-.028*u, y+.012*u, .056*u, h/2-.012*u, 4); ctx.fill();
-    ctx.fillStyle = '#ffd94d'; ctx.beginPath(); ctx.arc(x+.016*u, y+.055*u, .005*u, 0, 7); ctx.fill();
-    sign(x, y-h/2-.052*u, 'BANK', '#5b3a1e', '#ffd94d');
-  }
-  }
-  // ---- SHOP: wooden stall, red/white striped awning ----
-  if (!only || only==='shop'){
-  if (imgOk(WORLD_IMGS['bld-shop'])) drawBld(SHOP_POS, WORLD_IMGS['bld-shop'], 'SHOP', '#fff8e7', '#5b3a1e');
-  else {
-    const x = NX(SHOP_POS.x), y = NY(SHOP_POS.y), w = .30*u;
-    pad(SHOP_POS.x, SHOP_POS.y);
-    // posts
-    ctx.fillStyle = '#7a4d16';
-    ctx.fillRect(x-w/2+.012*u, y-.02*u, .018*u, .12*u);
-    ctx.fillRect(x+w/2-.030*u, y-.02*u, .018*u, .12*u);
-    // counter with plank lines
-    ctx.fillStyle = '#a06a35'; roundRect(x-w/2, y+.015*u, w, .085*u, 4); ctx.fill();
-    ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 3; roundRect(x-w/2, y+.015*u, w, .085*u, 4); ctx.stroke();
-    ctx.strokeStyle = 'rgba(91,58,30,.55)'; ctx.lineWidth = 2;
-    for (const fx of [-.075, 0, .075]){ ctx.beginPath(); ctx.moveTo(x+fx*u, y+.018*u); ctx.lineTo(x+fx*u, y+.097*u); ctx.stroke(); }
-    // goods on the counter: potion bottle, bomb, charm
-    ctx.fillStyle = '#e5484d'; roundRect(x-.10*u, y-.008*u, .026*u, .026*u, 4); ctx.fill();
-    ctx.fillStyle = '#263238'; ctx.beginPath(); ctx.arc(x-.045*u, y+.006*u, .015*u, 0, 7); ctx.fill();
-    ctx.fillStyle = '#4dabff'; ctx.beginPath(); ctx.arc(x+.005*u, y+.004*u, .013*u, 0, 7); ctx.fill();
-    ctx.fillStyle = '#ffd94d'; ctx.beginPath(); ctx.arc(x+.055*u, y+.004*u, .012*u, 0, 7); ctx.fill();
-    // striped awning
-    const aw = .36*u, ax = x-aw/2, ay = y-.105*u, ah = .055*u;
-    ctx.save();
-    roundRect(ax, ay, aw, ah, 5); ctx.clip();
-    for (let i=0;i<8;i++){ ctx.fillStyle = i%2 ? '#fff8e7' : '#e5484d'; ctx.fillRect(ax + i*aw/8, ay, aw/8+1, ah); }
-    ctx.fillStyle = 'rgba(38,32,40,.08)'; ctx.fillRect(ax, ay+ah*.7, aw, ah*.3);
-    ctx.restore();
-    ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 3; roundRect(ax, ay, aw, ah, 5); ctx.stroke();
-    sign(x, y-.155*u, 'SHOP', '#c0392b', '#ffffff');
-  }
-  }
-  // ---- INN: warm stucco walls, brown roof, moon sign (sprite: bld-hospital.png) ----
-  if (!only || only==='hospital'){
-  if (imgOk(WORLD_IMGS['bld-hospital'])) drawBld(HOSPITAL_POS, WORLD_IMGS['bld-hospital'], 'INN', '#fff8e7', '#5b3a1e');
-  else {
-    const x = NX(HOSPITAL_POS.x), y = NY(HOSPITAL_POS.y), w = .30*u, h = .19*u;
-    pad(HOSPITAL_POS.x, HOSPITAL_POS.y);
-    ctx.fillStyle = '#fff3d0'; roundRect(x-w/2, y-h/2, w, h, 6); ctx.fill();
-    ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 3; roundRect(x-w/2, y-h/2, w, h, 6); ctx.stroke();
-    ctx.fillStyle = '#8a5a12';
-    ctx.beginPath(); ctx.moveTo(x-w/2-.02*u, y-h/2); ctx.lineTo(x, y-h/2-.075*u); ctx.lineTo(x+w/2+.02*u, y-h/2); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 2.5; ctx.stroke();
-    // warm lit windows
-    ctx.fillStyle = '#ffd97a';
-    roundRect(x-w/2+.024*u, y-h/2+.030*u, .048*u, .044*u, 3); ctx.fill();
-    roundRect(x+w/2-.072*u, y-h/2+.030*u, .048*u, .044*u, 3); ctx.fill();
-    // hanging sign board with a gold crescent moon (matches the sprite)
-    ctx.fillStyle = '#282c4a'; roundRect(x-.038*u, y-h/2+.020*u, .076*u, .052*u, 3); ctx.fill();
-    ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 2; roundRect(x-.038*u, y-h/2+.020*u, .076*u, .052*u, 3); ctx.stroke();
-    ctx.fillStyle = '#ffd94d'; ctx.beginPath(); ctx.arc(x-.004*u, y-h/2+.046*u, .016*u, 0, 7); ctx.fill();
-    ctx.fillStyle = '#282c4a'; ctx.beginPath(); ctx.arc(x+.006*u, y-h/2+.040*u, .013*u, 0, 7); ctx.fill();
-    // door
-    ctx.fillStyle = '#7a4d16'; roundRect(x-.028*u, y+.012*u, .056*u, h/2-.012*u, 4); ctx.fill();
-    ctx.fillStyle = '#ffd94d'; ctx.beginPath(); ctx.arc(x+.016*u, y+.055*u, .005*u, 0, 7); ctx.fill();
-    sign(x, y-h/2-.052*u, 'INN', '#fff8e7', '#5b3a1e');
-  }
-  }
-  // ---- THORNWICK HUTS (Settlements): the village's three doors wear
-  // the ISW timber-house variants; the fallback is one shared thatched
-  // hut painter so a missing sprite never leaves a door invisible.
-  const drawHut = (pos, imgKey, name)=>{
-    if (imgOk(WORLD_IMGS[imgKey])){ drawBld(pos, WORLD_IMGS[imgKey], name, '#fff8e7', '#5b3a1e'); return; }
-    const x = NX(pos.x), y = NY(pos.y), w = .30*u, h = .20*u;
-    pad(pos.x, pos.y);
-    ctx.fillStyle = '#e8dcc0'; roundRect(x-w/2, y-h/2, w, h, 5); ctx.fill();
-    ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 3; roundRect(x-w/2, y-h/2, w, h, 5); ctx.stroke();
-    ctx.fillStyle = '#a8894f';
-    ctx.beginPath(); ctx.moveTo(x-w/2-.025*u, y-h/2); ctx.lineTo(x, y-h/2-.085*u); ctx.lineTo(x+w/2+.025*u, y-h/2); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = '#7a5f30'; ctx.lineWidth = 2.5; ctx.stroke();
-    ctx.fillStyle = '#ffd97a'; roundRect(x-w/2+.026*u, y-h/2+.032*u, .044*u, .040*u, 3); ctx.fill();
-    ctx.fillStyle = '#7a4d16'; roundRect(x-.026*u, y+.012*u, .052*u, h/2-.012*u, 4); ctx.fill();
-    sign(x, y-h/2-.058*u, name, '#fff8e7', '#5b3a1e');
-  };
-  if (!only || only==='vinn') drawHut(V_INN_POS, 'bld-hut-b', 'INN');
-  if (!only || only==='vshop') drawHut(V_SHOP_POS, 'bld-hut-c', 'SHOP');
-  if (!only || only==='vbank') drawHut(V_BANK_POS, 'bld-hut-a', 'BANK');
-}
-/* One townsperson: sprite on the standard ground shadow, a subtle idle
-   bob, and a small name plate when the player is close. The sprite sheet
-   canvases share one height with the Child already at 60% inside it, so
-   every NPC draws at def.h and the visible head height is def.head. */
-function drawNPC(e, t){
-  const def = e.def, u = UNIT();
-  const x = NX(e.x), groundY = NY(e.y), bob = npcBobPx(def, t);
-  const hPx = def.h * u, wPx = hPx * 512 / 688;
-  ctx.fillStyle = 'rgba(38,32,40,.18)';
-  ctx.beginPath(); ctx.ellipse(x, groundY + 3, wPx * .30, Math.max(3, hPx * .045), 0, 0, 7); ctx.fill();
-  const img = NPC_IMGS[def.id];
-  if (imgOk(img)){
-    ctx.drawImage(img, x - wPx / 2, groundY - hPx + bob, wPx, hPx);
-  } else {
-    // chunky fallback figure (palette per NPC) if a sprite ever fails to load
-    const bw = def.head * u * .46, bh = def.head * u;
-    ctx.save(); ctx.translate(x, groundY + bob);
-    ctx.fillStyle = def.robe;
-    ctx.beginPath(); ctx.moveTo(-bw * .34, -bh * .78); ctx.lineTo(bw * .34, -bh * .78); ctx.lineTo(bw * .52, 0); ctx.lineTo(-bw * .52, 0); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = def.skin; ctx.beginPath(); ctx.arc(0, -bh * .88, bh * .115, 0, 7); ctx.fill();
-    ctx.fillStyle = def.hair; ctx.beginPath(); ctx.arc(0, -bh * .925, bh * .115, Math.PI, 0); ctx.closePath(); ctx.fill();
-    if (def.id === 'elder'){ ctx.strokeStyle = '#7a4d16'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(bw * .48, -bh * .82); ctx.lineTo(bw * .55, 0); ctx.stroke(); }
-    if (def.id === 'forge'){ ctx.fillStyle = '#5b3a1e'; ctx.fillRect(-bw * .30, -bh * .68, bw * .60, bh * .42); }
-    if (def.id === 'pike'){ ctx.fillStyle = '#9db2c8'; ctx.fillRect(-bw * .38, -bh * .76, bw * .76, bh * .16); }
-    ctx.restore();
-  }
-  if (ses.started && dist2(me.x, me.y, e.x, e.y) < .55 * .55){
-    const topY = groundY - def.head * u + bob;
-    ctx.save();
-    ctx.font = '7px "Press Start 2P", monospace';
-    const tw = ctx.measureText(def.name).width, lw = tw + 10, lh = 13;
-    const lx = x - lw / 2, ly = topY - lh - 4;
-    ctx.fillStyle = '#3a2b23'; ctx.fillRect(lx, ly, lw, lh);
-    ctx.fillStyle = '#ffd94d'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(def.name, x, ly + lh / 2 + .5);
-    ctx.restore();
-  }
-}
-/* One Verdant Shrine: the stone-ring sprite on the standard ground
-   shadow, bottom-anchored like the buildings (base = pos.y + .10). A
-   WON shrine — its Sigil taken, in progress.story.shrinesDone — glows
-   for good: a halo in the shrine's tint breathing behind the crystal,
-   plus the slow sparkles the frame loop sheds for it. */
-/* ROT BARRIER (archipelago): a shimmering wall of dark vines across the
-   bridge strip at its far rim — strands run perpendicular to the
-   causeway, swaying with the wind field, threaded with rot-violet
-   motes. Drawn shapes only (no state): the shimmer is a pure function
-   of the clock, like everything else in the render pass. */
-function drawBarrier(b, t){
-  const u = UNIT();
-  const x = NX(b.x), y = NY(b.y);
-  const px = -b.seg.uy, py = b.seg.ux;   // unit perpendicular to the strip
-  ctx.fillStyle = 'rgba(38,32,40,.18)';
-  ctx.beginPath(); ctx.ellipse(x, y + .03*u, BRIDGE_W*.62*u, .05*u, 0, 0, 7); ctx.fill();
-  const strands = 7;
-  for (let i=0;i<strands;i++){
-    const off = (i/(strands-1) - .5) * BRIDGE_W;   // across the strip
-    const bx = x + px*off*u, by = y + py*off*u;
-    const sway = Math.sin(t/700 + i*1.37 + b.x*3) * .012*u;
-    const hgt = (.24 + .05*Math.sin(i*2.39)) * u;
-    ctx.strokeStyle = i % 2 ? '#3d2b52' : '#2e4034';
-    ctx.lineWidth = Math.max(2.5, .016*u);
-    ctx.beginPath();
-    ctx.moveTo(bx, by + .03*u);
-    ctx.quadraticCurveTo(bx + sway, by - hgt*.55, bx + sway*1.7, by - hgt);
-    ctx.stroke();
-    // a rot mote rides each strand's tip, pulsing
-    ctx.fillStyle = 'rgba(178,128,255,' + (.45 + .35*Math.sin(t/430 + i*2.1)).toFixed(3) + ')';
-    const ms = Math.max(2, .008*u);
-    ctx.fillRect(bx + sway*1.7 - ms/2, by - hgt - ms/2, ms, ms);
-  }
-  // thorn bar across the middle, so the wall reads as ONE barrier
-  ctx.strokeStyle = 'rgba(46,32,66,.85)'; ctx.lineWidth = Math.max(2, .010*u);
-  ctx.beginPath();
-  ctx.moveTo(x - px*BRIDGE_W*.52*u, y - py*BRIDGE_W*.52*u - .13*u);
-  ctx.lineTo(x + px*BRIDGE_W*.52*u, y + py*BRIDGE_W*.52*u - .13*u);
-  ctx.stroke();
-}
-/* The ROOT SHRINE (FF1 arc): no sprite was ever carved for it — a ring
-   of weathered stones on the Wilds' far shore, two banner poles with a
-   drowned court's colours, and rot roots crawling out of the ring into
-   the grass. Before the scout's report (and short of three Sigils) it
-   is INERT: no crystal, banners limp and dark. Once woken, a violet
-   crystal burns in the ring and the banners stir; once its Herald has
-   fallen it glows like any won shrine. */
-function drawRootShrine(t){
-  const u = UNIT(), pos = SHRINE_POS.root;
-  const x = NX(pos.x), yBot = NY(pos.y) + .10*u;
-  const awake = rootShrineAwake(), done = shrineDone('root');
-  ctx.fillStyle = 'rgba(38,32,40,.18)';
-  ctx.beginPath(); ctx.ellipse(x, NY(pos.y) + .085*u, .24*u, .065*u, 0, 0, 7); ctx.fill();
-  // rot roots crawling out of the ring — dark violet strokes on the ground
-  ctx.strokeStyle = '#3d2b52'; ctx.lineCap = 'round';
-  for (let i = 0; i < 4; i++){
-    const a = i / 4 * Math.PI * 2 + .6, bx = x + Math.cos(a) * .13*u, by = yBot - .02*u + Math.sin(a) * .035*u;
-    ctx.lineWidth = Math.max(2, .012*u);
-    ctx.beginPath(); ctx.moveTo(bx, by);
-    ctx.quadraticCurveTo(bx + Math.cos(a) * .07*u, by + Math.sin(a) * .02*u + 2, bx + Math.cos(a) * .13*u, by + Math.sin(a) * .03*u + 3);
-    ctx.stroke();
-  }
-  // banner poles behind the ring, the Herald's colours on them
-  for (const side of [-1, 1]){
-    const px = x + side * .185*u, pTop = yBot - .36*u;
-    ctx.strokeStyle = '#4a3826'; ctx.lineWidth = Math.max(2, .014*u);
-    ctx.beginPath(); ctx.moveTo(px, yBot - .02*u); ctx.lineTo(px, pTop); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(px, pTop); ctx.lineTo(px - side * .075*u, pTop); ctx.stroke();   // crossbar pointing inward
-    // the banner cloth: awake it stirs; inert it hangs limp and dark
-    const flut = awake ? Math.sin(t / 480 + side * 2.1) * .012*u : 0;
-    ctx.fillStyle = awake ? '#7a3b4f' : '#453640';
-    ctx.beginPath();
-    ctx.moveTo(px - side * .075*u, pTop);
-    ctx.lineTo(px, pTop);
-    ctx.lineTo(px + flut, pTop + .17*u);
-    ctx.lineTo(px - side * .028*u + flut, pTop + .125*u);   // the tattered notch
-    ctx.lineTo(px - side * .075*u + flut, pTop + .165*u);
-    ctx.closePath(); ctx.fill();
-  }
-  // the weathered stone ring
-  ctx.fillStyle = '#6f7477';
-  for (let i = 0; i < 7; i++){ const a = i / 7 * Math.PI * 2; ctx.beginPath(); ctx.ellipse(x + Math.cos(a) * .17*u, yBot - .02*u + Math.sin(a) * .045*u, .030*u, .020*u, 0, 0, 7); ctx.fill(); }
-  if (awake){
-    if (done){   // the won glow, in the Herald's violet
-      const gs = .30*u * (1 + .07 * Math.sin(t / 700));
-      const ag = ctx.createRadialGradient(x, yBot - .20*u, 2, x, yBot - .20*u, gs);
-      ag.addColorStop(0, GUARDIANS.root.aura + '.38)'); ag.addColorStop(1, GUARDIANS.root.aura + '0)');
-      ctx.fillStyle = ag; ctx.beginPath(); ctx.arc(x, yBot - .20*u, gs, 0, 7); ctx.fill();
-    }
-    const pulse = 1 + .08 * Math.sin(t / 620), cy = yBot - .20*u;
-    ctx.fillStyle = GUARDIANS.root.color;
-    ctx.beginPath(); ctx.moveTo(x, cy - .075*u * pulse); ctx.lineTo(x + .05*u, cy); ctx.lineTo(x, cy + .075*u * pulse); ctx.lineTo(x - .05*u, cy); ctx.closePath(); ctx.fill();
-    if (done){
-      ctx.save(); ctx.globalAlpha = .5 + .2 * Math.sin(t / 700);
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.moveTo(x, cy - .035*u); ctx.lineTo(x + .020*u, cy); ctx.lineTo(x, cy + .035*u); ctx.lineTo(x - .020*u, cy); ctx.closePath(); ctx.fill();
-      ctx.restore();
-    }
-  } else {
-    // inert: a dark unlit stone where the crystal will burn
-    ctx.fillStyle = '#565b5e';
-    const cy = yBot - .20*u;
-    ctx.beginPath(); ctx.moveTo(x, cy - .065*u); ctx.lineTo(x + .043*u, cy); ctx.lineTo(x, cy + .065*u); ctx.lineTo(x - .043*u, cy); ctx.closePath(); ctx.fill();
-  }
-}
-function drawShrine(key, t){
-  if (key === 'root') return drawRootShrine(t);
-  const u = UNIT(), pos = SHRINE_POS[key];
-  const x = NX(pos.x), yBot = NY(pos.y) + .10*u;
-  // shadow anchored to the stone ring's footprint: the sprite's
-  // content bottom ends ~.038u above its draw bottom (pos.y+.062u)
-  // and the ring spans ~.18u half-width — the old .24u plate centred
-  // at +.085u stuck out past the stones on every side.
-  ctx.fillStyle = 'rgba(38,32,40,.18)';
-  ctx.beginPath(); ctx.ellipse(x, NY(pos.y) + .068*u, .185*u, .042*u, 0, 0, 7); ctx.fill();
-  const img = SHRINE_IMGS[key];
-  const w = .46*u, h = imgOk(img) ? w * img.naturalHeight/img.naturalWidth : .46*u;
-  if (shrineDone(key)){
-    const gs = .30*u * (1 + .07*Math.sin(t/700));
-    const ag = ctx.createRadialGradient(x, yBot - h*.72, 2, x, yBot - h*.72, gs);
-    ag.addColorStop(0, GUARDIANS[key].aura + '.38)');
-    ag.addColorStop(1, GUARDIANS[key].aura + '0)');
-    ctx.fillStyle = ag; ctx.beginPath(); ctx.arc(x, yBot - h*.72, gs, 0, 7); ctx.fill();
-  }
-  if (imgOk(img)){
-    ctx.drawImage(img, x - w/2, yBot - h, w, h);
-  } else {
-    // vector fallback: grey stone ring + a tinted crystal diamond
-    ctx.fillStyle = '#8d9499';
-    for (let i=0;i<7;i++){ const a = i/7*Math.PI*2; ctx.beginPath(); ctx.ellipse(x + Math.cos(a)*.17*u, yBot - .02*u + Math.sin(a)*.045*u, .030*u, .020*u, 0, 0, 7); ctx.fill(); }
-    const cfg = GUARDIANS[key], cy = yBot - .20*u;
-    ctx.fillStyle = cfg.color;
-    ctx.beginPath(); ctx.moveTo(x, cy - .075*u); ctx.lineTo(x + .05*u, cy); ctx.lineTo(x, cy + .075*u); ctx.lineTo(x - .05*u, cy); ctx.closePath(); ctx.fill();
-  }
-  if (shrineDone(key)){   // the won crystal burns brighter: a hot core over the sprite's own crystal
-    ctx.save(); ctx.globalAlpha = .5 + .2*Math.sin(t/700);
-    ctx.fillStyle = '#ffffff';
-    const cy = yBot - h*.72;
-    ctx.beginPath(); ctx.moveTo(x, cy - .035*u); ctx.lineTo(x + .020*u, cy); ctx.lineTo(x, cy + .035*u); ctx.lineTo(x - .020*u, cy); ctx.closePath(); ctx.fill();
-    ctx.restore();
-  }
-}
-/* One lost sproutling: a small glowing sprout on a soft green halo —
-   lost things want to be found. Bobbing gently; found ones never reach
-   here (drawEntities filters them per player). */
-function drawSprout(sp, t){
-  const u = UNIT();
-  const x = NX(sp.x), groundY = NY(sp.y);
-  const bob = Math.sin(t/600 + sp.x*7) * .004*u;
-  const gs = .11*u * (1 + .15*Math.sin(t/500 + sp.x*9));
-  const ag = ctx.createRadialGradient(x, groundY - .03*u, 2, x, groundY - .03*u, gs);
-  ag.addColorStop(0, 'rgba(150,255,140,.40)'); ag.addColorStop(1, 'rgba(150,255,140,0)');
-  ctx.fillStyle = ag; ctx.beginPath(); ctx.arc(x, groundY - .03*u, gs, 0, 7); ctx.fill();
-  ctx.fillStyle = 'rgba(38,32,40,.18)';
-  ctx.beginPath(); ctx.ellipse(x, groundY + 2, .035*u, .010*u, 0, 0, 7); ctx.fill();
-  if (imgOk(SPROUT_IMG)){
-    const w = .085*u;
-    ctx.drawImage(SPROUT_IMG, x - w/2, groundY - w + bob, w, w);
-  } else {
-    ctx.fillStyle = '#7a5430'; ctx.beginPath(); ctx.ellipse(x, groundY - 1, .030*u, .010*u, 0, 0, 7); ctx.fill();
-    ctx.strokeStyle = '#2e7d32'; ctx.lineWidth = 2.5;
-    ctx.beginPath(); ctx.moveTo(x, groundY - 2); ctx.lineTo(x, groundY - .035*u + bob); ctx.stroke();
-    ctx.fillStyle = '#57d93d';
-    ctx.beginPath(); ctx.ellipse(x - .014*u, groundY - .042*u + bob, .013*u, .007*u, -.5, 0, 7); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(x + .014*u, groundY - .046*u + bob, .013*u, .007*u, .5, 0, 7); ctx.fill();
-  }
-}
-/* Elite radiance — NO circles (Handler: the banded rings still read as
-   circles). A star of 8 jagged RAYS radiates from behind the body, slowly
-   rotating, over a rotated-square (diamond) pool of ground light. Hard
-   edges only: triangles and a diamond — no arcs, no ellipses, no
-   gradients. Motes rise and fade as before. Drawn UNDER the slime. */
-function drawEliteAura(x, y, baseR, seed, t){
-  /* READABILITY FLOOR (sim + playtest finding): elites spawn at the
-     correct 8% and 3-5 are alive at once, but the aura scaled purely
-     with baseR — an elite baby (baseR ~27px) got ~51px ray tips at
-     alpha .16 over green grass and read as a plain slime in stills and
-     at a glance. The aura now has a minimum extent (34px, an elite
-     mid's baseR at full-screen scale) and stronger alphas, so every
-     elite — baby to tank — reads as an elite. Big kinds are unchanged
-     (their baseR already exceeds the floor). */
-  const aR = Math.max(baseR, 34);
-  const pr = 1 + 0.07 * Math.sin(t/260 + seed * 9);   // pulse
-  ctx.save();
-  // ground light: diamond pool (rotated square), squashed flat. At the
-  // old size (r*1.5, alpha .13) the body (halfwidth 1.04r, sitting on this
-  // anchor) covered all but a hairline crescent and the crescent was too
-  // faint to see — playtests never spotted it. r*1.9 at .22 puts a clear
-  // diamond of light out from under the base on every side.
-  const rx = aR*1.9*pr, ry = rx*.45;
-  ctx.fillStyle = 'rgba(255,183,47,.22)';
-  ctx.beginPath();
-  ctx.moveTo(x, y - ry); ctx.lineTo(x + rx, y); ctx.lineTo(x, y + ry); ctx.lineTo(x - rx, y);
-  ctx.closePath(); ctx.fill();
-  // rays: 8 narrow triangles, bases at .9r, tips breathing around 1.9r
-  ctx.fillStyle = 'rgba(255,183,47,.24)';
-  const rot = t/2400 + seed;
-  for (let i = 0; i < 8; i++){
-    const a = rot + i * Math.PI/4;
-    const ca = Math.cos(a), sa = Math.sin(a);
-    const tipR = aR * (1.9 + 0.25 * Math.sin(t/240 + seed*7 + i));
-    const bx = x + ca*aR*.9, by = y + sa*aR*.9, hw = aR*.22;
-    ctx.beginPath();
-    ctx.moveTo(bx - sa*hw, by + ca*hw);
-    ctx.lineTo(x + ca*tipR, y + sa*tipR);
-    ctx.lineTo(bx + sa*hw, by - ca*hw);
-    ctx.closePath(); ctx.fill();
-  }
-  // rising motes: seeded squares that climb and fade, looping
-  ctx.fillStyle = '#ffd54a';
-  for (let k = 0; k < 3; k++){
-    const phase = ((t/1400) + seed*7 + k/3) % 1;
-    const mx = x + Math.sin(seed*40 + k*2.4) * aR * 1.2;
-    const my = y - phase * aR * 2.6;
-    const ms = 2 + (k % 2);
-    ctx.globalAlpha = (1 - phase) * .5;
-    ctx.fillRect(mx - ms/2, my - ms/2, ms, ms);
-  }
-  ctx.restore();
-}
-function drawKindMarks(s, x, y, baseR, t){
-  if (s.kind==='tank' || (s.kind==='guardian' && s.guardian==='meadow')){   // the VERDANT WARDEN wears the tank's pauldrons — armour grown thick as bark
-    /* Tank mark: two steel PAULDRONS hugging the body's shoulders. The
-       first replacement for the old slate RING was two flat squares —
-       Handler: 'Doesn't convey armor. Place it properly, align to the
-       slime, make it armor shape.' So: a rounded shoulder plate (dome
-       top, flat bottom edge) per side, tilted ~20 deg to follow the
-       dome's contour, inner ~25% of the plate OVERLAPPING the body so it
-       reads as worn, not floating. Flat pixel fills only: base slate
-       steel, a darker shadow band along the bottom edge, a pale rim
-       stroked over the dome, one rivet. Drawn here (marks space: x, y,
-       baseR) so both the sprite and vector paths get the same plates. */
-    const w = baseR*.72, h = baseR*.40, tilt = .349;   // ~20 degrees
-    const platePath = () => {
-      ctx.beginPath();
-      ctx.moveTo(-w/2, h/2);
-      ctx.lineTo(-w/2, -h*.08);
-      ctx.quadraticCurveTo(-w/2, -h/2, 0, -h/2);
-      ctx.quadraticCurveTo(w/2, -h/2, w/2, -h*.08);
-      ctx.lineTo(w/2, h/2);
-      ctx.closePath();
-    };
-    for (const side of [-1, 1]){
-      ctx.save();
-      ctx.translate(x + side*baseR*1.02, y - baseR*.19);
-      ctx.rotate(side * tilt);        // outer end dips down the dome
-      ctx.scale(side, 1);             // local +x points outward
-      platePath(); ctx.fillStyle = '#5b6b7f'; ctx.fill();
-      ctx.save(); platePath(); ctx.clip();
-      ctx.fillStyle = '#42505f'; ctx.fillRect(-w/2, h*.18, w, h);        // shadow band on the lower edge
-      ctx.restore();
-      ctx.beginPath();                // pale steel rim over the dome
-      ctx.moveTo(-w/2, -h*.08);
-      ctx.quadraticCurveTo(-w/2, -h/2, 0, -h/2);
-      ctx.quadraticCurveTo(w/2, -h/2, w/2, -h*.08);
-      ctx.strokeStyle = '#9db2c8'; ctx.lineWidth = Math.max(2, h*.20); ctx.stroke();
-      ctx.fillStyle = '#d7e3ee';      // the rivet
-      ctx.beginPath(); ctx.arc(w*.16, h*.04, Math.max(1.6, h*.11), 0, 7); ctx.fill();
-      ctx.restore();
-    }
-  }
-  if (s.kind==='gold'){
-    const p = 1 + Math.sin(t/140)*.25, r = baseR*.30*p, sx = x, sy = y - baseR*1.3;
-    ctx.fillStyle = '#fff3a0';
-    ctx.beginPath();
-    ctx.moveTo(sx, sy-r); ctx.quadraticCurveTo(sx, sy, sx+r, sy); ctx.quadraticCurveTo(sx, sy, sx, sy+r);
-    ctx.quadraticCurveTo(sx, sy, sx-r, sy); ctx.quadraticCurveTo(sx, sy, sx, sy-r);
-    ctx.fill();
-  }
-}
-/* ELITE name tag: a small gold 'ELITE' plate — the same construction as
-   the Emperor's 'SLIME EMPEROR' label in drawSlime, shrunk. The aura
-   alone kept failing identification in playtest stills (subtle alphas,
-   tiny on small kinds); a word cannot be misread. topEdge = the screen y
-   the tag must float ABOVE (the HP bar's top, or the sprite's top). */
-function drawEliteTag(x, topEdge){
-  const label = 'ELITE', lh = 13;
-  ctx.save();
-  ctx.font = '7px "Press Start 2P", monospace';
-  const tw = ctx.measureText(label).width;
-  const lw = tw + 10, lx = x - lw/2, ly = topEdge - 3 - lh;
-  ctx.fillStyle = '#40121d'; ctx.fillRect(lx, ly, lw, lh);
-  ctx.strokeStyle = '#ffd94d'; ctx.lineWidth = 1.5; ctx.strokeRect(lx + .75, ly + .75, lw - 1.5, lh - 1.5);
-  ctx.fillStyle = '#ffd94d'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(label, x, ly + lh/2 + .5);
-  ctx.restore();
-}
-function drawSlime(s,t){
-  /* VISUAL radius: the Emperor renders at 1.3x so he never reads as just
-     another King (gauntlet F5: testers counted 3-5 'bosses' — all Kings,
-     same gold crowned sprite). s.r — the hitbox — is UNCHANGED; only the
-     rendered size (and everything derived from baseR here: aura, HP bar)
-     grows. The ghost pass applies the same factor. */
-  const x=NX(s.x), y=NY(s.y);
-  let baseR=s.r*SCALE()*visFactor(s);
-  /* GUARDIAN RISE-IN (Batch D): a freshly summoned guardian grows from
-     .55x over 700ms (bornAt is host-stamped at the summon; a remote
-     client stamps it on first sight of the guardian — draw-time lazily,
-     it only drives this local entrance). riseK gates the nameplate
-     below: the plate appears once the rise completes, not stacked on
-     top of the summon flash. */
-  let riseK = 1;
-  if (s.kind==='guardian'){
-    if (s.bornAt === undefined) s.bornAt = t;
-    riseK = clamp((t - s.bornAt) / 700, 0, 1);
-    baseR *= .55 + .45 * riseK;
-  }
-  /* KING HP BAR (Handler): a King's floating bar shows ONLY when the local
-     player is close (<= KING_BAR_RANGE). Judged against me.x/me.y — the
-     same rendered position every other player-relative draw in this
-     function uses (cf. the vector eyes' look-at-me angle) — so host and
-     clients each gate against their OWN player. Other kinds: unchanged. */
-  const showBar = s.hp < s.max && (s.kind !== 'king' || dist2(s.x, s.y, me.x, me.y) <= KING_BAR_RANGE * KING_BAR_RANGE);
-  if (s.kind==='boss'){
-    // CHAOS EMPEROR (finale form, local story state): a pre-rendered
-    // purple-red glow sprite burns under him, pulsing with the aura
-    const chaos = bossIsChaos();
-    if (chaos){
-      const gs = baseR * 4.6 * (1 + .05 * Math.sin(t/300));
-      ctx.save(); ctx.globalAlpha = .9;
-      ctx.drawImage(chaosGlowImg(), x - gs/2, y - gs/2, gs, gs);
-      ctx.restore();
-    }
-    // the Emperor radiates a dark red aura — ENRAGED (<=30% HP, read off
-    // the replicated hp; boss HP never rises, so this is effectively a
-    // latch) it burns brighter, wider, and pulses
-    const enr = s.hp <= s.max * .30;
-    const ag = ctx.createRadialGradient(x, y, baseR*.4, x, y, baseR*(enr ? 1.95 : 1.8));
-    ag.addColorStop(0, enr ? 'rgba(215,25,35,' + (.62 + .08*Math.sin(t/260)).toFixed(3) + ')' : 'rgba(120,10,20,.50)');
-    ag.addColorStop(1, 'rgba(120,10,20,0)');
-    ctx.fillStyle = ag; ctx.beginPath(); ctx.arc(x, y, baseR*1.8, 0, 7); ctx.fill();
-    // floating name label — Kings don't get one, so the real Emperor is
-    // identifiable at a glance even mid-cluster
-    ctx.save();
-    ctx.font = '10px "Press Start 2P", monospace';
-    const label = chaos ? 'CHAOS EMPEROR' : 'SLIME EMPEROR', tw = ctx.measureText(label).width;
-    const lw = tw + 14, lh = 17, lx = x - lw/2, ly = y - baseR*1.45 - lh/2;
-    ctx.fillStyle = '#40121d'; ctx.fillRect(lx, ly, lw, lh);
-    ctx.strokeStyle = '#ffd94d'; ctx.lineWidth = 2; ctx.strokeRect(lx+1, ly+1, lw-2, lh-2);
-    ctx.fillStyle = '#ffd94d'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(label, x, ly + lh/2 + 1);
-    ctx.restore();
-  }
-  if (s.kind==='guardian'){
-    // a shrine guardian radiates its shrine's colour and wears its name —
-    // the Emperor's aura + plate construction, in the guardian's tint
-    const cfg = GUARDIANS[s.guardian] || GUARDIANS.meadow;
-    const ag = ctx.createRadialGradient(x, y, baseR*.4, x, y, baseR*1.8);
-    ag.addColorStop(0, cfg.aura + (.45 + .07*Math.sin(t/260)).toFixed(3) + ')');
-    ag.addColorStop(1, cfg.aura + '0)');
-    ctx.fillStyle = ag; ctx.beginPath(); ctx.arc(x, y, baseR*1.8, 0, 7); ctx.fill();
-    if (riseK >= 1){   // nameplate waits for the rise to finish (Batch D) — during the entrance the AWAKENS float owns the shrine anchor alone
-      ctx.save();
-      ctx.font = '10px "Press Start 2P", monospace';
-      const label = cfg.name, tw = ctx.measureText(label).width;
-      const lw = tw + 14, lh = 17, lx = x - lw/2, ly = y - baseR*1.45 - lh/2;
-      ctx.fillStyle = '#40121d'; ctx.fillRect(lx, ly, lw, lh);
-      ctx.strokeStyle = '#ffd94d'; ctx.lineWidth = 2; ctx.strokeRect(lx+1, ly+1, lw-2, lh-2);
-      ctx.fillStyle = '#ffd94d'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(label, x, ly + lh/2 + 1);
-      ctx.restore();
-    }
-  }
-  const sg = drawVideoSlime(s,t,baseR);
-  if (sg){
-    drawKindMarks(s, x, y - baseR*.4, baseR, t);
-    if (s.kind==='boss' && performance.now() < (s.guardUntil||0)){
-      // ROYAL GUARD shield dome: a translucent shell capped over the
-      // Emperor while he is invulnerable (window replicated via payload)
-      const gr = baseR*1.28, gy2 = y - baseR*.32;
-      ctx.fillStyle = 'rgba(160,220,255,' + (.15 + .05*Math.sin(t/180)).toFixed(3) + ')';
-      ctx.beginPath(); ctx.arc(x, gy2, gr, Math.PI, 0); ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = 'rgba(225,246,255,.9)'; ctx.lineWidth = 2.5;
-      ctx.beginPath(); ctx.arc(x, gy2, gr, Math.PI, 0); ctx.stroke();
-      ctx.fillStyle = 'rgba(225,246,255,.28)';
-      ctx.fillRect(x - gr, gy2 - 2, gr*2, 3);   // rim line where the dome meets the ground
-    }
-    if (showBar){
-      /* HP bar floats ABOVE the sprite — off its CURRENT top edge (ground
-         anchor - hop lift - squashed height), with a small gap. The old
-         fixed offset (y - baseR*1.02) sat mid-body: every hop stretch
-         (sqY up to 1.13 + lift up to 1.15r) pushed the sprite's face up
-         THROUGH the bar. Exactly ONE bar per slime is drawn — here, and
-         nowhere else; the ghost pass (paintSlimeSprite only) draws none. */
-      const bw=baseR*1.6, bh=Math.max(5,baseR*.14), bx=x-bw/2;
-      const by = sg.gy - sg.liftW*UNIT() - sg.dh*sg.sqY - bh - 4;
-      ctx.fillStyle='rgba(40,30,20,.65)'; roundRect(bx-2,by-2,bw+4,bh+4,5); ctx.fill();
-      ctx.fillStyle='#e5484d'; roundRect(bx,by,bw,bh,3); ctx.fill();
-      ctx.fillStyle='#57d93d'; roundRect(bx,by,bw*clamp(s.hp/s.max,0,1),bh,3); ctx.fill();
-    }
-    if (s.elite){
-      const topY = sg.gy - sg.liftW*UNIT() - sg.dh*sg.sqY;
-      drawEliteTag(x, s.hp < s.max ? topY - Math.max(5,baseR*.14) - 6 : topY);   // above the HP bar's bg box when damaged, else above the sprite
-    }
-    return;
-  }
-  const wob = Math.sin(t/280 + s.seed*7)*0.08;
-  const sq = 1 + wob - s.squish*.35;
-  const rX = baseR*(2-sq)*.95, rY = baseR*sq*.82;
-  if (s.elite) drawEliteAura(x, y + rY, baseR, s.seed, t);   // aura under the body, at its ground contact
-  // ground shadow (the vector fallback had none — the sprite path does);
-  // same plaza boost as drawVideoSlime: pale sand needs a darker shadow
-  ctx.fillStyle = 'rgba(38,32,40,' + (Math.hypot(s.x-TOWN.x, s.y-TOWN.y) < TOWN_R ? .27 : .16) + ')';
-  ctx.beginPath(); ctx.ellipse(x, y + rY*.82, rX*.85, rY*.26, 0, 0, 7); ctx.fill();
-  ctx.save(); ctx.translate(x,y);
-  // body
-  const g=ctx.createRadialGradient(-rX*.3,-rY*.5,rX*.15, 0,0, rX*1.25);
-  g.addColorStop(0,'#ffffff'); g.addColorStop(.25,s.color); g.addColorStop(1, shade(s.color,-28));
-  ctx.fillStyle=g;
-  ctx.beginPath(); ctx.ellipse(0,0,rX,rY,0,0,7); ctx.fill();
-  if (s.flash>0){ ctx.fillStyle='rgba(255,255,255,' + (.55*s.flash).toFixed(3) + ')'; ctx.beginPath(); ctx.ellipse(0,0,rX,rY,0,0,7); ctx.fill(); }   // hit flash as a white overlay (was shadowBlur=18 — same mobile-cost problem)
-  ctx.strokeStyle='rgba(60,90,40,.35)'; ctx.lineWidth=2; ctx.stroke();
-  // shine
-  ctx.fillStyle='rgba(255,255,255,.75)';
-  ctx.beginPath(); ctx.ellipse(-rX*.34,-rY*.42,rX*.20,rY*.13,-.5,0,7); ctx.fill();
-  // cheeks
-  ctx.fillStyle='rgba(255,110,140,.5)';
-  ctx.beginPath(); ctx.ellipse(-rX*.48,rY*.12,rX*.13,rY*.10,0,0,7); ctx.fill();
-  ctx.beginPath(); ctx.ellipse( rX*.48,rY*.12,rX*.13,rY*.10,0,0,7); ctx.fill();
-  // eyes look at my sword
-  const la=Math.atan2(me.y-s.y, me.x-s.x), ex=Math.cos(la)*rX*.09, ey=Math.sin(la)*rY*.09;
-  const hurt = s.hp < s.max*.35;
-  ctx.fillStyle='#263238';
-  for (const sx of [-1,1]){
-    ctx.beginPath();
-    if (hurt) ctx.ellipse(sx*rX*.26+ex, -rY*.08+ey, rX*.085, rY*.05, sx*.5, 0, 7);
-    else ctx.ellipse(sx*rX*.26+ex, -rY*.08+ey, rX*.075, rY*.13, 0, 0, 7);
-    ctx.fill();
-  }
-  ctx.fillStyle='#fff';
-  ctx.beginPath(); ctx.arc(-rX*.26+ex+rX*.025, -rY*.15+ey, rX*.028, 0, 7); ctx.fill();
-  ctx.beginPath(); ctx.arc( rX*.26+ex+rX*.025, -rY*.15+ey, rX*.028, 0, 7); ctx.fill();
-  // mouth
-  ctx.strokeStyle='#263238'; ctx.lineWidth=Math.max(1.6,baseR*.06); ctx.lineCap='round';
-  ctx.beginPath();
-  if (hurt) ctx.arc(0, rY*.34, rX*.13, Math.PI*1.15, Math.PI*1.85);
-  else ctx.arc(0, rY*.08, rX*.14, Math.PI*.2, Math.PI*.8);
-  ctx.stroke();
-  // crown for king (and the Emperor — bigger in spirit, same gold)
-  if (s.kind==='king' || s.kind==='boss'){
-    ctx.fillStyle='#ffd94d'; ctx.strokeStyle='#b8860b'; ctx.lineWidth=2;
-    const cw=rX*.8, ch=rY*.5, cy=-rY*.92;
-    ctx.beginPath(); ctx.moveTo(-cw/2,cy); ctx.lineTo(-cw/2,cy-ch*.5); ctx.lineTo(-cw/4,cy-ch*.15); ctx.lineTo(0,cy-ch); ctx.lineTo(cw/4,cy-ch*.15); ctx.lineTo(cw/2,cy-ch*.5); ctx.lineTo(cw/2,cy); ctx.closePath(); ctx.fill(); ctx.stroke();
-  }
-  ctx.restore();
-  drawKindMarks(s, x, y, baseR, t);
-  // hp bar
-  if (showBar){
-    const bw=rX*1.7, bh=Math.max(5,baseR*.14), bx=x-bw/2, by=y-rY-baseR*.32;
-    ctx.fillStyle='rgba(40,30,20,.65)'; roundRect(bx-2,by-2,bw+4,bh+4,5); ctx.fill();
-    ctx.fillStyle='#e5484d'; roundRect(bx,by,bw,bh,3); ctx.fill();
-    ctx.fillStyle='#57d93d'; roundRect(bx,by,bw*clamp(s.hp/s.max,0,1),bh,3); ctx.fill();
-  }
-  if (s.elite) drawEliteTag(x, s.hp < s.max ? y - rY - baseR*.32 - 2 : y - rY);
-}
-function shade(hex,amt){
-  const n=parseInt(hex.slice(1),16);
-  const r=clamp((n>>16)+amt,0,255), g=clamp(((n>>8)&255)+amt,0,255), b=clamp((n&255)+amt,0,255);
-  return `rgb(${r},${g},${b})`;
-}
-function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.roundRect(x,y,w,h,r); }
-/* ============================================================ y-sorted entity pass + occlusion ghosts
-   Trees, rocks, buildings and slimes share ONE depth order by ground
-   anchor (baseY, ascending), so slimes walk BEHIND props correctly.
-   Right after the pass, any slime part-hidden behind a prop is redrawn
-   as a faint ghost clipped to the overlap -- never fully invisible.
-   Ponds stay flat decals in drawField and never occlude; the fence is
-   low and never occludes; swords always draw on top afterwards. */
-const BUILDING_DEFS = [
-  { key:'bank', pos:BANK_POS, img:'bld-bank' },
-  { key:'shop', pos:SHOP_POS, img:'bld-shop' },
-  { key:'hospital', pos:HOSPITAL_POS, img:'bld-hospital' },
-  { key:'vinn', pos:V_INN_POS, img:'bld-hut-b' },
-  { key:'vshop', pos:V_SHOP_POS, img:'bld-hut-c' },
-  { key:'vbank', pos:V_BANK_POS, img:'bld-hut-a' },
-];
-/* Occluder boxes in world coords: { cx, hw (half width), top, baseY } --
-   each matches the box its sprite is actually drawn into. */
-function treeBox(d){
-  const img = WORLD_IMGS['decor-tree'];
-  const w = .36 * d.s, h = imgOk(img) ? w * img.naturalHeight/img.naturalWidth : .30 * d.s;
-  const baseY = d.y + .03;                       // sprite bottom edge (see drawTree)
-  return { cx:d.x, hw:w/2, top:baseY - h, baseY };
-}
-function rockBox(d){
-  const img = WORLD_IMGS['decor-rock'];
-  const w = .17 * d.s, h = imgOk(img) ? w * img.naturalHeight/img.naturalWidth : .0525 * d.s;
-  return { cx:d.x, hw:w/2, top:d.y - h/2, baseY:d.y + h/2 };   // rocks are centre-drawn: base = centre + half height
-}
-function buildingBox(b){
-  const img = WORLD_IMGS[b.img];
-  const h = imgOk(img) ? .36 * img.naturalHeight/img.naturalWidth : .34;
-  const baseY = b.pos.y + .10;                   // sprite bottom edge (see drawBuildings)
-  return { cx:b.pos.x, hw:.18, top:baseY - h, baseY };
-}
-function drawEntities(t){
-  const u = UNIT(), vw = W/u, vh = H/u;
-  const ents = [], occluders = [];
-  for (const d of DECOR){
-    if (d.t === 'pond') continue;                // flat ground decal, drawn in drawField
-    if (d.x<ses.cam.x-.55 || d.x>ses.cam.x+vw+.55 || d.y<ses.cam.y-.55 || d.y>ses.cam.y+vh+.55) continue;   // view-culled
-    if (d.t === 'tree'){ const b = treeBox(d); ents.push({ baseY:b.baseY, kind:'tree', d }); occluders.push(b); }
-    else if (d.t === 'rock'){ const b = rockBox(d); ents.push({ baseY:b.baseY, kind:'rock', d }); occluders.push(b); }
-    else if (d.t === 'stone'){ const b = stoneBox(d); ents.push({ baseY:b.baseY, kind:'stone', d }); occluders.push(b); }
-    else if (d.t === 'tent'){ const b = tentBox(d); ents.push({ baseY:b.baseY, kind:'tent', d }); occluders.push(b); }
-    else if (d.t === 'log'){ ents.push({ baseY:d.y + .03, kind:'log', d }); }          // low props: depth-sorted, never occlude
-    else if (d.t === 'signpost'){ ents.push({ baseY:d.y + .02, kind:'signpost', d }); }
-    else if (d.t === 'mushroom'){ ents.push({ baseY:d.y + .02, kind:'mushroom', d }); }
-    else if (d.t === 'campfire'){ ents.push({ baseY:d.y + .02, kind:'campfire', d }); }
-    else if (d.t === 'grave'){ ents.push({ baseY:d.y + .03, kind:'grave', d }); }
-  }
-  for (const b of BUILDING_DEFS){
-    ents.push({ baseY:b.pos.y + .10, kind:'bld', b });
-    occluders.push(buildingBox(b));
-  }
-  /* ROTWATCH CAMP (Settlements): the Wilds camp's furniture joins the
-     same depth order — the leaf-canopy tent (the Hermit Camp painter),
-     its fire, two log seats and the supply crate. */
-  {
-    const tentD = { x:RW_TENT_POS.x, y:RW_TENT_POS.y, s:1 };
-    const tb = tentBox(tentD);
-    ents.push({ baseY:tb.baseY, kind:'tent', d:tentD }); occluders.push(tb);
-    ents.push({ baseY:RW_FIRE_POS.y + .02, kind:'campfire', d:{ x:RW_FIRE_POS.x, y:RW_FIRE_POS.y, s:1 } });
-    ents.push({ baseY:RW_CRATE_POS.y + .03, kind:'crate', d:{ x:RW_CRATE_POS.x, y:RW_CRATE_POS.y, s:1 } });
-    ents.push({ baseY:ROTWATCH.y + .30, kind:'log', d:{ x:ROTWATCH.x - .26, y:ROTWATCH.y + .28, s:1, a:.4 } });
-    ents.push({ baseY:ROTWATCH.y + .32, kind:'log', d:{ x:ROTWATCH.x + .30, y:ROTWATCH.y + .30, s:.9, a:-.3 } });
-  }
-  // townsfolk join the same depth order at their feet (the Child's spot
-  // is npcPositionAt's deterministic wander — no state, no sync).
-  // TITLE: pre-PLAY the townsfolk are pushed ONLY inside the title
-  // still's staging pass (ses.titleStaging), where the frozen diorama
-  // poses them deliberately — the live title never runs this pass.
-  for (const def of NPC_DEFS){
-    if (!ses.started && !ses.titleStaging) break;
-    const p = npcPositionAt(def, t);
-    if (p.x<ses.cam.x-.45 || p.x>ses.cam.x+vw+.45 || p.y<ses.cam.y-.55 || p.y>ses.cam.y+vh+.25) continue;   // view-culled
-    ents.push({ baseY:p.y, kind:'npc', def, x:p.x, y:p.y });
-  }
-  // VERDANT SHRINES (stage 4): static landmarks in the same depth order,
-  // and occluders — a slime behind a shrine ghosts like behind a tree
-  for (const key of Object.keys(SHRINE_POS)){
-    const p = SHRINE_POS[key];
-    if (p.x<ses.cam.x-.55 || p.x>ses.cam.x+vw+.55 || p.y<ses.cam.y-.55 || p.y>ses.cam.y+vh+.55) continue;   // view-culled
-    ents.push({ baseY:p.y + .10, kind:'shrine', key });
-    occluders.push({ cx:p.x, hw:.21, top:p.y + .10 - .34, baseY:p.y + .10 });
-  }
-  // ROT BARRIERS (archipelago): a locked bridge's vine wall joins the
-  // depth order at its base; an open bridge has no barrier to draw
-  for (const b of BARRIERS){
-    if (bridgeOpen(b.isle + 1)) continue;
-    if (b.x<ses.cam.x-.55 || b.x>ses.cam.x+vw+.55 || b.y<ses.cam.y-.55 || b.y>ses.cam.y+vh+.55) continue;   // view-culled
-    ents.push({ baseY:b.y + .04, kind:'barrier', b });
-    occluders.push({ cx:b.x, hw:BRIDGE_W/2, top:b.y - .30, baseY:b.y + .04 });
-  }
-  // unfound sproutlings join too (found ones are gone for this player)
-  {
-    const st = prog().story;
-    if (st) for (const sp of SPROUT_SPOTS){
-      if (st.sproutsFound.includes(sp.id)) continue;
-      if (sp.x<ses.cam.x-.3 || sp.x>ses.cam.x+vw+.3 || sp.y<ses.cam.y-.3 || sp.y>ses.cam.y+vh+.3) continue;   // view-culled
-      ents.push({ baseY:sp.y + .02, kind:'sprout', sp });
-    }
-  }
-  // slime anchor = ground contact (y + r*.8) -- NOT the hop-lifted sprite,
-  // so a jumping slime never changes depth order mid-hop
-  /* VIEW CULL: the world holds ~380-460 slimes but a phone view is ~1.8x1u
-     of a 24x24u world. Every slime used to be fully drawn (shadow, sprite,
-     ~15 face path ops, aura, marks) and face-fade-tested against every
-     occluder EACH FRAME, on screen or not. Only slimes whose generous
-     visual box (r*4 + .3u: covers hop lift, HP bar, ELITE tag, elite
-     motes and the Emperor's 1.3x aura + name plate) touches the view are
-     drawn now. Off-screen draws were invisible, so nothing on screen changes. */
-  const vis = [];
-  for (const s of world.slimes.values()){
-    const m = s.r*4 + .3;
-    if (s.x < ses.cam.x-m || s.x > ses.cam.x+vw+m || s.y < ses.cam.y-m || s.y > ses.cam.y+vh+m) continue;
-    vis.push(s);
-    ents.push({ baseY:s.y + s.r*.8, kind:'slime', s });
-  }
-  // ore nodes join the same depth order at their base (y + .07)
-  for (const n of world.nodes.values()){
-    if (n.x<ses.cam.x-.55 || n.x>ses.cam.x+vw+.55 || n.y<ses.cam.y-.55 || n.y>ses.cam.y+vh+.55) continue;   // view-culled like decor
-    ents.push({ baseY:n.y + .07, kind:'node', n });
-  }
-  /* Boss orbs join the SAME y-sort (base = orb centre + its radius), so a
-     tree or building in front of an orb occludes it exactly like a slime —
-     orbs used to draw after the whole pass and floated over canopies. */
-  for (const b of world.bullets){
-    if (b.x<ses.cam.x-.1 || b.x>ses.cam.x+vw+.1 || b.y<ses.cam.y-.1 || b.y>ses.cam.y+vh+.1) continue;   // view-culled
-    ents.push({ baseY:b.y + .02, kind:'orb', b });
-  }
-  /* G7 face fade: the face IS drawn inside paintSlimeSprite, so the
-     ghost pass faded it correctly — but in the NORMAL pass a ghosted
-     slime's face still rendered at FULL strength wherever it poked above
-     a canopy (outside the prop's box, so never ghost-clipped), floating
-     over its own 38% ghost body. Any slime the ghost pass will touch
-     now gets its face pre-faded to the same .38 in the normal pass, so
-     face and body always read at one strength. */
-  for (const s of vis){
-    const baseR = s.r * SCALE() * visFactor(s);
-    const g = slimeSpriteGeom(s, t, baseR);
-    s._faceFade = (g && ghostHits(s, occluders, g).length) ? .38 : 1;
-  }
-  ents.sort((a,b)=>a.baseY - b.baseY);
-  for (const e of ents){
-    if (e.kind === 'tree') drawTree(e.d, t);
-    else if (e.kind === 'rock') drawRock(e.d);
-    else if (e.kind === 'stone') drawStone(e.d);
-    else if (e.kind === 'tent') drawTent(e.d);
-    else if (e.kind === 'log') drawLog(e.d);
-    else if (e.kind === 'signpost') drawSignpost(e.d);
-    else if (e.kind === 'mushroom') drawMushroom(e.d);
-    else if (e.kind === 'campfire') drawCampfire(e.d, t);
-    else if (e.kind === 'grave') drawGrave(e.d);
-    else if (e.kind === 'crate') drawCrate(e.d);
-    else if (e.kind === 'bld') drawBuildings(e.b.key);
-    else if (e.kind === 'npc') drawNPC(e, t);
-    else if (e.kind === 'shrine') drawShrine(e.key, t);
-    else if (e.kind === 'barrier') drawBarrier(e.b, t);
-    else if (e.kind === 'sprout') drawSprout(e.sp, t);
-    else if (e.kind === 'node') drawNode(e.n, t);
-    else if (e.kind === 'orb') drawOrb(e.b, t);
-    else drawSlime(e.s, t);
-  }
-  drawGhosts(t, occluders, vis);   // ghosts only for slimes that passed the view cull
-}
-/* One boss orb: outer halo / hot body / white core, fading out over its
-   last 800ms (no pop-out). Drawn only from the y-sorted entity pass. */
-function drawOrb(b, t){
-  const bx = NX(b.x), by = NY(b.y), u = UNIT();
-  ctx.save();
-  ctx.globalAlpha = clamp((b.life - (t - b.born)) / 800, 0, 1);
-  ctx.fillStyle='rgba(255,90,60,.35)'; ctx.beginPath(); ctx.arc(bx,by,.018*u,0,7); ctx.fill();
-  ctx.fillStyle='#ff7847'; ctx.beginPath(); ctx.arc(bx,by,.011*u,0,7); ctx.fill();
-  ctx.fillStyle='#ffffff'; ctx.beginPath(); ctx.arc(bx,by,.005*u,0,7); ctx.fill();
-  ctx.restore();
-}
-/* The occluder intersections for one slime: the sprite box vs every prop
-   it stands BEHIND (ground anchor above the prop's base), clipped to the
-   prop's box. Shared by the ghost pass and the face-fade test in
-   drawEntities — one definition of "this slime is ghosted". */
-function ghostHits(s, occluders, g){
-  // generous sprite box (world coords): the clip only shows anything
-  // where the sprite actually has pixels, so over-estimating is safe
-  const sb = { l:s.x - s.r*1.5, r:s.x + s.r*1.5, top:s.y - s.r*3.2 - g.liftW, bot:s.y + s.r };
-  const groundY = s.y + s.r*.8;                // the same anchor the sort used
-  const hits = [];
-  for (const o of occluders){
-    if (groundY >= o.baseY) continue;          // in front of the prop: drawn normally, no ghost
-    const il = Math.max(sb.l, o.cx - o.hw), ir = Math.min(sb.r, o.cx + o.hw);
-    const it = Math.max(sb.top, o.top), ib = Math.min(sb.bot, o.baseY);
-    if (ir <= il || ib <= it) continue;
-    hits.push({ il, ir, it, ib });
-  }
-  return hits;
-}
-/* Ghost pass: for each slime BEHIND an occluder (ground anchor above the
-   occluder's base), redraw only its sprite at 38% alpha, clipped to the
-   intersection of the two boxes. No HP bar / marks -- just the body. */
 function drawGhosts(t, occluders, list){
   const u = UNIT(), vw = W/u, vh = H/u;
   for (const s of (list || world.slimes.values())){
@@ -8701,9 +7534,9 @@ function drawGhosts(t, occluders, list){
     }
   }
 }
-function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,whirling,ext=0){
+function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,whirling,ext=0,reachPxIn){
   const w=WEAPONS[weaponIdx];
-  const reachPx = (isMe?myReach():(w.reach)) * SCALE() * (1+ext);
+  const reachPx = reachPxIn != null ? reachPxIn : (isMe?myReach():(w.reach)) * SCALE() * (1+ext);   // callers in the iso world pass the PROJECTED reach
   const whirlA = whirling ? (t/38)%(Math.PI*2) : 0;
   const a = whirling ? whirlA : angle;
   const tipX = x+Math.cos(a)*reachPx, tipY = y+Math.sin(a)*reachPx;
@@ -8789,76 +7622,45 @@ function bossAt(now){
    1.78x1.00u view and was simply never found — this is the locator.
    It hides the moment the metal is on screen or leaves the world
    (killed / cleared by the next guarantee fire). */
-function drawMetalArrow(now){
+function drawMetalArrow(t){
   if (!ses.started) return;
   let m = null;
-  for (const s of world.slimes.values()) if (s.kind==='metal' && s.guaranteed){ m = s; break; }
+  for (const s of world.slimes.values()) if (s.metal && !s.dead && s.zone === ses.myZone){ m = s; break; }
   if (!m) return;
-  const u = UNIT(), vw = W/u, vh = H/u;
-  if (m.x >= ses.cam.x && m.x <= ses.cam.x + vw && m.y >= ses.cam.y && m.y <= ses.cam.y + vh) return;   // on screen: the slime itself is the marker
-  const sx = NX(m.x), sy = NY(m.y);
-  /* SAFE-RECT CLAMP (basics gate): the old 34px raw-edge clamp let the
-     METAL caption hang half off-screen at the bottom/side edges
-     (Handler's screenshot). The marker now lives in the same safe
-     rectangle as the objective pointer (84px sides, 150px top, 90px
-     bottom), slides clear of HUD rects, and the caption flips ABOVE
-     the diamond whenever below would leave the screen — the label is
-     always whole. The chevron still rotates to the true bearing. */
-  const L = 84, R = Math.max(L + 40, W - 84), T = 150, B = Math.max(T + 40, H - 90);
-  let cx = clamp(sx, L, R), cy = clamp(sy, T, B);
-  const PAD = 32;   // diamond (~15px) + caption span + breathing room
-  /* the objective pointer's corner-aware slide, verbatim in spirit:
-     slide ALONG the pinned edge (a nearest-exit push gets re-captured
-     by the safe-rect clamp in the corners — at bottom-left the
-     minimap's padded rect reaches past B, and the marker ended up
-     UNDER the minimap with only its caption peeking out). */
-  for (let pass = 0; pass < 3; pass++){
-    let slid = false;
-    for (const rc of hudRects(now)){
-      if (cx <= rc.l - PAD || cx >= rc.r + PAD || cy <= rc.t - PAD || cy >= rc.b + PAD) continue;
-      const onTB = (cy === T || cy === B), onLR = (cx === L || cx === R);
-      if (onTB && !onLR) cx = cx < (rc.l + rc.r)/2 ? rc.l - PAD : rc.r + PAD;
-      else if (onLR && !onTB) cy = cy < (rc.t + rc.b)/2 ? rc.t - PAD : rc.b + PAD;
-      else if (Math.abs(sx - W/2) >= Math.abs(sy - H/2)) cx = cx < (rc.l + rc.r)/2 ? rc.l - PAD : rc.r + PAD;
-      else cy = cy < (rc.t + rc.b)/2 ? rc.t - PAD : rc.b + PAD;
-      slid = true;
-    }
-    cx = clamp(cx, L, R); cy = clamp(cy, T, B);
-    if (!slid) break;
+  if (onScr(m.x, m.y, -10)) return;   // on screen: the world itself is the marker
+  const sp = SP(m.x, m.y);
+  const sx = sp[0], sy = sp[1];
+  /* SAFE-RECT INSET: the pointer lives inside a safe rectangle (84px
+     sides for the furniture columns, 150px top for the HUD cluster,
+     104px bottom) instead of at the raw screen edge, so it never hides
+     under a button. The chevron slides along the rect toward the
+     target and points at it. */
+  const L = 84, R = W - 84, T = 150, B = H - 104;
+  const cx = clamp(sx, L, R), cy = clamp(sy, T, B);
+  const dx = sx - cx, dy = sy - cy;   // which edge(s) it slid against
+  let px = cx, py = cy;
+  if (Math.abs(dx) > .5 && Math.abs(dy) > .5){
+    // corner region: keep the dominant axis' edge, slide the other
+    if (Math.abs(dx) >= Math.abs(dy)) py = clamp(sy, T, B); else px = clamp(sx, L, R);
   }
-  for (const rc of hudRects(now)){
-    if (cx <= rc.l - PAD || cx >= rc.r + PAD || cy <= rc.t - PAD || cy >= rc.b + PAD) continue;
-    const pl = cx - (rc.l - PAD), pr = (rc.r + PAD) - cx, pt = cy - (rc.t - PAD), pb = (rc.b + PAD) - cy;
-    const m = Math.min(pl, pr, pt, pb);
-    if (m === pl) cx = rc.l - PAD; else if (m === pr) cx = rc.r + PAD; else if (m === pt) cy = rc.t - PAD; else cy = rc.b + PAD;
-  }
-  cx = clamp(cx, PAD, W - PAD); cy = clamp(cy, PAD, H - PAD);   // hard on-screen guarantee
-  const a = Math.atan2(sy - H/2, sx - W/2);   // bearing from screen centre toward the metal
-  const pulse = 1 + .15 * Math.sin(now * Math.PI * 2 / 500);   // ~2Hz breathing, ±15%
-  ctx.save(); ctx.translate(cx, cy); ctx.rotate(a);
-  ctx.fillStyle = '#ffffff';
-  ctx.beginPath(); ctx.moveTo(20*pulse, 0); ctx.lineTo(7*pulse, -7); ctx.lineTo(7*pulse, 7); ctx.closePath(); ctx.fill();
+  const ang = Math.atan2(sy - py, sx - px);
+  const bob = Math.sin(t / 280) * 3;
+  px += Math.cos(ang) * bob; py += Math.sin(ang) * bob;
+  ctx.save();
+  ctx.translate(px, py); ctx.rotate(ang);
+  ctx.fillStyle = '#e8f4ff';
+  ctx.strokeStyle = 'rgba(38,32,40,.8)'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(13, 0); ctx.lineTo(-7, -8); ctx.lineTo(-3.5, 0); ctx.lineTo(-7, 8); ctx.closePath();
+  ctx.fill(); ctx.stroke();
   ctx.restore();
-  ctx.save(); ctx.translate(cx, cy);
-  const r = 13 * pulse;   // ~26px diamond — big enough to catch the eye at the screen edge
-  ctx.fillStyle = '#dfe7ec'; ctx.strokeStyle = '#5f6f79'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(0, -r); ctx.lineTo(r, 0); ctx.lineTo(0, r); ctx.lineTo(-r, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
-  ctx.font = '7px "Press Start 2P", monospace'; ctx.textAlign = 'center';
-  ctx.fillStyle = '#dfe7ec';
-  if (cy + r + 16 <= H - 4){ ctx.textBaseline = 'top'; ctx.fillText('METAL', 0, r + 5); }
-  else { ctx.textBaseline = 'bottom'; ctx.fillText('METAL', 0, -r - 5); }
-  ctx.restore();
+  ctx.font = '700 9px "Baloo 2",sans-serif';   // canvas 2D accepts fractional px (was 6.2px "Press Start 2P" — illegible at this size)
+  ctx.textAlign = 'center';
+  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(38,32,40,.8)';
+  ctx.strokeText('METAL', px, py + 20);
+  ctx.fillStyle = '#e8f4ff';
+  ctx.fillText('METAL', px, py + 20);
 }
-/* Screen-edge pointer for the current OBJECTIVE (Batch B): the Metal
-   arrow's gold sibling — a chevron + diamond pinned to the viewport
-   edge toward whatever the quest points at (objectiveTarget()), with
-   NO text label: the diamond is the label. Hides the moment the target
-   is on screen, or when the story offers nothing to point at. */
-/* HUD rects the edge pointer must never hide under (Batch D): measured
-   live from the DOM, refreshed at most twice a second — pause button,
-   minimap, peer badge, boss bar, toast stack, actives column. The toast
-   container itself is height:0 (its stack overflows visibly), so its
-   rect is synthesised from the measured worst-case stack height. */
 const HUD_RECT_IDS = ['#peerBadge', '#boardBadge', '#pauseBtn', '#minimap', '#items', '#bossBar', '#actives', '#rack'];
 function hudRects(now){
   if (ses.hudRects && now - ses.hudRectsAt < 500) return ses.hudRects;
@@ -8873,66 +7675,52 @@ function hudRects(now){
   ses.hudRects = out; ses.hudRectsAt = now;
   return out;
 }
-function drawObjectiveArrow(now){
-  ses.objPtr = null;
+function drawObjectiveArrow(t){
   if (!ses.started) return;
-  const t = objectiveTarget(); if (!t) return;
-  const u = UNIT(), vw = W/u, vh = H/u;
-  if (t.x >= ses.cam.x && t.x <= ses.cam.x + vw && t.y >= ses.cam.y && t.y <= ses.cam.y + vh) return;   // on screen: the world itself is the marker
-  const sx = NX(t.x), sy = NY(t.y);
+  const tg = objectiveTarget(); if (!tg) return;
+  let tx = tg.x, ty = tg.y;
+  if (tg.zone !== ses.myZone){
+    // cross-zone: point at the exit that leads toward the objective's zone
+    const ex = exitToward(ses.myZone, tg.zone);
+    if (!ex) return;
+    tx = ex.x; ty = ex.y;
+  }
+  if (onScr(tx, ty, -10)) return;   // on screen: the world itself is the marker
+  const sp = SP(tx, ty);
+  const sx = sp[0], sy = sp[1];
   /* SAFE-RECT INSET (Batch D): the old 34px raw-edge clamp parked the
      chevron exactly under the DOM furniture — due-W landed on the pause
      button, SW inside the minimap. The pointer now lives inside a safe
      rectangle (84px sides for the furniture columns, 150px top for the
-     toast/boss zone, 90px bottom), and if a HUD rect still reaches it,
-     it SLIDES ALONG ITS EDGE to the nearest clear spot. Rotation is
-     computed from the true target direction, so a slid pointer never
-     lies about where to go. */
-  const L = 84, R = Math.max(L + 40, W - 84), T = 150, B = Math.max(T + 40, H - 90);
-  let cx = clamp(sx, L, R), cy = clamp(sy, T, B);
-  const PAD = 26;   // chevron + diamond span ~21px + breathing room
-  for (let pass = 0; pass < 3; pass++){
-    let slid = false;
-    for (const rc of hudRects(now)){
-      if (cx <= rc.l - PAD || cx >= rc.r + PAD || cy <= rc.t - PAD || cy >= rc.b + PAD) continue;   // clear of this rect
-      const onTB = (cy === T || cy === B), onLR = (cx === L || cx === R);
-      if (onTB && !onLR) cx = cx < (rc.l + rc.r)/2 ? rc.l - PAD : rc.r + PAD;          // pinned top/bottom: slide horizontally
-      else if (onLR && !onTB) cy = cy < (rc.t + rc.b)/2 ? rc.t - PAD : rc.b + PAD;    // pinned left/right: slide vertically
-      else if (Math.abs(sx - W/2) >= Math.abs(sy - H/2)) cx = cx < (rc.l + rc.r)/2 ? rc.l - PAD : rc.r + PAD;   // corner: slide along the dominant heading axis
-      else cy = cy < (rc.t + rc.b)/2 ? rc.t - PAD : rc.b + PAD;
-      slid = true;
-    }
-    cx = clamp(cx, L, R); cy = clamp(cy, T, B);
-    if (!slid) break;
+     HUD cluster, 104px bottom) and slides along it toward the target;
+     it never sits under a button again. */
+  const L = 84, R = W - 84, T = 150, B = H - 104;
+  const cx = clamp(sx, L, R), cy = clamp(sy, T, B);
+  const dx = sx - cx, dy = sy - cy;
+  let px = cx, py = cy;
+  if (Math.abs(dx) > .5 && Math.abs(dy) > .5){
+    if (Math.abs(dx) >= Math.abs(dy)) py = clamp(sy, T, B); else px = clamp(sx, L, R);
   }
-  /* last resort (a boss bar can span nearly the whole top edge on a
-     narrow screen, leaving nowhere to slide): step straight OUT of any
-     rect still covering the point, along its smallest penetration. */
-  for (const rc of hudRects(now)){
-    if (cx <= rc.l - PAD || cx >= rc.r + PAD || cy <= rc.t - PAD || cy >= rc.b + PAD) continue;
-    const pl = cx - (rc.l - PAD), pr = (rc.r + PAD) - cx, pt = cy - (rc.t - PAD), pb = (rc.b + PAD) - cy;
-    const m = Math.min(pl, pr, pt, pb);
-    if (m === pl) cx = rc.l - PAD; else if (m === pr) cx = rc.r + PAD; else if (m === pt) cy = rc.t - PAD; else cy = rc.b + PAD;
-  }
-  cx = clamp(cx, PAD, W - PAD); cy = clamp(cy, PAD, H - PAD);   // hard on-screen guarantee, whatever the rects did
-  ses.objPtr = { x:cx, y:cy };
-  const a = Math.atan2(sy - H/2, sx - W/2);
-  const pulse = 1 + .15 * Math.sin(now * Math.PI * 2 / 500);
-  ctx.save(); ctx.translate(cx, cy); ctx.rotate(a);
-  ctx.fillStyle = '#ffd94d'; ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.moveTo(21*pulse, 0); ctx.lineTo(8*pulse, -7); ctx.lineTo(8*pulse, 7); ctx.closePath(); ctx.fill(); ctx.stroke();
+  const ang = Math.atan2(sy - py, sx - px);
+  const bob = Math.sin(t / 280) * 3;
+  px += Math.cos(ang) * bob; py += Math.sin(ang) * bob;
+  ctx.save();
+  ctx.translate(px, py); ctx.rotate(ang);
+  ctx.fillStyle = '#ffd94d';
+  ctx.strokeStyle = 'rgba(38,32,40,.8)'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(13, 0); ctx.lineTo(-7, -8); ctx.lineTo(-3.5, 0); ctx.lineTo(-7, 8); ctx.closePath();
+  ctx.fill(); ctx.stroke();
   ctx.restore();
-  ctx.save(); ctx.translate(cx, cy);
-  const r = 12 * pulse;
-  ctx.fillStyle = '#ffd94d'; ctx.strokeStyle = '#5b3a1e'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(0, -r); ctx.lineTo(r, 0); ctx.lineTo(0, r); ctx.lineTo(-r, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#fff8e7'; ctx.beginPath(); ctx.arc(0, 0, 2.4, 0, 7); ctx.fill();
-  ctx.restore();
+  ctx.font = '700 9px "Baloo 2",sans-serif';   // (was 6.2px "Press Start 2P" — illegible at this size)
+  ctx.textAlign = 'center';
+  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(38,32,40,.8)';
+  const label = labelForObjective ? labelForObjective() : 'QUEST';
+  ctx.strokeText(label, px, py + 20);
+  ctx.fillStyle = '#ffd94d';
+  ctx.fillText(label, px, py + 20);
 }
-/* TRAIL SWOOSH (Batch C): past ~1200 px/s of pointer speed the swept
-   trail thins and fades, so a full-speed flick reads as a blade streak
-   instead of a thick white banana covering the screen. At 2400 px/s:
-   width x0.55, alpha x0.60; linear between 1200 and 2400, flat outside. */
+
 function trailSpeedScale(v){
   const f = clamp((v - 1200) / 1200, 0, 1);
   return { w: 1 - .45 * f, a: 1 - .40 * f };
@@ -9110,19 +7898,25 @@ function frame(now){
       ses.particles.push({ x:me.x + rand(-.8,.8), y:me.y + rand(-.6,.3), vx:rand(.008,.03), vy:rand(.004,.014), life:2, grav:.25, color: Math.random() < .5 ? '#ffd9e8' : '#ffe9a8', r:rand(2.5,4.5) });
       capParticles();
     }
-    // FISH RIPPLES (Batch C): every ~2.4-4.1s a pair of expanding rings
-    // blooms at the next seeded shore spot — but only near the view, so
-    // the sea the player can see is the sea that ripples
+    // FISH RIPPLES: every ~2.4-4.1s a pair of expanding rings blooms
+    // on this zone's own water, near the view
     if (now >= ses.nextRippleAt){
       ses.nextRippleAt = now + 2400 + (ses.rippleIx * 613) % 1700;
-      const sp = RIPPLE_SPOTS[ses.rippleIx++ % RIPPLE_SPOTS.length];
-      const vw3 = W/UNIT(), vh3 = H/UNIT();
-      if (sp.x > ses.cam.x - .6 && sp.x < ses.cam.x + vw3 + .6 && sp.y > ses.cam.y - .6 && sp.y < ses.cam.y + vh3 + .6){
-        ses.popRings.push({ x:sp.x, y:sp.y, r:.015, life:1, color:'#bfe6ff' });
-        ses.popRings.push({ x:sp.x, y:sp.y, r:.004, life:.8, color:'#dff4ff' });
+      const cells = zoneWaterCells[ses.myZone];
+      if (cells && cells.length){
+        ses.rippleIx++;
+        for (let tries = 0; tries < 8; tries++){
+          const ci = cells[(ses.rippleIx * 37 + tries * 11) % cells.length];
+          const wx = (ci % WATER_GRID_N + .5) * .3, wy = (((ci / WATER_GRID_N) | 0) + .5) * .3;
+          if (!onScr(wx, wy, -20)) continue;
+          ses.popRings.push({ x:wx, y:wy, r:.015, life:1, color:'#bfe6ff' });
+          ses.popRings.push({ x:wx, y:wy, r:.004, life:.8, color:'#dff4ff' });
+          break;
+        }
       }
     }
   }
+  computeView();
   drawField(now);
   // y-sorted entity pass: trees, rocks, buildings and slimes by ground
   // anchor, then occlusion ghosts for slimes hidden behind props
@@ -9139,16 +7933,16 @@ function frame(now){
   // title state shows the dimmed world only, no floats or FX)
   const showFx = ses.started;
   ses.popRings = ses.popRings.filter(r=>r.life>0);
-  for (const r of showFx ? ses.popRings : []){ r.r+=dt*.00045; r.life-=dt/380; ctx.strokeStyle=r.color; ctx.globalAlpha=Math.max(0,r.life); ctx.lineWidth=4; ctx.beginPath(); ctx.arc(NX(r.x),NY(r.y),r.r*SCALE(),0,7); ctx.stroke(); ctx.globalAlpha=1; }
+  for (const r of showFx ? ses.popRings : []){ r.r+=dt*.00045; r.life-=dt/380; const rp = SP(r.x, r.y); ctx.strokeStyle=r.color; ctx.globalAlpha=Math.max(0,r.life); ctx.lineWidth=4; ctx.beginPath(); ctx.ellipse(rp[0], rp[1], 113.1*r.r*_ZK, 56.55*r.r*_ZK, 0, 0, 7); ctx.stroke(); ctx.globalAlpha=1; }
   ses.particles = ses.particles.filter(p=>p.life>0);
   // particles are PIXEL SQUARES, not arc paths: one fillRect each (no
   // beginPath/arc/fill per spark) — the cheapest canvas op there is, and
   // it matches the game's pixel-art style. At the 420 cap the old arc
   // version cost ~1,300 path calls a frame; this costs 420 rects.
-  for (const p of showFx ? ses.particles : []){ p.x+=p.vx*dt/60; p.y+=p.vy*dt/60; p.vy+=.0009*dt/16*(p.grav||1); p.life-=dt/480; ctx.globalAlpha=Math.max(0,p.life); ctx.fillStyle=p.color; const ps = p.r*1.6; ctx.fillRect(NX(p.x)-ps/2, NY(p.y)-ps/2, ps, ps); ctx.globalAlpha=1; }
+  for (const p of showFx ? ses.particles : []){ p.x+=p.vx*dt/60; p.y+=p.vy*dt/60; p.vy+=.0009*dt/16*(p.grav||1); p.life-=dt/480; ctx.globalAlpha=Math.max(0,p.life); ctx.fillStyle=p.color; const ps = p.r*1.6; const pp3 = SP(p.x, p.y); ctx.fillRect(pp3[0]-ps/2, pp3[1]-ps/2, ps, ps); ctx.globalAlpha=1; }
   ses.floats = ses.floats.filter(f=>f.life>0);
   ctx.textAlign='center'; let lastFloatFont = '';   // ctx.font is PARSED on every assignment (costly on Safari) — set it only when the size changes
-  for (const f of showFx ? ses.floats : []){ f.y-=dt*.00003; f.life-=dt/(f.big?1750:950); ctx.globalAlpha=Math.max(0,f.life); const fnt = '900 '+(f.size || (f.big?26:17))+'px "Baloo 2",sans-serif'; if (fnt !== lastFloatFont){ lastFloatFont = fnt; ctx.font = fnt; } ctx.lineWidth = (f.big || f.size>=20) ? 6 : 4; ctx.strokeStyle='rgba(60,40,10,.8)'; ctx.strokeText(f.text,NX(f.x),NY(f.y)); ctx.fillStyle=f.color; ctx.fillText(f.text,NX(f.x),NY(f.y)); ctx.globalAlpha=1; }
+  for (const f of showFx ? ses.floats : []){ f.y-=dt*.00003; f.life-=dt/(f.big?1750:950); ctx.globalAlpha=Math.max(0,f.life); const fnt = '900 '+(f.size || (f.big?26:17))+'px "Baloo 2",sans-serif'; if (fnt !== lastFloatFont){ lastFloatFont = fnt; ctx.font = fnt; } ctx.lineWidth = (f.big || f.size>=20) ? 6 : 4; ctx.strokeStyle='rgba(60,40,10,.8)'; const fp2 = SP(f.x, f.y); ctx.strokeText(f.text,fp2[0],fp2[1]); ctx.fillStyle=f.color; ctx.fillText(f.text,fp2[0],fp2[1]); ctx.globalAlpha=1; }
   if (showFx) drawDmgFloats(now);   // ISW glyph damage numbers, on their own timeline
   drawMetalArrow(now);   // edge locator for the guaranteed metal, while it lives off-screen
   drawObjectiveArrow(now);   // edge pointer for the current story objective, while IT is off-screen
@@ -9160,14 +7954,14 @@ function frame(now){
   // (Render order confirmed: this block runs after drawEntities, so spears
   // draw over slimes, and before the swords.)
   for (const sh of ses.shots){
-    const sx = NX(sh.x), sy = NY(sh.y), sa = Math.atan2(sh.vy, sh.vx), u = UNIT();
+    const sp0 = SP(sh.x, sh.y), sp1 = SP(sh.x + sh.vx, sh.y + sh.vy), sx = sp0[0], sy = sp0[1], sa = Math.atan2(sp1[1] - sp0[1], sp1[0] - sp0[0]), u = UNIT();
     ctx.save(); ctx.translate(sx, sy); ctx.rotate(sa);
-    const tail = Math.hypot(sh.vx, sh.vy) * .07;   // streak length = speed * 70ms of travel
+    const tail = Math.hypot(sp1[0] - sp0[0], sp1[1] - sp0[1]) * .07;   // streak length = speed * 70ms of travel (projected px)
     ctx.lineCap = 'round';
     ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 8;   // outer glow pass
-    ctx.beginPath(); ctx.moveTo(-tail*u, 0); ctx.lineTo(0, 0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-tail, 0); ctx.lineTo(0, 0); ctx.stroke();
     ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.lineWidth = 3.5;   // hot core pass
-    ctx.beginPath(); ctx.moveTo(-tail*u, 0); ctx.lineTo(0, 0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-tail, 0); ctx.lineTo(0, 0); ctx.stroke();
     const simg = WEAPON_IMGS.spear;
     if (simg && simg.complete && simg.naturalWidth){
       const iw = .38*u, ih = iw * (simg.naturalHeight/simg.naturalWidth);
@@ -9184,8 +7978,10 @@ function frame(now){
   const peerK = 1 - Math.pow(.6, dt/16.667);
   for (const [id,p] of world.peers){
     if (now-p.lastSeen>6000) continue;
+    if (p.zone !== ses.myZone) continue;   // only same-zone peers render
     p.x += (p.tx-p.x)*peerK; p.y += (p.ty-p.y)*peerK;
-    drawSword(NX(p.x),NY(p.y),p.angle,p.weapon,p.color,p.name,false,now,p.whirling,p.ext||0);
+    const pg = SP(p.x, p.y), ptip = SP(p.x + Math.cos(p.angle), p.y + Math.sin(p.angle));
+    drawSword(pg[0], pg[1], Math.atan2(ptip[1] - pg[1], ptip[0] - pg[0]), p.weapon, p.color, p.name, false, now, p.whirling, p.ext||0, Math.hypot(ptip[0] - pg[0], ptip[1] - pg[1]));
   }
   // my sword on top, with the slash trail: the full blade segment (grip +
   // tip) is recorded EVERY frame it moves >4px on screen — any fast wielded
@@ -9207,8 +8003,8 @@ function frame(now){
         ses.myTrail.push(seg);
       } else {
         const movedPx = Math.max(
-          Math.hypot((seg.tx-lastP.tx)*UNIT(), (seg.ty-lastP.ty)*UNIT()),
-          Math.hypot((seg.bx-lastP.bx)*UNIT(), (seg.by-lastP.by)*UNIT()));
+          segPx(seg.tx, seg.ty, lastP.tx, lastP.ty),
+          segPx(seg.bx, seg.by, lastP.bx, lastP.by));
         if (movedPx > 4){
           // interpolate along big jumps (coarse pointer events / fast flicks)
           // so the swept area stays continuous instead of gapping
@@ -9236,7 +8032,7 @@ function frame(now){
            C leading (tip) edge stroked white, hw*.8 @ .9, plus the
              trailing (grip) edge stroked in colour, 3px @ .3 — both edges
              of the blade read. age here is ageFade: 1 = newest. */
-        const S2 = ses.myTrail.map(p => ({ bx:NX(p.bx), by:NY(p.by), tx:NX(p.tx), ty:NY(p.ty), age: clamp(1-(now-p.t)/470, 0, 1) }));
+        const S2 = ses.myTrail.map(p => { const b1 = SP(p.bx, p.by), bxp = b1[0], byp = b1[1]; const t1 = SP(p.tx, p.ty); return { bx:bxp, by:byp, tx:t1[0], ty:t1[1], age: clamp(1-(now-p.t)/470, 0, 1) }; });
         const ts = trailSpeedScale(me.ptrSpeedPx);   // Batch C: fast flicks thin + fade the swoosh
         const hw = clamp(myReach() * SCALE() * (1 + bl.ext) * .16, 9, 26) * ts.w;   // saber halfwidth follows weapon reach, as drawSword computes it
         ctx.save(); ctx.lineCap='round'; ctx.lineJoin='round';
@@ -9275,18 +8071,20 @@ function frame(now){
     }
     if (ses.started && now < me.shieldUntil){
       // Aegis shield: a translucent blue bubble around the sword
-      const sr = (myReach()+.05)*UNIT();
+      const mp3 = SP(me.x, me.y), srx = 113.1*(myReach()+.05)*_ZK, sry = 56.55*(myReach()+.05)*_ZK;
       ctx.fillStyle = 'rgba(77,171,255,.13)';
-      ctx.beginPath(); ctx.arc(NX(me.x), NY(me.y), sr, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(mp3[0], mp3[1], srx, sry, 0, 0, 7); ctx.fill();
       ctx.strokeStyle = 'rgba(120,200,255,.85)'; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(NX(me.x), NY(me.y), sr, 0, 7); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(mp3[0], mp3[1], srx, sry, 0, 0, 7); ctx.stroke();
     }
     if (ses.started && now < me.invulnUntil && Math.floor(now/90)%2===0){
       // invulnerability blink ring
+      const mp4 = SP(me.x, me.y);
       ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 2.5;
-      ctx.beginPath(); ctx.arc(NX(me.x), NY(me.y), (myReach()+.045)*UNIT(), 0, 7); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(mp4[0], mp4[1], 113.1*(myReach()+.045)*_ZK, 56.55*(myReach()+.045)*_ZK, 0, 0, 7); ctx.stroke();
     }
-    drawSword(NX(me.x),NY(me.y),bl.ang,prog().weapon,me.color, ses.started?prog().name:'', true, now, now<me.whirlUntil, bl.ext);
+    const mg = SP(me.x, me.y), mt = SP(me.x + Math.cos(bl.ang) * myReach() * (1 + bl.ext), me.y + Math.sin(bl.ang) * myReach() * (1 + bl.ext));
+    drawSword(mg[0], mg[1], Math.atan2(mt[1] - mg[1], mt[0] - mg[0]), prog().weapon, me.color, ses.started?prog().name:'', true, now, now<me.whirlUntil, bl.ext, Math.hypot(mt[0] - mg[0], mt[1] - mg[1]));
   }
 
   // pause guarantee: with dt frozen at 0 the trail vanishes and the sword can
@@ -9294,7 +8092,8 @@ function frame(now){
   // the LAST canvas op while paused so it always stays visible under the overlay
   if (ses.paused && ses.started){
     const bl = bladeAt(now);
-    drawSword(NX(me.x),NY(me.y),bl.ang,prog().weapon,me.color, prog().name, true, now, false, bl.ext);
+    const mg2 = SP(me.x, me.y), mt2 = SP(me.x + Math.cos(bl.ang) * myReach() * (1 + bl.ext), me.y + Math.sin(bl.ang) * myReach() * (1 + bl.ext));
+    drawSword(mg2[0], mg2[1], Math.atan2(mt2[1] - mg2[1], mt2[0] - mg2[0]), prog().weapon, me.color, prog().name, true, now, false, bl.ext, Math.hypot(mt2[0] - mg2[0], mt2[1] - mg2[1]));
   }
 
   // scoreboard refresh (2/s). refreshPeers() already calls refreshHUD()
@@ -9340,27 +8139,30 @@ function titleImgsReady(){
   for (const n in SLIME_IMGS) if (!ok(SLIME_IMGS[n])) return false;
   for (const n in NPC_IMGS) if (!ok(NPC_IMGS[n])) return false;
   for (const n in SHRINE_IMGS) if (!ok(SHRINE_IMGS[n])) return false;
+  if (!ok(PLATE_IMGS.town)) return false;   // the still IS the Alderwake plate now
+  for (const n of ['elder','forge','pike','child']) if (!ok(NPC_SHEET_IMGS[n])) return false;
   return ok(SPROUT_IMG);
 }
 function stageTitleScene(){
-  // camera: the town vignette, centred a touch north of the plaza so
-  // the bank/shop doorways crown the top of the frame
-  const vw = W/UNIT(), vh = H/UNIT();
-  ses.cam.x = clamp(TOWN.x - vw/2, 0, Math.max(0, WORLD - vw));
-  ses.cam.y = clamp(TOWN.y - .08 - vh/2, 0, Math.max(0, WORLD - vh));
+  // camera: the Alderwake vignette, centred on the plaza so the
+  // bank/shop doorways crown the top of the frame (centre convention)
+  ses.cam.x = 7.0; ses.cam.y = 6.9;
+  ses._titleZone = ses.myZone; ses.myZone = 'town';   // the still is staged in town; the player's zone is restored on unstage
   for (let i=0;i<TITLE_CAST.length;i++){
     const c = TITLE_CAST[i], k = SLIME_KINDS.find(m=>m.kind===c.kind) || SLIME_KINDS[0];
     const id = 'ttl' + i;
-    world.slimes.set(id, { id, kind:k.kind, hp:k.hp, max:k.hp, r:k.r, x:TOWN.x + c.dx, y:TOWN.y + c.dy, vx:0, vy:0, dir:0, color:c.color, seed:c.seed, squish:0, flash:0 });
+    world.slimes.set(id, { id, kind:k.kind, hp:k.hp, max:k.hp, r:k.r, x:TOWN.x + c.dx, y:TOWN.y + c.dy, vx:0, vy:0, dir:0, color:c.color, seed:c.seed, squish:0, flash:0, zone:'town', isle:0 });
   }
   ses.titleStaging = true;   // lets drawEntities pose the townsfolk for this one pass
 }
 function unstageTitleScene(){
   for (let i=0;i<TITLE_CAST.length;i++) world.slimes.delete('ttl' + i);
   ses.titleStaging = false;
+  if (ses._titleZone) ses.myZone = ses._titleZone;
 }
 function renderTitleStage(){
   stageTitleScene();
+  computeView();
   ctx.setTransform(DPR,0,0,DPR,0,0);
   drawField(TITLE_STILL_T);
   drawEntities(TITLE_STILL_T);
