@@ -1522,10 +1522,25 @@ function exitToward(zoneId, targetZone){
    once per frame into _camPX/_camPY/_ZK by computeView) ---- */
 let _camPX = 0, _camPY = 0, _ZK = .4;
 function ZK(){ return _ZK; }
+/* WORLD ZOOM (Handler, 2026-11-10: 'Zoom in 5x half the slime size'):
+   the game view shows 1/5 the world area it used to. Applied ONCE,
+   here, at the single place the effective zoom is derived — every
+   ground-locked thing (plate, water, props, NPCs, stick figure,
+   sword, tags) reads ZK()/SP() and scales together, and SP /
+   screenToZone stay exact inverses at the new size. */
+const WORLD_ZOOM = 5;
 function computeView(){
-  _ZK = clamp(Math.min(W / 1150, H / 620), .30, .56);
+  _ZK = clamp(Math.min(W / 1150, H / 620), .30, .56) * WORLD_ZOOM;
   _camPX = (ses.cam.x - ses.cam.y) * 80;
   _camPY = (ses.cam.x + ses.cam.y) * 40;
+}
+/* Zone-unit distance from the view centre to a screen corner — the
+   visible half-diagonal, through the iso inverse (screenToZone's
+   cell math, maximised over the corners). A point farther than this
+   from the player cannot be on their screen at the current zoom. */
+function visibleHalfDiagU(){
+  const p = W / (96 * _ZK), q = H / (48 * _ZK);
+  return CELL_U * Math.sqrt((p * p + q * q) / 2);
 }
 const _sp = [0, 0];
 function SP(x, y){
@@ -1754,8 +1769,12 @@ const SCALE = () => UNIT();
    hop lift) now scale WITH the ground: 1000*ZK puts a mid slime at
    knee-to-waist height against an ISW NPC, kings ~3.3x a mid's width,
    the Emperor large but never screen-filling. Hitboxes (s.r) and every
-   system number are untouched — render only. */
-const SLIME_SCALE = () => 1000 * ZK();
+   system number are untouched — render only.
+   v0.6.3 (Handler: 'half the slime size', alongside the 5x world
+   zoom): the base halves to 500*ZK — slimes are half their v0.6.1
+   size RELATIVE to the ground/NPCs/trees; kings/elites keep their
+   multipliers on top of the halved base. */
+const SLIME_SCALE = () => 500 * ZK();
 /* Legacy separable projections, kept ONLY for the retired ghost-pass
    internals (never fed occluders any more): they answer with the full
    iso projection pinned to the camera row/column. Live code uses SP(). */
@@ -2552,19 +2571,39 @@ function spawnSlime(opts={}){
        whole diamond. Population targets are unchanged. */
     zid = opts.zone || pickSpawnZone();
     const nearShrine = (x, y) => { for (const k in SHRINE_POS){ const p = SHRINE_POS[k]; if (p.zone === zid && dist2(x, y, p.x, p.y) < .85 * .85) return true; } return false; };
+    /* SPAWN VISIBILITY (v0.6.3, WORLD_ZOOM): at 5x zoom the visible
+       half-diagonal is only ~4.5u, so a wild spawn landing inside it
+       pops into existence on screen. Every candidate through this
+       path — ring and zone-wide alike — must land beyond
+       visibleHalfDiag + .5u from every player in the zone, and the
+       ring's inner radius rises to that floor. (Explicit-position
+       spawns never pass through here: splitter children, guardian /
+       boss summons, the practice slime, and the metal guarantee —
+       which announces itself with a banner — are exempt by design.) */
+    const spots = playersInZone(zid);
+    const clearR = visibleHalfDiagU() + .5, clearR2 = clearR * clearR;
+    const tooClose = (x, y) => spots.some(c => dist2(x, y, c.x, c.y) < clearR2);
     let placed = false;
     for (let tries = 0; tries < 8 && !placed; tries++){
       if (opts.nearPlayer !== false && Math.random() < .45){
-        const spots = playersInZone(zid);
         if (spots.length){
           const c = spots[Math.floor(Math.random() * spots.length)];
-          const a = rand(0, Math.PI * 2), d = rand(1.3, 6.0);
+          const a = rand(0, Math.PI * 2), d = rand(Math.max(1.3, clearR), Math.max(6.0, clearR + 1.2));
           sx = c.x + Math.cos(a) * d; sy = c.y + Math.sin(a) * d;
         } else { const p = sampleZonePoint(zid); sx = p.x; sy = p.y; }
       } else { const p = sampleZonePoint(zid); sx = p.x; sy = p.y; }
-      if (canStandZ(zid, sx, sy) && !safeZoneAt(sx, sy, zid) && !nearShrine(sx, sy)) placed = true;
+      if (canStandZ(zid, sx, sy) && !safeZoneAt(sx, sy, zid) && !nearShrine(sx, sy) && !tooClose(sx, sy)) placed = true;
     }
-    if (!placed){ const p = projectToZone(zid, isFinite(sx) ? sx : ZONE_U / 2, isFinite(sy) ? sy : ZONE_U / 2); sx = p.x; sy = p.y; }
+    if (!placed){
+      /* keep the pop-in rule on the fallback path too: shove the
+         candidate radially out of the nearest player's view, then
+         project onto standable ground as before */
+      if (isFinite(sx) && isFinite(sy)) for (const c of spots){
+        const dd2 = dist2(sx, sy, c.x, c.y);
+        if (dd2 < clearR2 && dd2 > 1e-6){ const push = (clearR + .3) / Math.sqrt(dd2); sx = c.x + (sx - c.x) * push; sy = c.y + (sy - c.y) * push; }
+      }
+      const p = projectToZone(zid, isFinite(sx) ? sx : ZONE_U / 2, isFinite(sy) ? sy : ZONE_U / 2); sx = p.x; sy = p.y;
+    }
   }
   /* FINITENESS CHOKE POINT (Batch D, kept): a slime NEVER enters the
      world at a non-finite position. */
@@ -9511,6 +9550,7 @@ function unstageTitleScene(){
 function renderTitleStage(){
   stageTitleScene();
   computeView();
+  _ZK /= WORLD_ZOOM;   // the diorama keeps its composed pre-zoom framing (v0.6.3): the vignette was staged for the legacy view — at 5x it would be a meaningless crop of the plaza
   ctx.setTransform(DPR,0,0,DPR,0,0);
   drawField(TITLE_STILL_T);
   drawEntities(TITLE_STILL_T);
