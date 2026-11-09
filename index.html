@@ -8660,6 +8660,21 @@ function drawGhosts(t, occluders, list){
     }
   }
 }
+/* BLADE LIVENESS (coach build, 2026-11-10): the manual-sword gate —
+   the blade cuts only while the hand's real speed is over 240 px/s —
+   is now drawn, not just enforced. liveF ramps 0..1 across the gate
+   (speed <=100 -> 0, >=300 -> 1): a slow hand's blade renders DULL
+   (greyed, dim, thin-trailed), a fast hand's blade burns at full
+   brightness with its trail. dullMix desaturates a hex colour toward
+   its own luminance by (1-f). */
+function dullMix(hex, f){
+  if (f >= .98 || typeof hex !== 'string' || hex[0] !== '#') return hex;
+  const n = parseInt(hex.slice(1), 16); if (!isFinite(n)) return hex;
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const lum = Math.round(.299 * r + .587 * g + .114 * b);
+  const k = .12 + .88 * f, mix = v => Math.round(lum + (v - lum) * k);
+  return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
+}
 /* STICK FIGURE (Handler, 2026-11-09): a little upright figure stands
    at the base of every sword — feet on the player's ground point, one
    arm reaching down to the grip (the pommel anchor the blade pivots
@@ -8691,8 +8706,9 @@ function drawStickFigure(x, y){
   ctx.restore();
   return H;
 }
-function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,whirling,ext=0,reachPxIn){
+function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,whirling,ext=0,reachPxIn,liveFIn){
   const w=WEAPONS[weaponIdx];
+  const lf = liveFIn === undefined ? 1 : liveFIn;   // blade liveness 0..1 (see dullMix note): dull when the hand is too slow to cut
   const figH = drawStickFigure(x, y);   // the figure stands under the blade; name floats above his head
   const reachPx = reachPxIn != null ? reachPxIn : (isMe?myReach():(w.reach)) * SCALE() * (1+ext);   // callers in the iso world pass the PROJECTED reach
   const whirlA = whirling ? (t/38)%(Math.PI*2) : 0;
@@ -8703,7 +8719,7 @@ function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,whirling,ext=0,reachPxI
     const span = a - swordAngleAt(t-80);
     if (Math.abs(span) > .12){
       ctx.save(); ctx.translate(x,y);
-      ctx.fillStyle = color; ctx.globalAlpha = .16;
+      ctx.fillStyle = color; ctx.globalAlpha = .16 * lf;
       ctx.beginPath(); ctx.moveTo(0,0);
       ctx.arc(0,0,reachPx, Math.min(a-span,a), Math.max(a-span,a));
       ctx.closePath(); ctx.fill(); ctx.restore(); ctx.globalAlpha = 1;
@@ -8711,7 +8727,7 @@ function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,whirling,ext=0,reachPxI
   }
   // trail — additive so the blade carries a lightsaber-ish glow of its own
   ctx.save(); ctx.globalCompositeOperation='lighter';
-  ctx.strokeStyle = color; ctx.globalAlpha=.28; ctx.lineWidth = weaponIdx>=3?13:9; ctx.lineCap='round';
+  ctx.strokeStyle = color; ctx.globalAlpha = .28 * (.25 + .75 * lf); ctx.lineWidth = weaponIdx>=3?13:9; ctx.lineCap='round';
   ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(tipX,tipY); ctx.stroke();
   ctx.restore(); ctx.globalAlpha=1;
   ctx.save(); ctx.translate(x,y); ctx.rotate(a);
@@ -8725,10 +8741,19 @@ function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,whirling,ext=0,reachPxI
     // saber glow hugging the sprite silhouette: a slightly larger
     // colour-tint silhouette behind the sprite (was ctx.shadowBlur=10
     // every frame per sword — shadowBlur is brutally slow on iOS)
-    ctx.save(); ctx.globalAlpha = .5;
+    ctx.save(); ctx.globalAlpha = .5 * (.3 + .7 * lf);
     ctx.drawImage(colorTintOf(wimg, color), -L*.17 - iw*.04, -ih/2 - ih*.07, iw*1.08, ih*1.14);
     ctx.restore();
     ctx.drawImage(wimg, -L*.17, -ih/2, iw, ih);
+    if (lf < .98){
+      /* DULL BLADE: a grey silhouette settles over the steel (and the
+         pommel gem) — slow = grey is the whole lesson, readable in a
+         still frame. At full speed this pass vanishes entirely. */
+      ctx.save(); ctx.globalAlpha = (1 - lf) * .78;
+      ctx.drawImage(colorTintOf(wimg, '#8f979e'), -L*.17, -ih/2, iw, ih);
+      ctx.fillStyle = '#8f979e'; ctx.beginPath(); ctx.arc(0, 0, 7, 0, 7); ctx.fill();
+      ctx.restore();
+    }
     ctx.restore();
     if (name){
       ctx.font='800 13px "Baloo 2",sans-serif'; ctx.textAlign='center';
@@ -8741,11 +8766,11 @@ function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,whirling,ext=0,reachPxI
   ctx.lineJoin='round';
   if (w.id==='hammer'){
     ctx.fillStyle='#a06a35'; ctx.fillRect(L*.25,-3.5,L*.45,7);
-    ctx.fillStyle='#90a4ae'; ctx.strokeStyle='#455a64'; ctx.lineWidth=2.5;
+    ctx.fillStyle=dullMix('#90a4ae', lf); ctx.strokeStyle='#455a64'; ctx.lineWidth=2.5;
     roundRect(L*.62,-L*.16,L*.36,L*.32,6); ctx.fill(); ctx.stroke();
   } else {
     const bw = w.id==='great'? L*.11 : w.id==='dagger'? L*.10 : L*.075;
-    ctx.fillStyle=w.color; ctx.strokeStyle='rgba(70,70,70,.55)'; ctx.lineWidth=1.6;
+    ctx.fillStyle=dullMix(w.color, lf); ctx.strokeStyle='rgba(70,70,70,.55)'; ctx.lineWidth=1.6;
     ctx.beginPath();
     if (w.id==='katana'){ ctx.moveTo(L*.16,0); ctx.quadraticCurveTo(L*.6,-bw*1.5, L, -bw*.4); ctx.quadraticCurveTo(L*.6, bw*.3, L*.16, bw*.6); }
     else { ctx.moveTo(L*.16,-bw); ctx.lineTo(L*.92,0); ctx.lineTo(L*.16,bw); }
@@ -9142,14 +9167,28 @@ function frame(now){
     if (now-p.lastSeen>6000) continue;
     if (p.zone !== ses.myZone) continue;   // only same-zone peers render
     p.x += (p.tx-p.x)*peerK; p.y += (p.ty-p.y)*peerK;
+    { /* peer blade liveness, from their hand's interpolated travel this
+         frame (same iso projection + ramp the local gate reads) */
+      const pvx = p.x - (p._lx === undefined ? p.x : p._lx), pvy = p.y - (p._ly === undefined ? p.y : p._ly);
+      p._lx = p.x; p._ly = p.y;
+      const pdx = (pvx - pvy) * 80 * _ZK, pdy = (pvx + pvy) * 40 * _ZK;
+      const pspd = dt > 0 ? Math.hypot(pdx, pdy) / dt * 1000 : 0;
+      const ptgt = p.whirling ? 1 : clamp((pspd - 100) / 200, 0, 1);
+      p.liveF = p.liveF === undefined ? ptgt : p.liveF + (ptgt - p.liveF) * (1 - Math.exp(-dt / 45));
+    }
     const pg = SP(p.x, p.y), ptip = SP(p.x + Math.cos(p.angle), p.y + Math.sin(p.angle));
-    drawSword(pg[0], pg[1], Math.atan2(ptip[1] - pg[1], ptip[0] - pg[0]), p.weapon, p.color, p.name, false, now, p.whirling, p.ext||0, Math.hypot(ptip[0] - pg[0], ptip[1] - pg[1]));
+    drawSword(pg[0], pg[1], Math.atan2(ptip[1] - pg[1], ptip[0] - pg[0]), p.weapon, p.color, p.name, false, now, p.whirling, p.ext||0, Math.hypot(ptip[0] - pg[0], ptip[1] - pg[1]), p.liveF === undefined ? 1 : p.liveF);
   }
   // my sword on top, with the slash trail: the full blade segment (grip +
   // tip) is recorded EVERY frame it moves >4px on screen — any fast wielded
   // motion counts (drag, flick, swing, stab, whirlwind) — and rendered as swept
   // quads between consecutive segments (see LIGHTSABER v4 below).
   {
+    /* LOCAL BLADE LIVENESS (render): ramps across the 240 px/s cut gate
+       so drawSword can grey a slow blade and brighten a fast one. The
+       whirlwind skill is scripted motion — always fully live. */
+    const liveTgt = (now < me.whirlUntil) ? 1 : clamp(((me.speed || 0) - 100) / 200, 0, 1);
+    ses.liveF = ses.liveF === undefined ? liveTgt : ses.liveF + (liveTgt - ses.liveF) * (1 - Math.exp(-dt / 45));
     const bl = bladeAt(now);
     if (ses.started){
       const whirlingNow = now < me.whirlUntil;
@@ -9196,6 +9235,7 @@ function frame(now){
              of the blade read. age here is ageFade: 1 = newest. */
         const S2 = ses.myTrail.map(p => { const b1 = SP(p.bx, p.by), bxp = b1[0], byp = b1[1]; const t1 = SP(p.tx, p.ty); return { bx:bxp, by:byp, tx:t1[0], ty:t1[1], age: clamp(1-(now-p.t)/470, 0, 1) }; });
         const ts = trailSpeedScale(me.ptrSpeedPx);   // Batch C: fast flicks thin + fade the swoosh
+        ts.a *= .3 + .7 * (ses.liveF === undefined ? 1 : ses.liveF);   // coach build: the swept trail's intensity rides the same liveness as the blade — a slow drag barely smoulders
         const hw = clamp(myReach() * SCALE() * (1 + bl.ext) * .16, 9, 26) * ts.w;   // saber halfwidth follows weapon reach, as drawSword computes it
         ctx.save(); ctx.lineCap='round'; ctx.lineJoin='round';
         ctx.globalCompositeOperation = 'lighter';   // additive light blending
@@ -9246,7 +9286,7 @@ function frame(now){
       ctx.beginPath(); ctx.ellipse(mp4[0], mp4[1], 113.1*(myReach()+.045)*_ZK, 56.55*(myReach()+.045)*_ZK, 0, 0, 7); ctx.stroke();
     }
     const mg = SP(me.x, me.y), mt = SP(me.x + Math.cos(bl.ang) * myReach() * (1 + bl.ext), me.y + Math.sin(bl.ang) * myReach() * (1 + bl.ext));
-    drawSword(mg[0], mg[1], Math.atan2(mt[1] - mg[1], mt[0] - mg[0]), prog().weapon, me.color, ses.started?prog().name:'', true, now, now<me.whirlUntil, bl.ext, Math.hypot(mt[0] - mg[0], mt[1] - mg[1]));
+    drawSword(mg[0], mg[1], Math.atan2(mt[1] - mg[1], mt[0] - mg[0]), prog().weapon, me.color, ses.started?prog().name:'', true, now, now<me.whirlUntil, bl.ext, Math.hypot(mt[0] - mg[0], mt[1] - mg[1]), ses.liveF === undefined ? 1 : ses.liveF);
   }
 
   // pause guarantee: with dt frozen at 0 the trail vanishes and the sword can
@@ -9255,7 +9295,7 @@ function frame(now){
   if (ses.paused && ses.started){
     const bl = bladeAt(now);
     const mg2 = SP(me.x, me.y), mt2 = SP(me.x + Math.cos(bl.ang) * myReach() * (1 + bl.ext), me.y + Math.sin(bl.ang) * myReach() * (1 + bl.ext));
-    drawSword(mg2[0], mg2[1], Math.atan2(mt2[1] - mg2[1], mt2[0] - mg2[0]), prog().weapon, me.color, prog().name, true, now, false, bl.ext, Math.hypot(mt2[0] - mg2[0], mt2[1] - mg2[1]));
+    drawSword(mg2[0], mg2[1], Math.atan2(mt2[1] - mg2[1], mt2[0] - mg2[0]), prog().weapon, me.color, prog().name, true, now, false, bl.ext, Math.hypot(mt2[0] - mg2[0], mt2[1] - mg2[1]), ses.liveF === undefined ? 1 : ses.liveF);
   }
 
   // scoreboard refresh (2/s). refreshPeers() already calls refreshHUD()
