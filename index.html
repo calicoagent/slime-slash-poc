@@ -1734,6 +1734,19 @@ function segDist(px, py, s){
 }
 const UNIT = () => Math.min(W,H);                   // px per world unit (entity sprite scale — unchanged by the transplant)
 const SCALE = () => UNIT();
+/* SLIME SPRITE SCALE (v0.6.1 fix — Handler's photo, 2026-11-09): slime
+   radii were drawn with the legacy SCALE() = min(W,H) px-per-unit,
+   which the transplant carried over verbatim while the ground went iso
+   at 80px/unit x ZK (ZK capped at .56) and every other entity was
+   re-locked to ZK (NPCs 150*ZK, props 440*ZK). On any screen whose
+   min(W,H) outgrows the capped ground scale — a big PC monitor above
+   all — slimes inflated away from the world: kings spanned 4+ ground
+   units, the fodder mass carpeted the plate. Slime sprites (and their
+   hop lift) now scale WITH the ground: 1000*ZK puts a mid slime at
+   knee-to-waist height against an ISW NPC, kings ~3.3x a mid's width,
+   the Emperor large but never screen-filling. Hitboxes (s.r) and every
+   system number are untouched — render only. */
+const SLIME_SCALE = () => 1000 * ZK();
 /* Legacy separable projections, kept ONLY for the retired ghost-pass
    internals (never fed occluders any more): they answer with the full
    iso projection pinned to the camera row/column. Live code uses SP(). */
@@ -2502,18 +2515,23 @@ function spawnSlime(opts={}){
        clear of the shrines' .85u quiet radius (set-piece ground — the
        guardian summons, boss minions, splitter children and the metal
        guarantee pass explicit positions and are exempt by construction).
-       ~65% spawn in a ring around a random player IN THE ZONE (musou:
-       the crowd thickens where the fighting is), the rest anywhere in
-       the zone. */
+       ~45% spawn in a wide ring around a random player IN THE ZONE
+       (musou: the crowd thickens where the fighting is), the rest
+       anywhere in the zone. v0.6.1: the ring was 65% at 1.1-3.4u —
+       with the whole zone on screen that piled ~200 slimes into a
+       disc around the player and buried the ground; the ring is now
+       wider (1.3-6.0u) and the zone-wide share is the majority, so
+       the crowd reads as a crowd ON the ground, spread over the
+       whole diamond. Population targets are unchanged. */
     zid = opts.zone || pickSpawnZone();
     const nearShrine = (x, y) => { for (const k in SHRINE_POS){ const p = SHRINE_POS[k]; if (p.zone === zid && dist2(x, y, p.x, p.y) < .85 * .85) return true; } return false; };
     let placed = false;
     for (let tries = 0; tries < 8 && !placed; tries++){
-      if (opts.nearPlayer !== false && Math.random() < .65){
+      if (opts.nearPlayer !== false && Math.random() < .45){
         const spots = playersInZone(zid);
         if (spots.length){
           const c = spots[Math.floor(Math.random() * spots.length)];
-          const a = rand(0, Math.PI * 2), d = rand(1.1, 3.4);
+          const a = rand(0, Math.PI * 2), d = rand(1.3, 6.0);
           sx = c.x + Math.cos(a) * d; sy = c.y + Math.sin(a) * d;
         } else { const p = sampleZonePoint(zid); sx = p.x; sy = p.y; }
       } else { const p = sampleZonePoint(zid); sx = p.x; sy = p.y; }
@@ -6752,7 +6770,7 @@ function slimeSpriteGeom(s, t, baseR){
   const dw = baseR*2*1.04, dh = dw*0.88;   // rest footprint
   const gp = SP(s.x, s.y);
   let gx = gp[0];
-  if (t < (s.flinchUntil||0)) gx += ((Math.floor(t/30)%2) ? -6 : 6) * UNIT()/1000;   // ISW flinch shudder: ±6px, flips every 30ms
+  if (t < (s.flinchUntil||0)) gx += ((Math.floor(t/30)%2) ? -6 : 6) * SLIME_SCALE()/1000;   // ISW flinch shudder: ±6px, flips every 30ms
   const gy = gp[1] + baseR*.92;
   return { img, liftW, liftN, sqX, sqY, dw, dh, gx, gy };
 }
@@ -6920,7 +6938,7 @@ function paintSlimeSprite(s, t, baseR, g, faceK){
   const fAge = t - ((s.flinchUntil||0) - 220);
   const tintK = s.flinchUntil && fAge < 500 ? (fAge <= 120 ? 1 : 1 - (fAge-120)/380) : 0;
   ctx.save();
-  ctx.translate(g.gx, g.gy - g.liftW * UNIT());   // bottom anchor, raised by the hop arc
+  ctx.translate(g.gx, g.gy - g.liftW * SLIME_SCALE());   // bottom anchor, raised by the hop arc (lift scales with the sprite — v0.6.1 ground-lock)
   ctx.scale(g.sqX, g.sqY);
   if (s.kind === 'boss'){
     // EMPEROR AURA (Batch C): the pre-rendered glow burns UNDER the body,
@@ -8278,7 +8296,7 @@ function drawSlime(s,t){
      rendered size (and everything derived from baseR here: aura, HP bar)
      grows. The ghost pass applies the same factor. */
   const pp = SP(s.x, s.y), x = pp[0], y = pp[1];
-  let baseR=s.r*SCALE()*visFactor(s);
+  let baseR=s.r*SLIME_SCALE()*visFactor(s);
   /* GUARDIAN RISE-IN (Batch D): a freshly summoned guardian grows from
      .55x over 700ms (bornAt is host-stamped at the summon; a remote
      client stamps it on first sight of the guardian — draw-time lazily,
@@ -8296,7 +8314,16 @@ function drawSlime(s,t){
      same rendered position every other player-relative draw in this
      function uses (cf. the vector eyes' look-at-me angle) — so host and
      clients each gate against their OWN player. Other kinds: unchanged. */
-  const showBar = s.hp < s.max && (s.kind !== 'king' || dist2(s.x, s.y, me.x, me.y) <= KING_BAR_RANGE * KING_BAR_RANGE);
+  /* BAR GATING (v0.6.1): officers (elite/king/boss/guardian) carry a
+     bar; fodder shows one only when damaged AND close to the local
+     player (within 2.4u — the fight you're actually in). The old rule
+     (any damaged slime) carpeted the whole visible zone with fat bars
+     the moment an AoE fight touched the crowd. Kings keep Handler's
+     proximity gate on top. */
+  const _d2me = dist2(s.x, s.y, me.x, me.y);
+  const _officer = s.elite || s.kind === 'king' || s.kind === 'boss' || s.kind === 'guardian';
+  const showBar = (s.kind !== 'king' || _d2me <= KING_BAR_RANGE * KING_BAR_RANGE)
+    && ((_officer && s.kind !== 'king') || (s.hp < s.max && (_officer || _d2me <= 2.4 * 2.4)));
   if (s.kind==='boss'){
     // CHAOS EMPEROR (finale form, local story state): a pre-rendered
     // purple-red glow sprite burns under him, pulsing with the aura
@@ -8368,15 +8395,15 @@ function drawSlime(s,t){
          (sqY up to 1.13 + lift up to 1.15r) pushed the sprite's face up
          THROUGH the bar. Exactly ONE bar per slime is drawn — here, and
          nowhere else; the ghost pass (paintSlimeSprite only) draws none. */
-      const bw=baseR*1.6, bh=Math.max(5,baseR*.14), bx=x-bw/2;
-      const by = sg.gy - sg.liftW*UNIT() - sg.dh*sg.sqY - bh - 4;
+      const bw=baseR*1.3, bh=Math.max(4,baseR*.11), bx=x-bw/2;
+      const by = sg.gy - sg.liftW*SLIME_SCALE() - sg.dh*sg.sqY - bh - 4;
       ctx.fillStyle='rgba(40,30,20,.65)'; roundRect(bx-2,by-2,bw+4,bh+4,5); ctx.fill();
       ctx.fillStyle='#e5484d'; roundRect(bx,by,bw,bh,3); ctx.fill();
       ctx.fillStyle='#57d93d'; roundRect(bx,by,bw*clamp(s.hp/s.max,0,1),bh,3); ctx.fill();
     }
     if (s.elite){
-      const topY = sg.gy - sg.liftW*UNIT() - sg.dh*sg.sqY;
-      drawEliteTag(x, s.hp < s.max ? topY - Math.max(5,baseR*.14) - 6 : topY);   // above the HP bar's bg box when damaged, else above the sprite
+      const topY = sg.gy - sg.liftW*SLIME_SCALE() - sg.dh*sg.sqY;
+      drawEliteTag(x, showBar ? topY - Math.max(4,baseR*.11) - 6 : topY);   // above the HP bar's bg box when it shows, else above the sprite
     }
     return;
   }
@@ -8432,7 +8459,7 @@ function drawSlime(s,t){
   drawKindMarks(s, x, y, baseR, t);
   // hp bar
   if (showBar){
-    const bw=rX*1.7, bh=Math.max(5,baseR*.14), bx=x-bw/2, by=y-rY-baseR*.32;
+    const bw=rX*1.4, bh=Math.max(4,baseR*.11), bx=x-bw/2, by=y-rY-baseR*.32;
     ctx.fillStyle='rgba(40,30,20,.65)'; roundRect(bx-2,by-2,bw+4,bh+4,5); ctx.fill();
     ctx.fillStyle='#e5484d'; roundRect(bx,by,bw,bh,3); ctx.fill();
     ctx.fillStyle='#57d93d'; roundRect(bx,by,bw*clamp(s.hp/s.max,0,1),bh,3); ctx.fill();
@@ -8537,7 +8564,7 @@ function drawEntities(t){
      drawn — the crowd's cost is bounded by the screen, not the zone. */
   for (const s of world.slimes.values()){
     if (s.zone !== zid) continue;
-    if (!onScr(s.x, s.y, s.r * SCALE() * 4 + 90)) continue;
+    if (!onScr(s.x, s.y, s.r * SLIME_SCALE() * 4 + 90)) continue;
     s._faceFade = 1;   // no occluders on a painted plate: faces never ghost-fade
     vis.push(s);
     ents.push({ baseY: s.x + s.y + s.r * .8, kind:'slime', s });
@@ -8614,7 +8641,7 @@ function ghostHits(s, occluders, g){
 function drawGhosts(t, occluders, list){
   const u = UNIT(), vw = W/u, vh = H/u;
   for (const s of (list || world.slimes.values())){
-    const baseR = s.r * SCALE() * visFactor(s);   // match drawSlime's visual radius (Emperor 1.3x, guardians per config)
+    const baseR = s.r * SLIME_SCALE() * visFactor(s);   // match drawSlime's visual radius (Emperor 1.3x, guardians per config)
     const g = slimeSpriteGeom(s, t, baseR);
     if (!g) continue;                            // vector-fallback slimes have no sprite to ghost
     const sb = { l:s.x - s.r*1.5, r:s.x + s.r*1.5, top:s.y - s.r*3.2 - g.liftW, bot:s.y + s.r };
@@ -8630,8 +8657,40 @@ function drawGhosts(t, occluders, list){
     }
   }
 }
+/* STICK FIGURE (Handler, 2026-11-09): a little upright figure stands
+   at the base of every sword — feet on the player's ground point, one
+   arm reaching down to the grip (the pommel anchor the blade pivots
+   on), so a player reads as a person holding the sword and stays
+   findable inside the musou crowd. Screen-upright at any blade angle;
+   dark slate ink (#2e3440, never true black) over a pale halo pass so
+   he holds up on Cinderfell's dark ash too. Drawn by drawSword, the
+   one path every blade (mine + peers) shares. Height ~0.55u in NPC
+   yardsticks (150*ZK frame ~ 0.96u): 72*ZK px. */
+function drawStickFigure(x, y){
+  const H = 72 * ZK();
+  const hipY = y - H * .40, shoY = y - H * .72;
+  ctx.save();
+  ctx.fillStyle = 'rgba(38,32,40,.25)';
+  ctx.beginPath(); ctx.ellipse(x, y + 2, H * .17, H * .05, 0, 0, 7); ctx.fill();   // ground shadow at his feet
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const limbs = () => {
+    ctx.beginPath();
+    ctx.moveTo(x, hipY); ctx.lineTo(x - H * .14, y);        // legs
+    ctx.moveTo(x, hipY); ctx.lineTo(x + H * .14, y);
+    ctx.moveTo(x, hipY); ctx.lineTo(x, shoY);               // torso
+    ctx.moveTo(x, shoY); ctx.lineTo(x, y);                  // sword arm: shoulder down to the grip
+    ctx.moveTo(x, shoY); ctx.lineTo(x - H * .19, y - H * .44);   // free arm
+    ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y - H * .86, H * .13, 0, 7); ctx.stroke();   // head
+  };
+  ctx.strokeStyle = 'rgba(245,245,235,.5)'; ctx.lineWidth = Math.max(2, H * .07) + 2.5; limbs();   // halo
+  ctx.strokeStyle = '#2e3440'; ctx.lineWidth = Math.max(2, H * .07); limbs();                        // ink
+  ctx.restore();
+  return H;
+}
 function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,whirling,ext=0,reachPxIn){
   const w=WEAPONS[weaponIdx];
+  const figH = drawStickFigure(x, y);   // the figure stands under the blade; name floats above his head
   const reachPx = reachPxIn != null ? reachPxIn : (isMe?myReach():(w.reach)) * SCALE() * (1+ext);   // callers in the iso world pass the PROJECTED reach
   const whirlA = whirling ? (t/38)%(Math.PI*2) : 0;
   const a = whirling ? whirlA : angle;
@@ -8671,7 +8730,7 @@ function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,whirling,ext=0,reachPxI
     if (name){
       ctx.font='800 13px "Baloo 2",sans-serif'; ctx.textAlign='center';
       ctx.lineWidth=4; ctx.strokeStyle='rgba(50,80,30,.75)';
-      ctx.strokeText(name, x, y-16); ctx.fillStyle='#fff'; ctx.fillText(name, x, y-16);
+      ctx.strokeText(name, x, y-figH-8); ctx.fillStyle='#fff'; ctx.fillText(name, x, y-figH-8);
     }
     return {tipX,tipY};
   }
@@ -8698,7 +8757,7 @@ function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,whirling,ext=0,reachPxI
   if (name){
     ctx.font='800 13px "Baloo 2",sans-serif'; ctx.textAlign='center';
     ctx.lineWidth=4; ctx.strokeStyle='rgba(50,80,30,.75)';
-    ctx.strokeText(name, x, y-16); ctx.fillStyle='#fff'; ctx.fillText(name, x, y-16);
+    ctx.strokeText(name, x, y-figH-8); ctx.fillStyle='#fff'; ctx.fillText(name, x, y-figH-8);
   }
   return {tipX,tipY};
 }
