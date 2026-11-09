@@ -1,0 +1,195 @@
+{
+ "generatedBy": "tools/gen_icons.py",
+ "size": 48,
+ "grid": 24,
+ "alpha": "binary 0/255",
+ "minChannel": 26,
+ "icons": [
+  {
+   "file": "gem-common.png",
+   "kind": "soul-gem",
+   "id": "common",
+   "rarityIndex": 0,
+   "gameRef": "GEM_RARITY_NAME[0]",
+   "label": "Soul Gem \u2014 Common (rarity tier 0)",
+   "note": "Replaces the CSS .gemDot rotated square; tint colour is GEM_RARITY_COL[0]. Stat type stays in the row label text."
+  },
+  {
+   "file": "gem-fine.png",
+   "kind": "soul-gem",
+   "id": "fine",
+   "rarityIndex": 1,
+   "gameRef": "GEM_RARITY_NAME[1]",
+   "label": "Soul Gem \u2014 Fine (rarity tier 1)",
+   "note": "Replaces the CSS .gemDot rotated square; tint colour is GEM_RARITY_COL[1]. Stat type stays in the row label text."
+  },
+  {
+   "file": "gem-rare.png",
+   "kind": "soul-gem",
+   "id": "rare",
+   "rarityIndex": 2,
+   "gameRef": "GEM_RARITY_NAME[2]",
+   "label": "Soul Gem \u2014 Rare (rarity tier 2)",
+   "note": "Replaces the CSS .gemDot rotated square; tint colour is GEM_RARITY_COL[2]. Stat type stays in the row label text."
+  },
+  {
+   "file": "gem-epic.png",
+   "kind": "soul-gem",
+   "id": "epic",
+   "rarityIndex": 3,
+   "gameRef": "GEM_RARITY_NAME[3]",
+   "label": "Soul Gem \u2014 Epic (rarity tier 3)",
+   "note": "Replaces the CSS .gemDot rotated square; tint colour is GEM_RARITY_COL[3]. Stat type stays in the row label text."
+  },
+  {
+   "file": "gem-legendary.png",
+   "kind": "soul-gem",
+   "id": "legendary",
+   "rarityIndex": 4,
+   "gameRef": "GEM_RARITY_NAME[4]",
+   "label": "Soul Gem \u2014 Legendary (rarity tier 4)",
+   "note": "Replaces the CSS .gemDot rotated square; tint colour is GEM_RARITY_COL[4]. Stat type stays in the row label text."
+  },
+  {
+   "file": "ore-emerald.png",
+   "kind": "ore",
+   "id": "emerald",
+   "gameRef": "GEMS.emerald",
+   "label": "Emerald (mined material)",
+   "note": "Replaces the CSS .gemchip rotated square in forge costs and the GEMS inventory rows."
+  },
+  {
+   "file": "ore-topaz.png",
+   "kind": "ore",
+   "id": "topaz",
+   "gameRef": "GEMS.topaz",
+   "label": "Topaz (mined material)",
+   "note": "Replaces the CSS .gemchip rotated square in forge costs and the GEMS inventory rows."
+  },
+  {
+   "file": "ore-sapphire.png",
+   "kind": "ore",
+   "id": "sapphire",
+   "gameRef": "GEMS.sapphire",
+   "label": "Sapphire (mined material)",
+   "note": "Replaces the CSS .gemchip rotated square in forge costs and the GEMS inventory rows."
+  },
+  {
+   "file": "ore-ruby.png",
+   "kind": "ore",
+   "id": "ruby",
+   "gameRef": "GEMS.ruby",
+   "label": "Ruby (mined material)",
+   "note": "Replaces the CSS .gemchip rotated square in forge costs and the GEMS inventory rows."
+  },
+  {
+   "file": "ore-amethyst.png",
+   "kind": "ore",
+   "id": "amethyst",
+   "gameRef": "GEMS.amethyst",
+   "label": "Amethyst (mined material)",
+   "note": "Replaces the CSS .gemchip rotated square in forge costs and the GEMS inventory rows."
+  },
+  {
+   "file": "ore-diamond.png",
+   "kind": "ore",
+   "id": "diamond",
+   "gameRef": "GEMS.diamond",
+   "label": "Diamond (mined material)",
+   "note": "Replaces the CSS .gemchip rotated square in forge costs and the GEMS inventory rows."
+  },
+  {
+   "file": "node-mossy-boulder.png",
+   "kind": "ore-node",
+   "id": "mossy-boulder",
+   "nodeIndex": 0,
+   "gameRef": "NODE_TYPES[0]",
+   "label": "Mossy Boulder (ore node)",
+   "note": "Menu/help icon for the mining node type; the world sprite remains decor-rock + drawn crystals."
+  },
+  {
+   "file": "node-river-rock.png",
+   "kind": "ore-node",
+   "id": "river-rock",
+   "nodeIndex": 1,
+   "gameRef": "NODE_TYPES[1]",
+   "label": "River Rock (ore node)",
+   "note": "Menu/help icon for the mining node type; the world sprite remains decor-rock + drawn crystals."
+  },
+  {
+   "file": "node-sunstone.png",
+   "kind": "ore-node",
+   "id": "sunstone",
+   "nodeIndex": 2,
+   "gameRef": "NODE_TYPES[2]",
+   "label": "Sunstone (ore node)",
+   "note": "Menu/help icon for the mining node type; the world sprite remains decor-rock + drawn crystals."
+  },
+  {
+   "file": "node-crimson-crag.png",
+   "kind": "ore-node",
+   "id": "crimson-crag",
+   "nodeIndex": 3,
+   "gameRef": "NODE_TYPES[3]",
+   "label": "Crimson Crag (ore node)",
+   "note": "Menu/help icon for the mining node type; the world sprite remains decor-rock + drawn crystals."
+  },
+  {
+   "file": "node-void-geode.png",
+   "kind": "ore-node",
+   "id": "void-geode",
+   "nodeIndex": 4,
+   "gameRef": "NODE_TYPES[4]",
+   "label": "Void Geode (ore node)",
+   "note": "Menu/help icon for the mining node type; the world sprite remains decor-rock + drawn crystals."
+  },
+  {
+   "file": "relic-pauldron.png",
+   "kind": "relic",
+   "id": "pauldron",
+   "gameRef": "RELICS.pauldron",
+   "label": "Warden's Pauldron",
+   "note": "Replaces the text-only relic row marker in the inventory RELICS section."
+  },
+  {
+   "file": "relic-crown.png",
+   "kind": "relic",
+   "id": "crown",
+   "gameRef": "RELICS.crown",
+   "label": "Thorn Crown",
+   "note": "Replaces the text-only relic row marker in the inventory RELICS section."
+  },
+  {
+   "file": "relic-heart.png",
+   "kind": "relic",
+   "id": "heart",
+   "gameRef": "RELICS.heart",
+   "label": "Rotbloom Heart",
+   "note": "Replaces the text-only relic row marker in the inventory RELICS section."
+  },
+  {
+   "file": "relic-sprout.png",
+   "kind": "relic",
+   "id": "sprout",
+   "gameRef": "RELICS.sprout",
+   "label": "Sprout Charm",
+   "note": "Replaces the text-only relic row marker in the inventory RELICS section."
+  },
+  {
+   "file": "relic-eye.png",
+   "kind": "relic",
+   "id": "eye",
+   "gameRef": "RELICS.eye",
+   "label": "Emperor's Eye",
+   "note": "Replaces the text-only relic row marker in the inventory RELICS section."
+  },
+  {
+   "file": "item-purse.png",
+   "kind": "item",
+   "id": "purse",
+   "gameRef": "SHOP_ITEMS[id='purse']",
+   "label": "Coin Purse",
+   "note": "The only SHOP_ITEMS entry with no icon anywhere (potion/bomb/shield already have SVG icons)."
+  }
+ ]
+}
