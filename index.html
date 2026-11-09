@@ -1544,6 +1544,7 @@ const CAUSTICS_IMG = new Image(); CAUSTICS_IMG.src = 'assets/isw/fx/caustics.png
 const WATER_GRID_N = 48;
 const zoneWater = {};        // zoneId -> Uint8Array(48*48)
 const zoneWaterCells = {};   // zoneId -> [blockIndex] of water blocks (water FX + glints)
+const zoneWaterPath = {};    // zoneId -> Path2D of the water region in drawn plate px (built once at load — the per-frame water pass only clips + scrolls light)
 const PROPS = {};            // zoneId -> [{ t, x, y, s }] (seeded scatter, built with the water grid)
 function plateOf(zoneId){ return PLATE_IMGS[zoneId]; }
 function tryBuildWaterGrid(zoneId){
@@ -1582,6 +1583,24 @@ function tryBuildWaterGrid(zoneId){
   const cells = [];
   for (let i = 0; i < grid.length; i++) if (grid[i]) cells.push(i);
   zoneWaterCells[zoneId] = cells;
+  // the static water outline, composited ONCE into a Path2D (drawn
+  // plate px: natural px * 2304/naturalWidth) — never rebuilt per frame
+  try {
+    const K = 2304 / pw, path = new Path2D();
+    for (let by = 0; by < WATER_GRID_N; by++){
+      let bx = 0;
+      while (bx < WATER_GRID_N){
+        if (!grid[by * WATER_GRID_N + bx]){ bx++; continue; }
+        let bx1 = bx;
+        while (bx1 + 1 < WATER_GRID_N && grid[by * WATER_GRID_N + bx1 + 1]) bx1++;
+        const I0 = bx * .5, I1 = (bx1 + 1) * .5, J0 = by * .5, J1 = (by + 1) * .5;
+        const cx = (I, J) => ((I - J) * pw / 48 + pw / 2) * K, cy = (I, J) => (I + J + 1) * pw / 96 * K;
+        path.moveTo(cx(I0, J0), cy(I0, J0)); path.lineTo(cx(I1, J0), cy(I1, J0)); path.lineTo(cx(I1, J1), cy(I1, J1)); path.lineTo(cx(I0, J1), cy(I0, J1)); path.closePath();
+        bx = bx1 + 1;
+      }
+    }
+    zoneWaterPath[zoneId] = path;
+  } catch(e){ zoneWaterPath[zoneId] = null; }
   genProps(zoneId);
 }
 function waterAt(zoneId, x, y){
@@ -1747,6 +1766,7 @@ const freshWorld = () => ({
   scores: {},                // id -> {name,kills} — room scoreboard (session kills, host-published)
   // shared entities
   slimes: new Map(),         // id -> slime (local mirror; host owns truth)
+  bossRef: null, grdRef: null,   // cached Emperor/guardian refs (validated on read — the boss path never scans the horde)
   slimeSeq: 1,
   /* Ore nodes: ONE map for everyone — the host owns and mutates it, clients
      mirror it from the world payload (and a new host adopts the mirror).
@@ -2518,7 +2538,9 @@ function spawnSlime(opts={}){
     s.r = k.r * 1.35;
     s.mul = +(zone.mul * 3).toFixed(2);
   }
-  world.slimes.set(id,s); return s;
+  world.slimes.set(id,s);
+  if (s.kind === 'boss') world.bossRef = s; else if (s.kind === 'guardian') world.grdRef = s;
+  return s;
 }
 /* ROYAL GUARD (host): the Emperor raises a 6s invulnerable shield at 66%
    and again at 33% HP. Announces on every client via the 'guard' boss
@@ -2977,7 +2999,7 @@ function minedFx(d){
   saveGame(); refreshHUD();
 }
 function worldPayload(){
-  const boss = [...world.slimes.values()].find(s=>s.kind==='boss');
+  const boss = bossAt(performance.now());
   return { s:[...world.slimes.values()].map(s=>[s.id, +s.x.toFixed(3), +s.y.toFixed(3), Math.ceil(s.hp), s.max, s.kind, s.color, +s.dir.toFixed(2), Math.round((s.mul||1)*100)/100, s.elite?1:0, s.guardian||'', s.zone||'glade']),
            n:[...world.nodes.values()].map(n=>[n.id, +n.x.toFixed(3), +n.y.toFixed(3), n.t, n.left, n.zone||'glade']),
            sc: world.scores, h: world.hostId,
@@ -3008,11 +3030,12 @@ function applyWorld(p){
       const ns = {id,kind,hp,max,r:k.r*(elite?1.35:1),x,y,tx:x,ty:y,dir,color,seed:seedForId(id),squish:1,flash:0,mul,elite,zone:zid,isle:ZONES_DEF[zid].tier};
       if (grdKey){ ns.guardian = grdKey; ns.r = GUARDIANS[grdKey] ? GUARDIANS[grdKey].r : ns.r; }
       world.slimes.set(id, ns);
+      if (ns.kind === 'boss') world.bossRef = ns; else if (ns.kind === 'guardian') world.grdRef = ns;
     }
   }
   for (const id of [...world.slimes.keys()]) if (!seen.has(id) && !world.isHost) world.slimes.delete(id);
   if (p.b){   // Emperor scaling + guard window land on the local boss object
-    const bs = [...world.slimes.values()].find(s=>s.kind==='boss');
+    const bs = bossAt(performance.now());
     if (bs){ bs.bScale = +p.b.sc || 1; bs.bOrb = p.b.od || 12; bs.bCon = p.b.cd || 26; bs.guardUntil = performance.now() + (p.b.gu || 0); }
   }
   if (p.sc) world.scores = p.sc;
@@ -4277,7 +4300,7 @@ $('#dlgChoice1').onclick = () => chooseDialogueChoice(1);
 /* The Emperor's scaled orb damage for THIS client: read off the local
    boss object (host sets it at spawn; clients get it from the world
    payload's boss block). Falls back to the unscaled 12 with no boss. */
-function bossOrbDmg(){ const b = [...world.slimes.values()].find(s=>s.kind==='boss'); return b ? (b.bOrb || 12) : 12; }
+function bossOrbDmg(){ const b = bossNow(); return b ? (b.bOrb || 12) : 12; }
 /* FLAT red damage screen — no vignette, no circle (Handler). Two layers
    summed into one solid rgba on #dmgFlash:
    - per-hit flash: alpha .22 the moment damagePlayer lands a hit,
@@ -4370,7 +4393,7 @@ function death(){
    per-sprout found flags. Announcements: guardians NEVER toast — the
    awakening and the fall are in-world floats, and the fight rides the
    top boss bar. The Emperor's toasts stay the Emperor's. */
-function guardianAlive(){ for (const s of world.slimes.values()) if (s.kind==='guardian') return s; return null; }
+function guardianAlive(){ const c = world.grdRef; if (c && world.slimes.get(c.id) === c) return c; for (const s of world.slimes.values()) if (s.kind==='guardian'){ world.grdRef = s; return s; } return null; }
 /* The finale form is a LOCAL story state: for the player whose finale
    objective is open, the Emperor IS the Chaos Emperor (name + aura on
    this client; HP/fire scale applied by the host when the HOST's own
@@ -7650,10 +7673,19 @@ function drawField(t){
      complete, the home zones wear golden speckles for good — seeded
      twinkles over walkable ground in town + glade. */
   if (prog().story && prog().story.complete && (zid === 'town' || zid === 'glade')){
+    // standable speckle points are picked once per zone (cached) —
+    // no per-frame walkability scans over static scatter
+    let pts = bloomCache[zid];
+    if (!pts){
+      pts = [];
+      for (let i = 0; i < 260; i++){
+        const wx = hash01(i * 3.17 + zid.length) * ZONE_U, wy = hash01(i * 7.71 + zid.length * 3) * ZONE_U;
+        if (canStandZ(zid, wx, wy)) pts.push([wx, wy, i]);
+      }
+      bloomCache[zid] = pts;
+    }
     const bss = Math.max(2, Math.round(UNIT() * .004));
-    for (let i = 0; i < 260; i++){
-      const wx = hash01(i * 3.17 + zid.length) * ZONE_U, wy = hash01(i * 7.71 + zid.length * 3) * ZONE_U;
-      if (!canStandZ(zid, wx, wy)) continue;
+    for (const [wx, wy, i] of pts){
       const p = SP(wx, wy);
       if (p[0] < -6 || p[0] > W + 6 || p[1] < -6 || p[1] > H + 6) continue;
       ctx.fillStyle = 'rgba(255,205,80,' + (.5 * (.55 + .45 * Math.sin(t / 600 + i * 1.7))).toFixed(3) + ')';
@@ -7668,13 +7700,25 @@ function drawField(t){
    scales/speeds, (3) up to 60 sparkle glints with 700-1600ms lives,
    born inside random water blocks. Above the plate, below the actors. */
 const glintPool = [];
+const bloomCache = {};   // zoneId -> [[x, y, seed]] post-cycle bloom speckle points (picked once)
 function drawWaterFx(t, zid){
   const grid = zoneWater[zid], cells = zoneWaterCells[zid];
   if (!grid || !cells || !cells.length) return;
   const zd = ZONES_DEF[zid];
   ctx.save();
-  ctx.beginPath();
   let any = false;
+  const wpath = zoneWaterPath[zid];
+  if (wpath){
+    // clip via the prebuilt plate-space path under the view transform
+    // (the clip lands in device space; drawing proceeds under the
+    // normal transform)
+    ctx.translate(W / 2 - (1152 + _camPX) * _ZK, H / 2 - (24 + _camPY) * _ZK);
+    ctx.scale(_ZK, _ZK);
+    ctx.clip(wpath);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    any = true;
+  } else {
+  ctx.beginPath();
   for (let by = 0; by < WATER_GRID_N; by++){
     let bx = 0;
     while (bx < WATER_GRID_N){
@@ -7692,6 +7736,7 @@ function drawWaterFx(t, zid){
       }
       bx = bx1 + 1;
     }
+  }
   }
   if (any){
     ctx.clip();
@@ -8625,9 +8670,12 @@ function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,whirling,ext=0,reachPxI
    emitter per frame — during the boss fight, the heaviest moment). */
 var _bossT = -1, _bossS = null;   // var: refreshHUD (defined above) may call bossAt before this line runs
 function bossAt(now){
-  if (now !== _bossT){ _bossT = now; _bossS = null; for (const s of world.slimes.values()) if (s.kind==='boss'){ _bossS = s; break; } }
+  const c = world.bossRef;
+  if (c && world.slimes.get(c.id) === c) return c;   // validated cache: O(1), no horde scan
+  if (now !== _bossT){ _bossT = now; _bossS = null; for (const s of world.slimes.values()) if (s.kind==='boss'){ _bossS = s; world.bossRef = s; break; } }
   return _bossS;
 }
+function bossNow(){ return bossAt(performance.now()); }
 /* Screen-edge arrow for the GUARANTEED metal: while it lives and is
    off-screen, a silver diamond + chevron pins to the viewport edge
    pointing at it. The v4 metal fled on a fixed bearing outside the
