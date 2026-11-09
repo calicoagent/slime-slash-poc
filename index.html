@@ -8179,11 +8179,14 @@ function drawEliteAura(x, y, baseR, seed, t){
      correct 8% and 3-5 are alive at once, but the aura scaled purely
      with baseR — an elite baby (baseR ~27px) got ~51px ray tips at
      alpha .16 over green grass and read as a plain slime in stills and
-     at a glance. The aura now has a minimum extent (34px, an elite
-     mid's baseR at full-screen scale) and stronger alphas, so every
-     elite — baby to tank — reads as an elite. Big kinds are unchanged
-     (their baseR already exceeds the floor). */
-  const aR = Math.max(baseR, 34);
+     at a glance. The aura now has a minimum extent and stronger
+     alphas, so every elite — baby to tank — reads as an elite. Big
+     kinds are unchanged (their baseR already exceeds the floor).
+     v0.6.1: the floor itself is ground-locked (60*ZK — the old hard
+     34px was calibrated to the pre-fix scale; under SLIME_SCALE it
+     made every elite's star ~146px wide at any zoom, the giant gold
+     starbursts spiking out of the crowd in Handler's photo). */
+  const aR = Math.max(baseR, 60 * ZK());
   const pr = 1 + 0.07 * Math.sin(t/260 + seed * 9);   // pulse
   ctx.save();
   // ground light: diamond pool (rotated square), squashed flat. At the
