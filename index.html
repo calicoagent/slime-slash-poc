@@ -1457,7 +1457,7 @@ const EXITS = [
   { zone:'town',     x:13.85, y:7.2,   to:'hermit',   gate:'complete', name:'HERMIT PATH' },
   { zone:'glade',    x:13.85, y:7.2,   to:'town',     name:'ALDERWAKE ROAD' },
   { zone:'glade',    x:7.2,   y:13.85, to:'camp',     name:'LAKESIDE PATH' },
-  { zone:'glade',    x:0.55,  y:7.2,   to:'grove',    gate:'sigil1', name:'GROVE ROAD' },
+  { zone:'glade',    x:0.55,  y:10.4,  to:'grove',    gate:'sigil1', name:'GROVE ROAD' },
   { zone:'camp',     x:7.2,   y:0.55,  to:'glade',    name:'GLADE PATH' },
   { zone:'grove',    x:13.85, y:7.2,   to:'glade',    name:'GLADE ROAD' },
   { zone:'grove',    x:7.2,   y:13.85, to:'hollow',   name:'HOLLOW ROAD' },
@@ -2354,8 +2354,8 @@ const NPC_DEFS = [
   { id:'forge', name:'FORGE',       zone:'town', x:9.9, y:6.3,            h:.240, head:.224, robe:'#8a5a2b', skin:'#8a5a3b', hair:'#263238' },
   { id:'pike',  name:'WARDEN PIKE', zone:'town', x:4.6, y:7.1,            h:.240, head:.224, robe:'#6f7f8c', skin:'#d9a37e', hair:'#aeb6ba' },
   { id:'child', name:'THE CHILD',   zone:'town', x:6.2, y:8.2,            h:.240, head:.134, robe:'#5d9440', skin:'#f0bd93', hair:'#6d4527', wander:CHILD_WAYPOINTS, segMs:CHILD_SEG_MS },
-  { id:'bramble', name:'BRAMBLE',   zone:'camp', x:5.9, y:9.9,            h:.240, head:.224, robe:'#7a5a36', skin:'#e8d3ac', hair:'#4a3826' },
-  { id:'tansy',   name:'TANSY',     zone:'camp', x:7.4, y:10.6,           h:.240, head:.224, robe:'#b06a34', skin:'#f0dcb8', hair:'#8a4f24' },
+  { id:'bramble', name:'BRAMBLE',   zone:'camp', x:5.0, y:9.2,            h:.240, head:.224, robe:'#7a5a36', skin:'#e8d3ac', hair:'#4a3826' },
+  { id:'tansy',   name:'TANSY',     zone:'camp', x:7.4, y:10.0,           h:.240, head:.224, robe:'#b06a34', skin:'#f0dcb8', hair:'#8a4f24' },
   { id:'hermit',  name:'THE HERMIT', zone:'camp', x:3.8, y:10.8,          h:.240, head:.224, robe:'#5d6463', skin:'#eee9dc', hair:'#33302c' },
   { id:'vex',     name:'SCOUT VEX', zone:'hollow', x:5.4, y:11.8,         h:.240, head:.224, robe:'#c97a30', skin:'#f2ead8', hair:'#4a3421',
     wander:[ { x:5.4, y:11.8 }, { x:7.6, y:8.8 }, { x:9.8, y:11.0 } ], segMs:11000 },
@@ -6413,7 +6413,10 @@ function drawWorldMap(t){
   bg.addColorStop(0, '#2c4630'); bg.addColorStop(1, '#1d2f22');
   g.fillStyle = bg; g.fillRect(0, 0, MW, MH);
   const pt = z => [ZONES_DEF[z].graph.x * MW, ZONES_DEF[z].graph.y * MH];
-  for (const [a, b] of ZONE_LINKS){
+  const _pairs = [];
+  { const seen = new Set();
+    for (const a in ZONE_LINKS) for (const b of ZONE_LINKS[a]){ const k = [a, b].sort().join('|'); if (!seen.has(k)){ seen.add(k); _pairs.push([a, b]); } } }
+  for (const [a, b] of _pairs){
     const pa = pt(a), pb = pt(b);
     const ex = EXITS.find(e => (e.zone === a && e.to === b) || (e.zone === b && e.to === a));
     const locked = !!(ex && ex.gate && !gateOpen(ex));
