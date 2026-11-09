@@ -6232,8 +6232,7 @@ function checkZone(force){
   ses.zoneBannerFor = ses.myZone;
   if (!ses.started) return;   // the banner NEVER narrates before PLAY
   const zd = ZONES_DEF[ses.myZone];
-  addFloat(me.x, me.y - .35, zd.name, '#ffe9a8', { big:true });
-  showZoneSub(zd.sub);
+  notify(zd.name, { type:'zone', sub: zd.sub });
 }
 /* ---------- tutorial hints (one at a time, in sequence) ---------- */
 function updateHint(){
@@ -8790,13 +8789,6 @@ function drawObjectiveArrow(t){
   ctx.moveTo(13, 0); ctx.lineTo(-7, -8); ctx.lineTo(-3.5, 0); ctx.lineTo(-7, 8); ctx.closePath();
   ctx.fill(); ctx.stroke();
   ctx.restore();
-  ctx.font = '700 9px "Baloo 2",sans-serif';   // (was 6.2px "Press Start 2P" — illegible at this size)
-  ctx.textAlign = 'center';
-  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(38,32,40,.8)';
-  const label = labelForObjective ? labelForObjective() : 'QUEST';
-  ctx.strokeText(label, px, py + 20);
-  ctx.fillStyle = '#ffd94d';
-  ctx.fillText(label, px, py + 20);
 }
 
 function trailSpeedScale(v){
