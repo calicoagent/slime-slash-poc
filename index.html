@@ -1391,158 +1391,300 @@ let W=0,H=0,DPR=1;
 function resize(){ const nd=Math.min(2,devicePixelRatio||1); if (W===innerWidth && H===innerHeight && DPR===nd) return;   // no-op resizes (iOS fires them when its URL bar shows/hides mid-drag) must NOT reassign cv.width — that reallocates + clears the whole backing store and hitches the game while moving
   DPR=nd; W=innerWidth; H=innerHeight; cv.width=W*DPR; cv.height=H*DPR; cv.style.width=W+'px'; cv.style.height=H+'px'; ctx.imageSmoothingEnabled=false; }
 addEventListener('resize',resize); resize();
-/* The world is WORLD x WORLD units — much bigger than one screen.
-   1 unit ≈ one screenful. The camera (cam = top-left, world coords) follows your sword. */
-const WORLD = 32.0;
-/* ============================================================ ARCHIPELAGO
-   Handler's order (2026-11-08): 'We live on an island. There are 3 islands
-   total. Islands are story gated.' The old single radial world (town at
-   the centre, zone rings) is now THREE ISLES in one sea, joined by two
-   wooden bridges, each bridge ROT-BARRIERED until the story opens it.
-   Land = the three discs + the bridge strips; everything else is water
-   — the player cannot enter it (shore-slide clamp in updatePointer) and
-   slimes are bound to their home isle (host sim clamp).
-   SCALE-UP (Handler, 2026-11-08): 'at least half the Final Fantasy I
-   world map.' FF1's overworld is 256x256 tiles = 65,536; at our tile of
-   0.125u (8 per unit) the old 6u world was 48x48 = 2,304 tiles (3.5%).
-   WORLD 24u = 192x192 = 36,864 tiles = 56% of FF1.
-   SCALE-UP 2 (Handler, 2026-11-09): the bar IS Final Fantasy I — map
-   size AND story. WORLD 32u = 256x256 tiles = 65,536 = 100% of FF1's
-   overworld. The three isles grew and pulled apart (real sea between
-   them), and two small ISLETS joined the chart as pure geography:
-   TREASURE (zone 3, king-haunted, ore-bearing) and HERMIT (zone 1,
-   a sanctuary — nothing spawns there). Both opened later by EARNED
-   sandbar crossings (see SANDBAR_T / SANDBAR_H below): Treasure at
-   access level 3 once the Root Herald falls, Hermit at level 4 once
-   the Cycle completes; New Cycle+ drowns both again. Only world
-   GEOMETRY scaled again: every
-   gameplay constant — entity radii, reach, interact ranges, speeds,
-   TOWN_R and the town group's internal layout (a compact village on a
-   big isle) — is exactly what it was.
-   TOWN_R is 1.02, not the old 1.30: the town group spans <= .86u from its
-   centre (bank/shop corners), NPC wander <= .55u, so 1.02 covers the
-   whole town with margin and leaves Isle 1 a real meadow to hunt in.
-   ISLE ORDER IS LOAD-BEARING: a slime's home binding stores its ZONE
-   and the island clamp reads ISLES[zone] — so the spawnable isles keep
-   index == zone (Verdant 0, Grove 1, Wilds 2, Treasure 3) and the
-   spawnless Hermit rides last. */
-const ISLES = [
-  { id:'verdant', name:'VERDANT ISLE',   cx:8.2,  cy:16.4, r:7.2, zone:0 },   // start; town + Meadow shrine
-  { id:'grove',   name:'GROVE ISLE',     cx:23.0, cy:9.0,  r:6.4, zone:1 },   // grove strength (x1.8 HP / x1.7 loot)
-  { id:'wilds',   name:'WILDS ISLE',     cx:23.6, cy:24.4, r:7.4, zone:2 },   // wilds strength (x3.2 / x2.8); the Emperor's home
-  { id:'treasure', name:'TREASURE ISLET', cx:14.8, cy:5.2,  r:1.3, zone:3 },   // sea-locked rock: wilds-tier spawns, kings, a rich ore cluster
-  { id:'hermit',  name:'HERMIT ISLET',   cx:15.6, cy:26.8, r:1.5, zone:1, noSpawn:true },   // sea-locked sanctuary: decor only, nothing spawns
+/* ============================================================ ZONE WORLD
+   ISW WORLD TRANSPLANT (v0.6.0 — Handler, 2026-11-09: "reuse the isekai
+   slime world's isometric map, skip tiles; reuse its music as well;
+   bring the whole world, including NPCs"). The continuous 32u tile
+   archipelago is GONE. The world is now eight ZONES, each one an ISW
+   painted plate (assets/isw/plates/) shown as a complete isometric
+   scene. Gameplay space per zone is the plate's 24x24-cell terrain
+   diamond, addressed in zone-local units: the zone spans [0, 14.4]^2
+   (24 cells x 0.6u), projected 2:1 isometric —
+
+     plate px  PX = (x - y) * 80,  PY = (x + y) * 40
+     (cell (I,J) centre lands at plate px ((I-J)*48 + 1152, (I+J)*24 + 24)
+      on the universal 2304px-wide plate render; see MANIFEST.md)
+
+   Entities are billboards at their projected ground point, depth-sorted
+   by (x + y). The camera (ses.cam) is now a CENTRE point in zone units,
+   still eased with the 960ms tau (the quartered edge speed stays).
+   WORLD keeps its legacy name for bounds checks: it now means "the
+   current zone's span". */
+const CELL_U = 0.6;
+const ZONE_U = 14.4;
+const WORLD = ZONE_U;
+const ZONES_DEF = {
+  town:     { name:'ALDERWAKE',       sub:'Town of Beginnings', plate:'alderwake.png',        mask:true,  tier:0, safe:true,  sparkle:.60, speed:.50, graph:{ x:.46, y:.38 } },
+  glade:    { name:'LANDING GLADE',   sub:'The Summoning Meadow', plate:'landing_glade.png',  mask:true,  tier:0, safeDiscs:[{ x:8.5, y:6.4, r:1.15 }], sparkle:.75, speed:.50, graph:{ x:.18, y:.38 } },
+  camp:     { name:'THORNWICK',       sub:'Lakeside Camp',      plate:'lakeside_camp.png',    tier:1, safe:true,  sparkle:.70, speed:.45, graph:{ x:.18, y:.68 } },
+  grove:    { name:'SOUTHWEST GROVE', sub:'',                   plate:'southwest_grove.png',  tier:1, sparkle:.60, speed:.50, graph:{ x:.18, y:.12 } },
+  hollow:   { name:'ROTWATCH',        sub:'The Scout Camp',     plate:'redbracken_hollow.png', tier:2, safeDiscs:[{ x:5.2, y:11.6, r:1.7 }], sparkle:.55, speed:.50, graph:{ x:.42, y:.88 } },
+  wilds:    { name:'CINDERFELL',      sub:'The Ash Wilds',      plate:'cinderfell.png',       tier:2, blocks:[{ x:1.2, y:12.6, r:1.35 }], sparkle:.55, speed:.55, graph:{ x:.64, y:.82 } },
+  treasure: { name:'WITHERBRIAR MOOR', sub:'',                  plate:'witherbriar_moor.png', tier:3, darkWater:true, blocks:[{ x:10.8, y:10.6, r:1.5 }], sparkle:.60, speed:.50, graph:{ x:.84, y:.58 } },
+  hermit:   { name:'THE HERMIT PATH', sub:'',                   plate:'forest_path_1.png',    tier:3, sparkle:.65, speed:.45, graph:{ x:.82, y:.14 } },
+};
+const ZONE_IDS = Object.keys(ZONES_DEF);
+const HUNTING_ZONES = ['glade', 'grove', 'hollow', 'wilds', 'treasure', 'hermit'];
+const ALTAR = { zone:'glade', x:8.5, y:6.4 };            // ISW's painted summoning circle on the landing_glade plate
+const ALTAR_SPAWN = { x:8.5, y:7.15 };                   // where the summoned wake, just south of the circle
+const TOWN = { x:7.2, y:7.2 };                           // Alderwake plaza centre (zone units, town zone)
+/* Zone travel: exits sit at diamond-edge midpoints. Arrival = the
+   matching exit in the destination zone, pushed inward. Gates read the
+   story exactly like the old rot barriers did. */
+const EXITS = [
+  { zone:'town',     x:0.55,  y:7.2,   to:'glade',    name:'WEST GATE' },
+  { zone:'town',     x:13.85, y:7.2,   to:'hermit',   gate:'complete', name:'HERMIT PATH' },
+  { zone:'glade',    x:13.85, y:7.2,   to:'town',     name:'ALDERWAKE ROAD' },
+  { zone:'glade',    x:7.2,   y:13.85, to:'camp',     name:'LAKESIDE PATH' },
+  { zone:'glade',    x:0.55,  y:7.2,   to:'grove',    gate:'sigil1', name:'GROVE ROAD' },
+  { zone:'camp',     x:7.2,   y:0.55,  to:'glade',    name:'GLADE PATH' },
+  { zone:'grove',    x:13.85, y:7.2,   to:'glade',    name:'GLADE ROAD' },
+  { zone:'grove',    x:7.2,   y:13.85, to:'hollow',   name:'HOLLOW ROAD' },
+  { zone:'hollow',   x:7.2,   y:0.55,  to:'grove',    name:'GROVE ROAD' },
+  { zone:'hollow',   x:7.2,   y:13.85, to:'wilds',    gate:'sigil2', name:'CINDER ROAD' },
+  { zone:'wilds',    x:7.2,   y:0.55,  to:'hollow',   name:'HOLLOW ROAD' },
+  { zone:'wilds',    x:13.85, y:7.2,   to:'treasure', gate:'herald', name:'MOOR ROAD' },
+  { zone:'treasure', x:0.55,  y:7.2,   to:'wilds',    name:'CINDER ROAD' },
+  { zone:'hermit',   x:0.55,  y:7.2,   to:'town',     name:'ALDERWAKE ROAD' },
 ];
-const TOWN = { x: ISLES[0].cx, y: ISLES[0].cy };        // the town group moved as one to Isle 1's centre
-const SHORE = .45;                                      // sand rim width inside each isle's rim (scaled with the isles)
-const BRIDGE_W = .5;                                    // walkable width of a bridge strip
-const ISLE_SPAWN_W = [.35, .27, .37, .01];              // host population split — by land area (r^2 = 51.84 / 40.96 / 54.76 / 1.69), indexed as ISLES[0..3]; the Hermit takes no spawns
-const ISLE_NODE_W = [.2, .35, .45, .15];                // ore nodes by ZONE: Isle 1 fewest, Isle 3 most, Treasure (zone 3) a small rich share
-/* A bridge strip runs rim-to-rim along the line between two isle centres.
-   Its ROT BARRIER stands at the FAR rim (x2,y2): you may walk the whole
-   causeway, but the far isle's disc itself is what the gate locks. */
-function bridgeSeg(a, b){
-  const dx = b.cx - a.cx, dy = b.cy - a.cy, d = Math.hypot(dx, dy) || 1e-4, ux = dx/d, uy = dy/d;
-  return { x1:a.cx + ux*a.r, y1:a.cy + uy*a.r, x2:b.cx - ux*b.r, y2:b.cy - uy*b.r, ux, uy, len:d - a.r - b.r };
-}
-const BRIDGE_A = bridgeSeg(ISLES[0], ISLES[1]);   // Verdant -> Grove
-const BRIDGE_B = bridgeSeg(ISLES[1], ISLES[2]);   // Grove -> Wilds
-const BARRIERS = [
-  { key:'A', seg:BRIDGE_A, x:BRIDGE_A.x2, y:BRIDGE_A.y2, isle:1, line:'The Rot holds this crossing. Earn the Meadow Sigil.' },
-  { key:'B', seg:BRIDGE_B, x:BRIDGE_B.x2, y:BRIDGE_B.y2, isle:2, line:'The Rot holds this crossing. Earn the Grove Sigil.' },
-];
-/* ISLET CROSSINGS (FF1 bar, round 4): the two islets were charted but
-   unreachable forever — accessLevel capped at 2 while their land sits
-   at levels 3/4. They open the FF1 way: EARNED crossings, revealed by
-   the story. When the Root Herald falls (heraldDone) the calmed
-   Rot-tide leaves a SANDBAR of pale shallows from Grove's north shore
-   to TREASURE ISLET (the nearest shore — 1.3u of open water; the Wilds
-   shore is 12u away across the whole sea). When the Cycle completes
-   (postgame), a second sandbar rises from Verdant's north shore to
-   HERMIT ISLET. Both are bridge strips in the land machinery (same
-   width, same segDist), gated by story state, and New Cycle+ drowns
-   them again because it resets heraldDone/complete with the chain. */
-const SANDBAR_T = bridgeSeg(ISLES[1], ISLES[3]);   // Grove shore -> Treasure Islet
-const SANDBAR_H = bridgeSeg(ISLES[0], ISLES[4]);   // Verdant shore -> Hermit Islet
-function sandbarOpen(which){
+const GATE_LINES = {
+  sigil1:   'THE ROT HOLDS THE GROVE ROAD — EARN THE MEADOW SIGIL.',
+  sigil2:   'THE ROT HOLDS THE CINDER ROAD — EARN THE GROVE SIGIL.',
+  herald:   'THE MOOR SLEEPS UNTIL THE ROOT HERALD FALLS.',
+  complete: 'THE HERMIT PATH OPENS WHEN THE CYCLE ENDS.',
+};
+function gateOpen(ex){
+  if (!ex.gate) return true;
   const st = prog().story; if (!st) return false;
-  return which === 'T' ? (st.heraldDone || st.complete) : !!st.complete;
+  if (ex.gate === 'sigil1') return (st.sigils | 0) >= 1 || questPast('meadow');
+  if (ex.gate === 'sigil2') return (st.sigils | 0) >= 2 || questPast('grove');
+  if (ex.gate === 'herald') return !!st.heraldDone || !!st.complete;
+  if (ex.gate === 'complete') return !!st.complete;
+  return true;
 }
-function isleAt(x, y){ for (let i=0;i<ISLES.length;i++){ const I = ISLES[i]; if (Math.hypot(x-I.cx, y-I.cy) <= I.r) return i; } return -1; }
-function nearestIsle(x, y){ let bi = 0, bd = 1e9; for (let i=0;i<ISLES.length;i++){ const I = ISLES[i]; const d = Math.hypot(x-I.cx, y-I.cy) - I.r; if (d < bd){ bd = d; bi = i; } } return bi; }
-function segDist(px, py, s){
-  const dx = s.x2 - s.x1, dy = s.y2 - s.y1, L2 = dx*dx + dy*dy;
-  let t = L2 ? ((px - s.x1)*dx + (py - s.y1)*dy)/L2 : 0; t = Math.max(0, Math.min(1, t));
-  const qx = s.x1 + dx*t, qy = s.y1 + dy*t;
-  return { d: Math.hypot(px - qx, py - qy), t, qx, qy };
-}
-/* Land classification: an isle disc carries its own gate level in `lvl`
-   (its index: 0/1/2 for the story isles — the islets sit at 3/4,
-   reachable only once the matching sandbar crossing stands: level 3
-   after the Herald, level 4 after the Cycle) and its
-   strength tier in `zone` (an isle's zone need not equal its index —
-   the Hermit is a zone-1 sanctuary at index 4). Bridge A carries Isle
-   1's level (0), bridge B carries Isle 2's (1) — the gate itself is the
-   FAR isle's disc edge, exactly where its barrier stands. null = open
-   water. */
-function landRegion(x, y){
-  const i = isleAt(x, y);
-  if (i >= 0) return { lvl:i, isle:i, zone:ISLES[i].zone };
-  if (segDist(x, y, BRIDGE_A).d <= BRIDGE_W/2) return { lvl:0, bridge:'A', zone:0 };
-  if (segDist(x, y, BRIDGE_B).d <= BRIDGE_W/2) return { lvl:1, bridge:'B', zone:1 };
-  if (sandbarOpen('T') && segDist(x, y, SANDBAR_T).d <= BRIDGE_W/2) return { lvl:3, bridge:'T', zone:3 };
-  if (sandbarOpen('H') && segDist(x, y, SANDBAR_H).d <= BRIDGE_W/2) return { lvl:4, bridge:'H', zone:1 };
+const ZONE_LINKS = { town:['glade','hermit'], glade:['town','camp','grove'], camp:['glade'], grove:['glade','hollow'], hollow:['grove','wilds'], wilds:['hollow','treasure'], treasure:['wilds'], hermit:['town'] };
+function nextZoneToward(from, to){
+  if (from === to) return null;
+  const prev = { [from]: null }, q = [from];
+  while (q.length){
+    const z = q.shift();
+    for (const n of (ZONE_LINKS[z] || [])){
+      if (n in prev) continue;
+      prev[n] = z;
+      if (n === to){ let cur = to; while (prev[cur] && prev[cur] !== from) cur = prev[cur]; return cur; }
+      q.push(n);
+    }
+  }
   return null;
 }
-function onLand(x, y){ return landRegion(x, y) !== null; }
-/* ---- story gating: derived from progress.story ONLY — no new save
-   fields. Open when the Sigil is held OR the quest chain has moved past
-   that chapter (a mid-chapter save between Guardian kill and Elder
-   return behaves), and New Cycle+ re-locks for free because it resets
-   sigils to 0 and the quest back to 'meadow'. ---- */
-const QUEST_ORDER = ['prologue','meadow','bell','grove','scout','wilds','herald','finale','postgame'];
-function questPast(id){
-  const st = prog().story; if (!st) return false;
-  if (st.complete) return true;
-  return QUEST_ORDER.indexOf(st.quest) > QUEST_ORDER.indexOf(id);
+function exitToward(zoneId, targetZone){
+  const nz = nextZoneToward(zoneId, targetZone);
+  if (!nz) return null;
+  return EXITS.find(e => e.zone === zoneId && e.to === nz) || null;
 }
-function bridgeOpen(n){   // n = the isle the bridge leads TO (2 or 3)
-  const st = prog().story; if (!st) return false;
-  return n === 2 ? (st.sigils >= 1 || questPast('meadow'))
-                 : (st.sigils >= 2 || questPast('grove'));
+/* ---- iso projection (plate px space; the view transform is computed
+   once per frame into _camPX/_camPY/_ZK by computeView) ---- */
+let _camPX = 0, _camPY = 0, _ZK = .4;
+function ZK(){ return _ZK; }
+function computeView(){
+  _ZK = clamp(Math.min(W / 1150, H / 620), .30, .56);
+  _camPX = (ses.cam.x - ses.cam.y) * 80;
+  _camPY = (ses.cam.x + ses.cam.y) * 40;
 }
-function accessLevel(){
-  const st = prog().story;
-  if (st && st.complete) return 4;        // postgame: the Hermit sandbar stands
-  if (st && st.heraldDone) return 3;      // the Herald's fall calms the tide to Treasure
-  return bridgeOpen(3) ? 2 : bridgeOpen(2) ? 1 : 0;
+const _sp = [0, 0];
+function SP(x, y){
+  _sp[0] = W / 2 + ((x - y) * 80 - _camPX) * _ZK;
+  _sp[1] = H / 2 + ((x + y) * 40 - _camPY) * _ZK;
+  return _sp;
 }
-function canStand(x, y){ const r = landRegion(x, y); return !!r && r.lvl <= accessLevel(); }
-/* Nearest standable point to (x,y) — for teleports/dash landings/stale
-   saves that wake up in the sea. Falls back to the town spawn. */
-function projectToLand(x, y){
-  if (canStand(x, y)) return { x, y };
-  let best = null, bd = 1e18;
-  for (const I of ISLES){
-    const d = Math.hypot(x - I.cx, y - I.cy) || 1e-4, rr = Math.min(d, I.r - .05);
-    const px = I.cx + (x - I.cx)/d*rr, py = I.cy + (y - I.cy)/d*rr;
-    if (canStand(px, py)){ const dd = (px-x)*(px-x) + (py-y)*(py-y); if (dd < bd){ bd = dd; best = { x:px, y:py }; } }
+function screenToZone(cx, cy){
+  const px = (cx - W / 2) / _ZK + _camPX, py = (cy - H / 2) / _ZK + _camPY;
+  const I = (px / 48 + py / 24) / 2, J = (py / 24 - px / 48) / 2;
+  return { x: I * CELL_U, y: J * CELL_U };
+}
+function onScr(x, y, m){
+  const p = SP(x, y);
+  return p[0] > -m && p[0] < W + m && p[1] > -m && p[1] < H + m;
+}
+/* ---- plates, water sampling, walkability ----
+   Each plate's painted water is sampled ONCE at load into a coarse
+   48x48 grid (0.3u blocks): the alpha of the plate's .water.png mask
+   where ISW ships one, else blue-dominant plate pixels (plus a
+   dark-water rule for the moor's pond). The grid serves BOTH the
+   collision check and the water FX clip. */
+const PLATE_IMGS = {}, PLATE_MASKS = {}, NPC_SHEET_IMGS = {};
+const CAUSTICS_IMG = new Image(); CAUSTICS_IMG.src = 'assets/isw/fx/caustics.png';
+const WATER_GRID_N = 48;
+const zoneWater = {};        // zoneId -> Uint8Array(48*48)
+const PROPS = {};            // zoneId -> [{ t, x, y, s }] (seeded scatter, built with the water grid)
+function plateOf(zoneId){ return PLATE_IMGS[zoneId]; }
+function tryBuildWaterGrid(zoneId){
+  if (zoneWater[zoneId]) return;
+  const zd = ZONES_DEF[zoneId], img = PLATE_IMGS[zoneId];
+  if (!imgOk(img)) return;
+  const mask = zd.mask ? PLATE_MASKS[zoneId] : null;
+  if (zd.mask && !imgOk(mask)) return;   // wait for the mask too
+  const SW = 192, SH = Math.max(2, Math.round(SW * img.naturalHeight / img.naturalWidth));
+  const cvx = document.createElement('canvas'); cvx.width = SW; cvx.height = SH;
+  const g = cvx.getContext('2d', { willReadFrequently: true });
+  g.drawImage(img, 0, 0, SW, SH);
+  let plateData = null;
+  try { plateData = g.getImageData(0, 0, SW, SH).data; } catch(e){}
+  let maskData = null;
+  if (mask){
+    g.clearRect(0, 0, SW, SH); g.drawImage(mask, 0, 0, SW, SH);
+    try { maskData = g.getImageData(0, 0, SW, SH).data; } catch(e){}
   }
-  for (const s of [BRIDGE_A, BRIDGE_B, SANDBAR_T, SANDBAR_H]){
-    const sd = segDist(x, y, s);
-    if (canStand(sd.qx, sd.qy)){ const dd = (sd.qx-x)*(sd.qx-x) + (sd.qy-y)*(sd.qy-y); if (dd < bd){ bd = dd; best = { x:sd.qx, y:sd.qy }; } }
+  const grid = new Uint8Array(WATER_GRID_N * WATER_GRID_N);
+  const pw = img.naturalWidth, ph = img.naturalHeight;
+  for (let by = 0; by < WATER_GRID_N; by++) for (let bx = 0; bx < WATER_GRID_N; bx++){
+    const I = (bx + .5) * .5, J = (by + .5) * .5;                    // block centre, in cells
+    const px = (I - J) * pw / 48 + pw / 2, py = (I + J + 1) * pw / 96;
+    const sx = clamp(Math.round(px / pw * SW), 0, SW - 1), sy = clamp(Math.round(py / ph * SH), 0, SH - 1);
+    const ix = (sy * SW + sx) * 4;
+    let water = false;
+    if (maskData) water = maskData[ix + 3] > 60;
+    else if (plateData){
+      const r = plateData[ix], gg = plateData[ix + 1], b = plateData[ix + 2];
+      water = (b > r + 16 && b > 80 && gg > 55) || (zd.darkWater && b >= r - 6 && b > 30 && (r + gg + b) / 3 < 85);
+    }
+    grid[by * WATER_GRID_N + bx] = water ? 1 : 0;
   }
-  return best || { x:TOWN.x, y:TOWN.y + .1 };
+  zoneWater[zoneId] = grid;
+  genProps(zoneId);
 }
-/* A point sampled inside an isle's disc (sqrt = uniform), kept off the
-   rim; `inner` caps the radius (town-keeping spawns use the rim ring). */
-function sampleIsle(I, inner){
-  const a = Math.random()*Math.PI*2, d = Math.sqrt(Math.random()) * Math.min(I.r - .08, inner || 1e9);
-  return { x: I.cx + Math.cos(a)*d, y: I.cy + Math.sin(a)*d };
+function waterAt(zoneId, x, y){
+  const g = zoneWater[zoneId]; if (!g) return false;
+  const bx = (x / ZONE_U * WATER_GRID_N) | 0, by = (y / ZONE_U * WATER_GRID_N) | 0;
+  if (bx < 0 || by < 0 || bx >= WATER_GRID_N || by >= WATER_GRID_N) return false;
+  return g[by * WATER_GRID_N + bx] === 1;
 }
-const UNIT = () => Math.min(W,H);                   // px per world unit
-const NX = x => (x - ses.cam.x) * UNIT(), NY = y => (y - ses.cam.y) * UNIT();
+for (const zid of ZONE_IDS){
+  const im = new Image();
+  im.onload = () => tryBuildWaterGrid(zid);
+  im.src = 'assets/isw/plates/' + ZONES_DEF[zid].plate;
+  PLATE_IMGS[zid] = im;
+  if (ZONES_DEF[zid].mask){
+    const mk = new Image();
+    mk.onload = () => tryBuildWaterGrid(zid);
+    mk.src = 'assets/isw/plates/' + ZONES_DEF[zid].plate.replace('.png', '.water.png');
+    PLATE_MASKS[zid] = mk;
+  }
+}
+/* NPC spritesheets (ISW): 288x768, 3x8 frames of 96px; row 4 (S) frame 12
+   is the front idle. Mapping per MANIFEST.md §3. */
+const NPC_SHEET_FOR = { elder:'hollow_lorekeeper', forge:'camp_smith', pike:'hollow_trainer', tansy:'hollow_merchant', bramble:'hollow_stable', vex:'swamp_trainer', hermit:'deeps_trainer', child:'meadow_trainer' };
+for (const id in NPC_SHEET_FOR){
+  const im = new Image(); im.src = 'assets/isw/npcs/' + NPC_SHEET_FOR[id] + '.png';
+  NPC_SHEET_IMGS[id] = im;
+}
+/* Building footprints + shrines keep their ground: zoneBlocked consults
+   BUILDING_SPOTS / SHRINE_POS (defined below) in addition to the zone's
+   authored blocks and its water grid. */
+function zoneBlocked(zoneId, x, y){
+  if (!(x >= .25 && y >= .25 && x <= ZONE_U - .25 && y <= ZONE_U - .25)) return true;
+  const zd = ZONES_DEF[zoneId]; if (!zd) return true;
+  if (zd.blocks) for (const b of zd.blocks){ const dx = x - b.x, dy = y - b.y; if (dx * dx + dy * dy < b.r * b.r) return true; }
+  if (typeof BUILDING_SPOTS !== 'undefined') for (const s of BUILDING_SPOTS){
+    if (s.zone !== zoneId) continue;
+    const dx = x - s.pos.x, dy = y - s.pos.y;
+    if (dx * dx + dy * dy < .64) return true;   // .8u footprint
+  }
+  return waterAt(zoneId, x, y);
+}
+function canStandZ(zoneId, x, y){ return !zoneBlocked(zoneId, x, y); }
+function projectToZone(zoneId, x, y){
+  if (canStandZ(zoneId, x, y)) return { x, y };
+  for (let r = .15; r <= 2.6; r += .15)
+    for (let i = 0; i < 12; i++){
+      const a = i / 12 * Math.PI * 2, nx = x + Math.cos(a) * r, ny = y + Math.sin(a) * r;
+      if (canStandZ(zoneId, nx, ny)) return { x: nx, y: ny };
+    }
+  return { x: ZONE_U / 2, y: ZONE_U / 2 };
+}
+function sampleZonePoint(zoneId){
+  for (let i = 0; i < 24; i++){
+    const x = .6 + Math.random() * (ZONE_U - 1.2), y = .6 + Math.random() * (ZONE_U - 1.2);
+    if (canStandZ(zoneId, x, y)) return { x, y };
+  }
+  return { x: ZONE_U / 2, y: ZONE_U / 2 };
+}
+/* Settlement safety, zone form: town + camp are safe zone-wide; the
+   glade's altar ring and the Rotwatch camp are safe discs. */
+function safeZoneAt(x, y, zone){
+  const zid = zone || ses.myZone, zd = ZONES_DEF[zid];
+  if (!zd) return null;
+  if (zd.safe) return { id: zid, name: zd.name };
+  if (zd.safeDiscs) for (const d of zd.safeDiscs)
+    if (dist2(x, y, d.x, d.y) < d.r * d.r) return { id: zid, name: zd.name, x: d.x, y: d.y, r: d.r };
+  return null;
+}
+function outsideSettlements(x, y, margin, zone){
+  const zid = zone || ses.myZone, zd = ZONES_DEF[zid];
+  if (!zd) return true;
+  if (zd.safe) return false;
+  if (zd.safeDiscs) for (const d of zd.safeDiscs){
+    const rr = d.r + (margin || 0);
+    if (dist2(x, y, d.x, d.y) < rr * rr) return false;
+  }
+  return true;
+}
+/* Seeded prop scatter per zone (trees/rocks are PROPS placed by the
+   game over the bare plate diamond — Handler's bare-plate rule): clear
+   of water, exits, shrines, doors, NPC homes and the altar. Built once
+   the zone's water grid exists. */
+function genProps(zoneId){
+  if (PROPS[zoneId]) return;
+  const rng = mulberry32(20261109 + zoneId.length * 131 + zoneId.charCodeAt(0) * 17);
+  const counts = { town:[7,4], glade:[26,10], camp:[13,6], grove:[30,10], hollow:[22,10], wilds:[8,16], treasure:[16,12], hermit:[30,8] }[zoneId] || [16, 8];
+  const clear = (x, y) => {
+    if (!canStandZ(zoneId, x, y)) return false;
+    if (zoneId === 'town' && dist2(x, y, TOWN.x, TOWN.y) < 5.3) return false;   // the plaza stays open
+    for (const e of EXITS) if (e.zone === zoneId && dist2(x, y, e.x, e.y) < 1.1) return false;
+    if (typeof SHRINE_POS !== 'undefined') for (const k in SHRINE_POS){ const sh = SHRINE_POS[k]; if (sh.zone === zoneId && dist2(x, y, sh.x, sh.y) < 1.0) return false; }
+    if (typeof BUILDING_SPOTS !== 'undefined') for (const s of BUILDING_SPOTS) if (s.zone === zoneId && dist2(x, y, s.pos.x, s.pos.y) < 1.3) return false;
+    if (typeof NPC_DEFS !== 'undefined') for (const d of NPC_DEFS) if (d.zone === zoneId && dist2(x, y, d.x, d.y) < .8) return false;
+    if (zoneId === 'glade' && dist2(x, y, ALTAR.x, ALTAR.y) < 2.1) return false;
+    return true;
+  };
+  const items = [];
+  const scatter = (n, t) => {
+    for (let i = 0; i < n; i++) for (let tries = 0; tries < 14; tries++){
+      const x = .7 + rng() * (ZONE_U - 1.4), y = .7 + rng() * (ZONE_U - 1.4);
+      if (!clear(x, y)) continue;
+      items.push({ t, x, y, s: .8 + rng() * .5 });
+      break;
+    }
+  };
+  scatter(counts[0], 'tree');
+  scatter(counts[1], 'rock');
+  if (zoneId === 'treasure') items.push({ t:'grave', x:7.4, y:6.6, s:1 });
+  if (zoneId === 'hermit'){ items.push({ t:'tent', x:7.0, y:6.8, s:1 }); items.push({ t:'campfire', x:7.55, y:7.35, s:1 }); }
+  if (zoneId === 'hollow'){
+    items.push({ t:'tent', x:4.4, y:11.0, s:1 });
+    items.push({ t:'campfire', x:5.3, y:11.7, s:1 });
+    items.push({ t:'crate', x:6.2, y:12.3, s:1 });
+    items.push({ t:'log', x:4.85, y:12.15, s:1 });
+    items.push({ t:'log', x:5.75, y:11.25, s:1 });
+  }
+  PROPS[zoneId] = items;
+}
+/* generic segment distance (kept from the archipelago era) */
+function segDist(px, py, s){
+  const dx = s.x2 - s.x1, dy = s.y2 - s.y1, L2 = dx * dx + dy * dy || 1e-6;
+  const t = clamp(((px - s.x1) * dx + (py - s.y1) * dy) / L2, 0, 1);
+  const qx = s.x1 + dx * t, qy = s.y1 + dy * t;
+  return { d: Math.hypot(px - qx, py - qy), qx, qy, t };
+}
+const UNIT = () => Math.min(W,H);                   // px per world unit (entity sprite scale — unchanged by the transplant)
 const SCALE = () => UNIT();
+/* Legacy separable projections, kept ONLY for the retired ghost-pass
+   internals (never fed occluders any more): they answer with the full
+   iso projection pinned to the camera row/column. Live code uses SP(). */
+const NX = (x, y) => SP(x, y === undefined ? ses.cam.y : y)[0];
+const NY = (x, y) => SP(x === undefined ? ses.cam.x : x, y)[1];
+
+
 
 /* ============================================================ STATE STORE
    ONE central zustand (vanilla) store holds the game's state, split by
@@ -1615,7 +1757,7 @@ const freshWorld = () => ({
 const freshSession = () => ({
   player: {
     id: selfId, color:`hsl(${hashHue(selfId)} 80% 55%)`,
-    x: TOWN.x, y: TOWN.y + .1, px:.5, py:.6, angle:-Math.PI/4, speed:0,   // spawn at the town centre on Isle 1 (loadGame moves it to a saved respawn)
+    x: ALTAR_SPAWN.x, y: ALTAR_SPAWN.y, px: ALTAR_SPAWN.x, py: ALTAR_SPAWN.y - .1, angle:-Math.PI/4, speed:0,   // a fresh Blade wakes at the summoning altar (loadGame moves a saved one to its respawn)
     actCd:{ wave:0, meteor:0, frenzy:0, goldrush:0 }, frenzyUntil:0, goldRushUntil:0,
     // survival (HP is LOCAL only — never networked, never persisted: a loaded character starts full)
     hp:100, maxHp:100, invulnUntil:0, lastDmgAt:0, shieldUntil:0,
@@ -1631,7 +1773,7 @@ const freshSession = () => ({
   titleStaging: false,       // true only inside the title still's single synchronous staging pass (lets drawEntities pose the townsfolk in the diorama)
   paused: false,
   // camera: top-left of the view, world coords — follows the sword
-  cam: { x: TOWN.x - .5, y: TOWN.y - .5 },
+  cam: { x: ALTAR_SPAWN.x, y: ALTAR_SPAWN.y },   // camera is a CENTRE point in zone units now (iso world)
   // combat feel
   combo: 0, comboUntil: 0,   // kill-chain combo (window stretched by Combo Charm)
   dmgFlashAt: 0,             // last time the player took damage (flat red flash decay stamp)
@@ -1642,20 +1784,22 @@ const freshSession = () => ({
   // procedural BGM state (Batch A): started on the PLAY gesture; the
   // lookahead scheduler + crossfade bookkeeping live here (session only,
   // never persisted — mute itself stays in progress.muted)
-  music: { started:false, track:null, pending:null, switchAt:0, step:0, nextAt:0, timer:0, gain:null, noiseBuf:null, silenced:false },
+  music: { started:false, track:null, pending:null, switchAt:0, step:0, nextAt:0, timer:0, gain:null, noiseBuf:null, silenced:false, el:null, elKey:null, elVol:0 },
   // local FX + player projectiles (client-local, never networked)
   particles: [], floats: [], popRings: [],
   dmgFloats: [], dmgCue: 0,  // floating damage numbers; dmgCue = rotating stack counter so simultaneous numbers don't merge
   waves: [], meteors: [], shots: [],   // shots: thrown-spear projectiles (pierce)
   // where the player is
-  myZone: -1,                // current zone ring (banner fires on change; -1 = unset)
+  myZone: 'glade',           // current ZONE id (banner fires on change)
   nearBuilding: null,        // BUILDING_SPOTS id winning the interact prompt ('bank' | 'vinn' | 'rwbed' | ...) | null
   nearNpc: null,             // NPC id currently winning the interact prompt (session only)
   nearShrine: null,          // shrine key currently winning the interact prompt (stage 4; session only)
   nearTravel: null,          // WON shrine key winning the prompt as a fast-travel departure (Batch B; session only)
   travelFrom: null,          // shrine key the open travel panel departs from (Batch B; session only)
   nearSprout: null,          // sproutling id currently winning the interact prompt (stage 4; session only)
-  nearBarrier: null,         // rot barrier key ('A'|'B') currently winning the interact prompt (archipelago; session only)
+  nearBarrier: null,         // legacy field (rot barriers are zone-exit gates now)
+  nearExit: null,            // EXITS entry currently winning the interact prompt (session only)
+  zoneFading: false,         // a zone-travel fade is on screen (input held)
   crossedIsles: {},          // isles whose first-crossing float has fired this session (archipelago; session only)
   seenPois: new Set(),       // POI name floats already shown this session (Batch C; session only)
   nextRippleAt: 0, rippleIx: 0,   // fish-ripple schedule + spot cursor (Batch C ambient; session only)
@@ -1734,6 +1878,18 @@ const PROPHECY = 'When the grass forgets its colour, a blade carried by no hand 
    { shrine }, the finale Emperor fires 'emperorFinale', sproutling
    pickups fire 'sprout'. Kills feed in from onKillFx ('kill'). */
 const QUESTS = [
+  { id:'arrival', chapter:'THE SUMMONING', title:'Born of the Altar', giver:'elder',
+    summary:'The Blade woke at the summoning altar in the Landing Glade, and walked the road to Alderwake.',
+    intro:[
+      'A circle of blue fire. A meadow that is not your meadow. A blade in your hand, humming like a struck bell.',
+      'You were SUMMONED, Verdant Blade — called across the dark to a world whose Tree is dying.',
+      'The town of Alderwake lies east, across the glade. Elder Mirra will know why you were called.',
+      'Walk the road, Blade. Speak with the Elder.',
+    ],
+    objectives:[
+      { type:'talk', to:'elder', text:'Reach Alderwake and speak with Elder Mirra' },
+    ],
+    rewards:{ coins:0, sp:0 } },
   { id:'prologue', chapter:'PROLOGUE', title:'The Grass Forgets', giver:'elder',
     summary:'The Elder tested the Blade, and told the prophecy of the Verdance Cycle.',
     intro:[
@@ -1844,10 +2000,10 @@ const SPROUT_QUEST = { id:'sprouts', chapter:'SIDE TALE', title:'Three Lost Spro
    and Wilds keep their pre-scale-up bearings on their isles (~.60r /
    ~.65r out). DECOR keeps .30u off each shrine. */
 const SHRINE_POS = {
-  meadow: { x: TOWN.x + 4.6, y: TOWN.y },
-  grove:  { x: ISLES[1].cx - 3.24, y: ISLES[1].cy + 1.99 },   // the old bearing at ~.60r, rescaled to r 6.4
-  wilds:  { x: ISLES[2].cx + 3.91, y: ISLES[2].cy - 2.87 },   // the old bearing at ~.65r, rescaled to r 7.4
-  root:   { x: ISLES[2].cx - 3.90, y: ISLES[2].cy + 2.90 },   // FF1 arc: the ROOT SHRINE — Wilds' far (south-west) shore, opposite the Wilds Shrine; NOT a Sigil shrine (its guardian drops the way open, not a Sigil)
+  meadow: { x:11.9, y:4.4,  zone:'glade' },
+  grove:  { x:11.9, y:11.9, zone:'grove' },   // the plate's own painted violet stone circle
+  wilds:  { x:4.6,  y:4.9,  zone:'wilds' },
+  root:   { x:10.6, y:10.2, zone:'wilds' },   // the ROOT SHRINE — Cinderfell's south-east ash field, opposite the Wilds Shrine; NOT a Sigil shrine
 };
 /* Guardian configs: base HP scales in spawnGuardian by
    (1 + .25 x max(0, topLevel-8)) x (1 + .5 x story.cycles) — the same
@@ -1863,7 +2019,7 @@ const GUARDIANS = {
   root:   { name:'ROOT HERALD',       hp:3600, r:.105, color:'#b478d9', vis:1.35, chase:1.2, fireMs:2400, pattern:'herald',   aura:'rgba(122,63,166,', summonMs:14000, summonKind:'splitter', summonN:2, summonText:'THE HERALD CALLS THE ROT!' },
 };
 const freshStory = () => ({
-  quest:'prologue', step:0, objHave:0,       // current chain quest + objective index + counted progress
+  quest:'arrival', step:0, objHave:0,        // current chain quest + objective index + counted progress (fresh blades start at the summoning)
   sigils:0, cycles:0, complete:false,        // Sigils held, New Cycle+ count, finale done
   heraldDone:false,                          // FF1 arc: the Root Herald has fallen — the finale gate is sigils>=3 AND this (pre-arc saves lack the key; loadProgress migrates on its absence)
   sprouts:0, sproutsDone:false,              // side tale: sproutlings found (of 3) + returned
@@ -1884,7 +2040,8 @@ const freshProgress = () => ({
   items: { potion:0, bomb:0, shield:0 }, purse:false,
   bounty: null,                         // current bounty objective {type,key,label,need,have,reward}
   story: freshStory(),                  // RPG: Verdance Cycle state (quest chain, sigils, relics) — see storyEvent()
-  spawnAt: null,                        // respawn point bought at the inn
+  spawnAt: null,                        // respawn point bought at the inn ({ zone, x, y, name } in zone space)
+  worldV: 2,                            // world-layout version of this save (2 = ISW zone world; older saves migrate to town on load)
   name: 'Knight',
   // settings
   muted: false,
@@ -1932,6 +2089,7 @@ const store = createStore((set, get) => {
       try{
         localStorage.setItem(SAVE_KEY, JSON.stringify({
           econV:2,   // economy unit version: 2 = ×100-rescaled units. Absent/<2 in a save = pre-rescale units; loadProgress migrates ×100 exactly once.
+          worldV:2,  // world layout version: 2 = ISW zone world. Absent/<2 = an archipelago save; loadGame migrates its feet to Alderwake, progress untouched.
           level:p.level, xp:p.xp, coins:p.coins, kills:p.kills, sp:p.sp, spBuys:p.spBuys,
           unlocked:[...p.unlocked], weapon:p.weapon, name:p.name, muted:p.muted, hintsSeen:p.hintsSeen,
           banked:p.banked, items:p.items, purse:p.purse, owned:[...p.owned],
@@ -1990,7 +2148,8 @@ const store = createStore((set, get) => {
       if (d.name) next.name = cleanName(d.name);
       if (d.hintsSeen) next.hintsSeen = { slash:!!d.hintsSeen.slash, skill:!!(d.hintsSeen.skill || d.hintsSeen.spin), sphere:!!d.hintsSeen.sphere };   // old saves carry the retired 'spin' hint key — it maps onto 'skill'
       if (typeof d.rackCollapsed === 'boolean') next.rackCollapsed = d.rackCollapsed;
-      if (d.spawnAt && isFinite(d.spawnAt.x) && isFinite(d.spawnAt.y)) next.spawnAt = { x:+d.spawnAt.x, y:+d.spawnAt.y, ...(typeof d.spawnAt.name === 'string' && d.spawnAt.name ? { name: d.spawnAt.name.slice(0, 24) } : {}) };
+      if (d.spawnAt && isFinite(d.spawnAt.x) && isFinite(d.spawnAt.y)) next.spawnAt = { x:+d.spawnAt.x, y:+d.spawnAt.y, ...(typeof d.spawnAt.zone === 'string' && d.spawnAt.zone ? { zone: d.spawnAt.zone } : {}), ...(typeof d.spawnAt.name === 'string' && d.spawnAt.name ? { name: d.spawnAt.name.slice(0, 24) } : {}) };
+      next.worldV = d.worldV | 0;
       if (d.bounty && d.bounty.key && (d.bounty.type==='color' || d.bounty.type==='kind'))
         next.bounty = { type:d.bounty.type, key:d.bounty.key, label:String(d.bounty.label||'').slice(0,16) || 'SLIME',
                         need:Math.max(1, d.bounty.need|0 || 8), have:Math.max(0, d.bounty.have|0), reward:Math.max(0, d.bounty.reward|0 || 40) };
@@ -2072,10 +2231,10 @@ function bladeAt(now){
 }
 /* ---- survival pass state ---- */
 const CONTACT_DMG = { baby:4, dart:4, mid:6, gold:2, metal:5, splitter:7, big:9, tank:13, king:16, boss:26, guardian:16 };   // guardian: king tier
-const BANK_POS = { x: TOWN.x - .67, y: TOWN.y - .54 };
-const SHOP_POS = { x: TOWN.x + .67, y: TOWN.y - .54 };
-const HOSPITAL_POS = { x: TOWN.x, y: TOWN.y + .70 };
-const TOWN_R = 1.02;   // safe-zone radius around the town centre (Isle 1) — covers all three buildings (<= .86u out) + the plaza; NO enemies inside, NO damage inside. Was 1.30 in the radial world; shrunk for the archipelago so Isle 1 keeps a meadow ring (see ISLES note)
+const BANK_POS = { x: 5.4, y: 5.0 };
+const SHOP_POS = { x: 9.2, y: 5.2 };
+const HOSPITAL_POS = { x: 5.6, y: 9.6 };
+const TOWN_R = 1.02;   // legacy radius, kept for radius-flavoured UI copy only — settlement safety is zone-based now (ZONES_DEF.safe / safeDiscs)
 const KING_BAR_RANGE = 1.0;   // a Slime King's floating HP bar renders only when the LOCAL player is within this many world units (Handler)
 
 /* ============================================================ SETTLEMENTS (FF1 bar)
@@ -2088,34 +2247,26 @@ const KING_BAR_RANGE = 1.0;   // a Slime King's floating HP bar renders only whe
    that opens the shop. SAFE ZONES generalise the town rule: the town's
    hardcoded disc is now ONE entry of SAFE_ZONES, and spawns, the host
    sim's steering + clamp, and damagePlayer all read the list. */
-const VILLAGE = { x: 18.35, y: 12.05 };                 // Thornwick centre (Grove Isle)
-const V_INN_POS  = { x: VILLAGE.x - .50, y: VILLAGE.y - .42 };
-const V_SHOP_POS = { x: VILLAGE.x + .52, y: VILLAGE.y - .30 };
-const V_BANK_POS = { x: VILLAGE.x + .06, y: VILLAGE.y + .55 };
-const ROTWATCH = { x: 28.80, y: 20.58 };                // Rotwatch Camp centre (Wilds Isle)
-const RW_TENT_POS  = { x: ROTWATCH.x - .18, y: ROTWATCH.y - .10 };
-const RW_FIRE_POS  = { x: ROTWATCH.x + .10, y: ROTWATCH.y + .12 };
-const RW_CRATE_POS = { x: ROTWATCH.x + .38, y: ROTWATCH.y - .18 };
-const SAFE_ZONES = [
-  { id:'town',    name:'TOWN',          x: TOWN.x,    y: TOWN.y,    r: TOWN_R },
-  { id:'village', name:'THORNWICK',     x: VILLAGE.x, y: VILLAGE.y, r: .85 },
-  { id:'rotwatch', name:'ROTWATCH CAMP', x: ROTWATCH.x, y: ROTWATCH.y, r: .60 },
-];
-function safeZoneAt(x, y){ for (const z of SAFE_ZONES){ if (dist2(x, y, z.x, z.y) < z.r * z.r) return z; } return null; }
-function outsideSettlements(x, y, margin){ for (const z of SAFE_ZONES){ const rr = z.r + margin; if (dist2(x, y, z.x, z.y) < rr * rr) return false; } return true; }
-/* Every door in the world, town and settlement alike: `kind` picks the
-   panel, `title` names it for THIS door, `zone` is its home safe zone
-   (the panel stays open while you stand anywhere inside it — the town
-   rule, generalised), `prompt` is the interact label. */
+const VILLAGE = { x: 6.6, y: 10.9 };                 // Thornwick centre (lakeside_camp south shore)
+const V_INN_POS  = { x: 5.4, y: 10.2 };
+const V_SHOP_POS = { x: 6.8, y: 11.0 };
+const V_BANK_POS = { x: 8.3, y: 11.5 };
+const ROTWATCH = { x: 5.2, y: 11.6 };                // Rotwatch Camp centre (redbracken_hollow)
+const RW_TENT_POS  = { x: 4.4, y: 11.0 };
+const RW_FIRE_POS  = { x: 5.3, y: 11.7 };
+const RW_CRATE_POS = { x: 6.2, y: 12.3 };
+/* Every door in the world: `kind` picks the panel, `title` names it for
+   THIS door, `zone` is its home ZONE (the panel stays open while you
+   stand in that zone near the door), `prompt` is the interact label. */
 const BUILDING_SPOTS = [
-  { id:'bank',     kind:'bank', pos: BANK_POS,     zone:'town',    prompt:'OPEN BANK',   title:'THE SLIME BANK' },
-  { id:'shop',     kind:'shop', pos: SHOP_POS,     zone:'town',    prompt:'OPEN SHOP',   title:'SLIME SHOP' },
-  { id:'hospital', kind:'inn',  pos: HOSPITAL_POS, zone:'town',    prompt:'OPEN INN',    title:'THE INN' },
-  { id:'vinn',     kind:'inn',  pos: V_INN_POS,    zone:'village', prompt:'OPEN INN',    title:'THORNWICK INN' },
-  { id:'vshop',    kind:'shop', pos: V_SHOP_POS,   zone:'village', prompt:'OPEN SHOP',   title:'THORNWICK SHOP' },
-  { id:'vbank',    kind:'bank', pos: V_BANK_POS,   zone:'village', prompt:'OPEN BANK',   title:'THORNWICK BANK POST' },
-  { id:'rwbed',    kind:'inn',  pos: RW_TENT_POS,  zone:'rotwatch', prompt:'SLEEP',      title:'ROTWATCH CAMP' },
-  { id:'rwcrate',  kind:'shop', pos: RW_CRATE_POS, zone:'rotwatch', prompt:'OPEN SUPPLY', title:'ROTWATCH SUPPLY' },
+  { id:'bank',     kind:'bank', pos: BANK_POS,     zone:'town',   prompt:'OPEN BANK',   title:'THE SLIME BANK' },
+  { id:'shop',     kind:'shop', pos: SHOP_POS,     zone:'town',   prompt:'OPEN SHOP',   title:'SLIME SHOP' },
+  { id:'hospital', kind:'inn',  pos: HOSPITAL_POS, zone:'town',   prompt:'OPEN INN',    title:'THE INN' },
+  { id:'vinn',     kind:'inn',  pos: V_INN_POS,    zone:'camp',   prompt:'OPEN INN',    title:'THORNWICK INN' },
+  { id:'vshop',    kind:'shop', pos: V_SHOP_POS,   zone:'camp',   prompt:'OPEN SHOP',   title:'THORNWICK SHOP' },
+  { id:'vbank',    kind:'bank', pos: V_BANK_POS,   zone:'camp',   prompt:'OPEN BANK',   title:'THORNWICK BANK POST' },
+  { id:'rwbed',    kind:'inn',  pos: RW_TENT_POS,  zone:'hollow', prompt:'SLEEP',       title:'ROTWATCH CAMP' },
+  { id:'rwcrate',  kind:'shop', pos: RW_CRATE_POS, zone:'hollow', prompt:'OPEN SUPPLY', title:'ROTWATCH SUPPLY' },
 ];
 function buildingSpot(id){ return BUILDING_SPOTS.find(s => s.id === id) || null; }
 
@@ -2133,26 +2284,24 @@ function buildingSpot(id){ return BUILDING_SPOTS.find(s => s.id === id) || null;
    scale; its figure occupies ~60% of the canvas, so its visible height
    (.134u) stays ~60% of an adult's (.224u). */
 const CHILD_WAYPOINTS = [
-  { x:TOWN.x - .42, y:TOWN.y + .05 }, { x:TOWN.x - .16, y:TOWN.y + .36 },
-  { x:TOWN.x + .28, y:TOWN.y + .30 }, { x:TOWN.x + .44, y:TOWN.y - .10 },
-  { x:TOWN.x + .12, y:TOWN.y - .40 }, { x:TOWN.x - .30, y:TOWN.y - .34 },
+  { x:6.2, y:8.2 }, { x:6.9, y:9.0 }, { x:7.9, y:8.4 },
+  { x:8.3, y:7.3 }, { x:7.1, y:6.8 }, { x:6.1, y:7.5 },
 ];
 const CHILD_SEG_MS = 9000;   // one waypoint leg; the full loop is ~54s
-/* A def with `wander` strolls its waypoint loop on the deterministic
-   clock (npcPositionAt); a def without one stands at x/y. Settlement
-   folk (Settlements batch): Bramble keeps the Thornwick inn door, Tansy
-   the shop door, the Hermit stands at the village's bridge-side edge,
-   and Scout Vex patrols the Rotwatch camp on a slow three-post loop. */
+/* Zone transplant: the folk keep their names, lines and story roles;
+   only their ground changed (zone + zone-local coords) and their bodies
+   (ISW spritesheets — see drawNPC). `h`/`head` survive for the dialogue
+   bubble anchor scale only. */
 const NPC_DEFS = [
-  { id:'elder', name:'ELDER MIRRA', x:TOWN.x,       y:TOWN.y - .15,            h:.240, head:.224, robe:'#557d3c', skin:'#e8b08a', hair:'#cfd4d1' },
-  { id:'forge', name:'FORGE',       x:SHOP_POS.x - .28, y:SHOP_POS.y + .16,     h:.240, head:.224, robe:'#8a5a2b', skin:'#8a5a3b', hair:'#263238' },
-  { id:'pike',  name:'WARDEN PIKE', x:HOSPITAL_POS.x + .29, y:HOSPITAL_POS.y + .10, h:.240, head:.224, robe:'#6f7f8c', skin:'#d9a37e', hair:'#aeb6ba' },
-  { id:'child', name:'THE CHILD',   x:TOWN.x - .42, y:TOWN.y + .05,            h:.240, head:.134, robe:'#5d9440', skin:'#f0bd93', hair:'#6d4527', wander:CHILD_WAYPOINTS, segMs:CHILD_SEG_MS },
-  { id:'bramble', name:'BRAMBLE',   x:V_INN_POS.x + .27, y:V_INN_POS.y + .18,   h:.240, head:.224, robe:'#7a5a36', skin:'#e8d3ac', hair:'#4a3826' },
-  { id:'tansy',   name:'TANSY',     x:V_SHOP_POS.x - .27, y:V_SHOP_POS.y + .18, h:.240, head:.224, robe:'#b06a34', skin:'#f0dcb8', hair:'#8a4f24' },
-  { id:'hermit',  name:'THE HERMIT', x:VILLAGE.x - .60, y:VILLAGE.y + .25,      h:.240, head:.224, robe:'#5d6463', skin:'#eee9dc', hair:'#33302c' },
-  { id:'vex',     name:'SCOUT VEX', x:RW_FIRE_POS.x + .10, y:RW_FIRE_POS.y + .06, h:.240, head:.224, robe:'#c97a30', skin:'#f2ead8', hair:'#4a3421',
-    wander:[ { x:RW_FIRE_POS.x + .10, y:RW_FIRE_POS.y + .06 }, { x:ROTWATCH.x - .52, y:ROTWATCH.y + .34 }, { x:RW_CRATE_POS.x + .06, y:RW_CRATE_POS.y + .22 } ], segMs:11000 },
+  { id:'elder', name:'ELDER MIRRA', zone:'town', x:7.7, y:7.9,            h:.240, head:.224, robe:'#557d3c', skin:'#e8b08a', hair:'#cfd4d1' },
+  { id:'forge', name:'FORGE',       zone:'town', x:9.9, y:6.3,            h:.240, head:.224, robe:'#8a5a2b', skin:'#8a5a3b', hair:'#263238' },
+  { id:'pike',  name:'WARDEN PIKE', zone:'town', x:4.6, y:7.1,            h:.240, head:.224, robe:'#6f7f8c', skin:'#d9a37e', hair:'#aeb6ba' },
+  { id:'child', name:'THE CHILD',   zone:'town', x:6.2, y:8.2,            h:.240, head:.134, robe:'#5d9440', skin:'#f0bd93', hair:'#6d4527', wander:CHILD_WAYPOINTS, segMs:CHILD_SEG_MS },
+  { id:'bramble', name:'BRAMBLE',   zone:'camp', x:5.9, y:9.9,            h:.240, head:.224, robe:'#7a5a36', skin:'#e8d3ac', hair:'#4a3826' },
+  { id:'tansy',   name:'TANSY',     zone:'camp', x:7.4, y:10.6,           h:.240, head:.224, robe:'#b06a34', skin:'#f0dcb8', hair:'#8a4f24' },
+  { id:'hermit',  name:'THE HERMIT', zone:'camp', x:3.8, y:10.8,          h:.240, head:.224, robe:'#5d6463', skin:'#eee9dc', hair:'#33302c' },
+  { id:'vex',     name:'SCOUT VEX', zone:'hollow', x:5.4, y:11.8,         h:.240, head:.224, robe:'#c97a30', skin:'#f2ead8', hair:'#4a3421',
+    wander:[ { x:5.4, y:11.8 }, { x:7.6, y:8.8 }, { x:9.8, y:11.0 } ], segMs:11000 },
 ];
 function npcWanderPos(def, now){
   const pts = def.wander, seg = def.segMs || 9000, total = seg * pts.length;
@@ -3430,29 +3579,29 @@ function objectiveTarget(){
   const s = prog().story; if (!s || s.complete) return null;
   const o = currentObjective();
   if (o){
-    if (o.type === 'guardian'){ const p = SHRINE_POS[o.shrine]; if (p) return { x:p.x, y:p.y }; }
+    if (o.type === 'guardian'){ const p = SHRINE_POS[o.shrine]; if (p) return { zone:p.zone, x:p.x, y:p.y }; }
     else if (o.type === 'talk' || o.type === 'return'){
       const d = npcDef(o.to);
-      if (d){ const p = npcPositionAt(d, performance.now()); return { x:p.x, y:p.y }; }
+      if (d){ const p = npcPositionAt(d, performance.now()); return { zone:d.zone, x:p.x, y:p.y }; }
     }
     else if (o.type === 'emperorFinale'){
       const b = bossAt(performance.now());
-      if (b) return { x:b.x, y:b.y };
-      return { x:ISLES[2].cx, y:ISLES[2].cy };
+      if (b) return { zone:b.zone || 'wilds', x:b.x, y:b.y };
+      return { zone:'wilds', x:7.4, y:6.8 };
     }
   }
-  if (s.quest !== 'prologue' && !s.sproutsDone){
+  if (s.quest !== 'prologue' && s.quest !== 'arrival' && !s.sproutsDone){
     if (s.sprouts >= 3){
       const d = npcDef('child');
-      if (d){ const p = npcPositionAt(d, performance.now()); return { x:p.x, y:p.y }; }
+      if (d){ const p = npcPositionAt(d, performance.now()); return { zone:d.zone, x:p.x, y:p.y }; }
     } else {
       let best = null, bd = Infinity;
       for (const sp of SPROUT_SPOTS){
         if (s.sproutsFound.includes(sp.id)) continue;
-        const dd = dist2(me.x, me.y, sp.x, sp.y);
+        const dd = (sp.zone === ses.myZone) ? dist2(me.x, me.y, sp.x, sp.y) : 4 + ZONE_IDS.indexOf(sp.zone);   // same-zone spots win; cross-zone falls back to graph order
         if (dd < bd){ bd = dd; best = sp; }
       }
-      if (best) return { x:best.x, y:best.y };
+      if (best) return { zone:best.zone, x:best.x, y:best.y };
     }
   }
   return null;
@@ -3461,7 +3610,7 @@ function storyEvent(type, data = {}){
   const s = prog().story; if (!s) return;
   /* side tale: sproutling pickups count any time after the prologue */
   if (type === 'sprout'){
-    if (s.quest !== 'prologue' && !s.sproutsDone && s.sprouts < 3){
+    if (s.quest !== 'prologue' && s.quest !== 'arrival' && !s.sproutsDone && s.sprouts < 3){
       act.setStory({ sprouts: s.sprouts + 1 });
       notify('SPROUTLING FOUND — ' + (s.sprouts + 1) + ' / 3', { type:'success', sub:'The Child in town will want to hear of this.' });
       sfx.coin(); saveGame(); updateQuestTracker();
@@ -3471,7 +3620,7 @@ function storyEvent(type, data = {}){
   /* side tale: returning to the Child with all 3 completes it — and a
      Child conversation never advances the main chain */
   if ((type === 'return' || type === 'talk') && data.npc === 'child'){
-    if (s.quest !== 'prologue' && !s.sproutsDone && s.sprouts >= 3){
+    if (s.quest !== 'prologue' && s.quest !== 'arrival' && !s.sproutsDone && s.sprouts >= 3){
       act.setStory({ sproutsDone: true });
       grantQuestRewards(SPROUT_QUEST, 'SIDE TALE COMPLETE');
       saveGame(); updateQuestTracker();
@@ -3558,6 +3707,10 @@ function completeStoryQuest(){
   const idx = QUESTS.indexOf(q), next = QUESTS[idx + 1];
   if (q.id === 'finale' || !next){
     act.setStory({ quest:'postgame', step:0, objHave:0, complete:true });
+  } else if (q.id === 'arrival' && s.cycles > 0){
+    act.setStory({ quest:'meadow', step:0, objHave:0 });   // Cycle+: the town audience re-opens the chain at CHAPTER I (the prologue is not repeated)
+    const nq = questById('meadow');
+    if (nq) showChapterCard(nq.chapter, nq.title, nq.intro);
   } else if (q.id === 'herald'){
     act.setStory({ quest: next.id, step:0, objHave:0 });
     // the TRUTH plays before the finale's card (see TRUTH_CARDS above)
@@ -3577,15 +3730,15 @@ function completeStoryQuest(){
 function startNewCycle(){
   const s = prog().story;
   if (!s || !s.complete) return false;
-  act.setStory({ quest:'meadow', step:0, objHave:0, sigils:0, complete:false, cycles:s.cycles + 1, heraldDone:false });   // the Herald re-locks with the chain, like every guardian
-  /* SANDBAR SAFETY (round 4): the islet crossings drown with the chain.
-     The choice is made at the Elder's side in town, so the blade should
-     never be out there — but if it somehow is (a peer-era position, a
-     stale frame), the returning tide washes it to the nearest standable
-     shore instead of stranding it on locked land. */
-  if (!canStand(me.x, me.y)){ const p = projectToLand(me.x, me.y); me.x = p.x; me.y = p.y; pinPtr(me.x, me.y, performance.now()); }
+  act.setStory({ quest:'arrival', step:0, objHave:0, sigils:0, complete:false, cycles:s.cycles + 1, heraldDone:false });   // the Herald re-locks with the chain, like every guardian; the gates re-lock with the Sigils
+  /* The new cycle begins where every summoning begins: the altar in the
+     Landing Glade, with the walk to Alderwake ahead (Handler's opening
+     ruling). The Elder's parlour is left behind in the fade. */
+  ses.myZone = ALTAR.zone;
+  me.x = ALTAR_SPAWN.x; me.y = ALTAR_SPAWN.y; me.px = me.x; me.py = me.y;
+  ses.cam.x = me.x; ses.cam.y = me.y; pinPtr(me.x, me.y, performance.now());
   saveGame(); refreshHUD(); updateQuestTracker();
-  const q = questById('meadow');
+  const q = questById('arrival');
   if (q) showChapterCard(q.chapter, q.title, q.intro);
   return true;
 }
@@ -4633,7 +4786,7 @@ function buyInn(id){
     // the save remembers the inn's name for the panel's Respawn line
     const spot = openSpot.inn || buildingSpot('hospital');
     const door = innDoor(spot);
-    act.patchProgress({ spawnAt: { x: door.x, y: door.y, name: spot.title } });
+    act.patchProgress({ spawnAt: { zone: spot.zone, x: door.x, y: door.y, name: spot.title } });
     notify('SPAWN SAVED — ' + spot.title, { type:'success' });
   } else {
     const price = fullHealPrice();
@@ -6042,6 +6195,7 @@ function resetRun(){
   ses.combo=0; ses.comboUntil=0; updateComboBadge(false);
   if (world.scores[me.id]) world.scores[me.id].kills = 0;
   act.clearSave();
+  ses.myZone = ALTAR.zone; me.x = ALTAR_SPAWN.x; me.y = ALTAR_SPAWN.y; me.px = me.x; me.py = me.y; ses.cam.x = me.x; ses.cam.y = me.y;   // a fresh run wakes at the summoning altar
   rollBounty();
   buildRack(); buildActives(); buildSphere(); refreshHUD(); updateHint();
   togglePause(false);
@@ -6063,19 +6217,25 @@ function loadGame(){
   me.hp = me.maxHp;   // HP is not persisted — a loaded character starts full at the scaled max
   const p = prog();
   if (d.name) $('#nameIn').value = p.name;
-  if (p.spawnAt){
-    /* A STALE spawnAt (a pre-archipelago save, or a point now under water
-       / behind a gate) does NOT project to the nearest shore — a random
-       beach can sit 5u+ from town. It falls back to the INN DOOR, the
-       town respawn point (Batch B), and the correction is written back
-       so death()'s respawn lands there too. */
+  /* TRANSPLANT MIGRATION: a save from the archipelago world (worldV<2)
+     keeps ALL of its progress — only its feet move. It wakes at
+     Alderwake's inn door, mid-arc, and is NEVER re-routed to the altar
+     (that opening belongs to new games and new cycles only). */
+  if ((p.worldV | 0) < 2){
+    const sp2 = { zone:'town', x: HOSPITAL_POS.x + .35, y: HOSPITAL_POS.y - .35, name:'THE INN' };
+    act.patchProgress({ worldV: 2, spawnAt: sp2 });
+    me.x = sp2.x; me.y = sp2.y; me.px = me.x; me.py = me.y;
+    ses.myZone = sp2.zone; ses.cam.x = me.x; ses.cam.y = me.y;
+    saveGame();
+  } else if (p.spawnAt && ZONES_DEF[p.spawnAt.zone]){
     let sp2 = p.spawnAt;
-    if (!canStand(p.spawnAt.x, p.spawnAt.y)){
-      sp2 = { x: HOSPITAL_POS.x, y: HOSPITAL_POS.y - .28 };
-      act.patchProgress({ spawnAt: { x: sp2.x, y: sp2.y } });
+    if (!canStandZ(sp2.zone, sp2.x, sp2.y)){   // a stale respawn (now water / a footprint) falls back to the inn door, written back
+      sp2 = { zone:'town', x: HOSPITAL_POS.x + .35, y: HOSPITAL_POS.y - .35, name:'THE INN' };
+      act.patchProgress({ spawnAt: sp2 });
       saveGame();
     }
     me.x = sp2.x; me.y = sp2.y; me.px = me.x; me.py = me.y;   // first spawn uses the saved respawn too
+    ses.myZone = sp2.zone; ses.cam.x = me.x; ses.cam.y = me.y;
   }
   if (p.bounty) updateBountyUI();
   setMuted(p.muted);
@@ -6975,7 +7135,6 @@ function drawVideoSlime(s,t,baseR){
 }
 
 /* ============================================================ drawing */
-const FLOWERS = Array.from({length:27800},(_,i)=>({x:(Math.sin(i*127.1)*.5+.5)*WORLD, y:(Math.cos(i*311.7)*.5+.5)*WORLD, c:['#fff','#ffd1e8','#fff3a0'][i%3], s:2+(i%3)}));   // scaled with world area (15,600 at 24u, x~1.78 at 32u; draw loop skips the sea)
 /* Deterministic world dressing (seeded RNG, same for every player): trees,
    rocks and ponds scattered over the world, kept off the spawn-centre clearing.
    Visual only — no collision. */
@@ -6985,295 +7144,30 @@ function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.im
    buildings. The DECOR IIFE below builds each cluster's props around
    its centre; updatePoiNotices floats the name on first approach. */
 const POIS = [
-  { id:'ruins',    name:'RUINED CIRCLE',   x:4.80,  y:13.26, isle:0 },
-  { id:'flowers',  name:'FLOWER GROVE',    x:10.95, y:20.46, isle:0 },
-  { id:'wayside',  name:'WAYSIDE REST',    x:10.52, y:16.64, isle:0 },   // Batch D: halfway stone on the town -> Meadow Shrine path (its float is the corridor's name tag); Scale-up 2 kept the town-relative offset — town (8.2,16.4), shrine 4.6u east
-  { id:'camp',     name:'HERMIT CAMP',     x:26.13, y:6.13,  isle:1 },
-  { id:'shrooms',  name:'MUSHROOM RING',   x:20.91, y:13.18, isle:1 },
-  { id:'stones',   name:'STANDING STONES', x:19.58, y:20.64, isle:2 },
-  { id:'deadwood', name:'THE DEADWOOD',    x:26.97, y:27.91, isle:2 },
-  { id:'grave',    name:"THE FIRST BLADE'S GRAVE", x:ISLES[4].cx, y:ISLES[4].cy, isle:4,
-    epitaph:'HE CUT THE CYCLE FIRST. THE TREE REMEMBERS HIM KINDLY.' },   // round 4: the Hermit Islet's payoff — a grave for the Blade of the Cycle before
+  { id:'altar',  name:'THE SUMMONING ALTAR', zone:'glade',    x:ALTAR.x, y:ALTAR.y },
+  { id:'grave',  name:"THE FIRST BLADE'S GRAVE", zone:'treasure', x:7.4, y:6.6,
+    epitaph:'HE CUT THE CYCLE FIRST. THE TREE REMEMBERS HIM KINDLY.' },
+  { id:'hermitcamp', name:'HERMIT CAMP', zone:'hermit', x:7.0, y:6.8 },
+  { id:'lakeshore', name:'THORNWICK SHORE', zone:'camp', x:6.6, y:10.9 },
 ];
-const DECOR = (()=>{
-  const rng = mulberry32(20261107);
-  const items = [];
-  /* ARCHIPELAGO: decor is placed PER ISLE, inside the disc, clear of the
-     town disc + buildings (Isle 1), each isle's shrine (.30u), and the
-     bridge landings. Counts were the old world's totals x12 (84 ponds /
-     768 trees / 408 rocks) for the 24u world, x~1.8 again for 32u; Isle 1
-     keeps ponds (one hosts the pond sproutling). */
-  const SHRINE_BY_ZONE = { 0:SHRINE_POS.meadow, 1:SHRINE_POS.grove, 2:SHRINE_POS.wilds };   // zones 3+ have no shrine — place() guards the lookup
-  const place = I => {
-    for (let i=0;i<60;i++){
-      const a = rng()*Math.PI*2, d = Math.sqrt(rng()) * (I.r - .20);
-      const x = I.cx + Math.cos(a)*d, y = I.cy + Math.sin(a)*d;
-      if (Math.hypot(x-TOWN.x, y-TOWN.y) < TOWN_R + .06) continue;
-      if (Math.hypot(x-VILLAGE.x, y-VILLAGE.y) < 1.05) continue;   // Thornwick clearing (safe disc + margin)
-      if (Math.hypot(x-ROTWATCH.x, y-ROTWATCH.y) < .80) continue;   // Rotwatch clearing
-      if (Math.hypot(x-BANK_POS.x, y-BANK_POS.y) < .27 ||
-          Math.hypot(x-SHOP_POS.x, y-SHOP_POS.y) < .27 ||
-          Math.hypot(x-HOSPITAL_POS.x, y-HOSPITAL_POS.y) < .27) continue;
-      const sh = SHRINE_BY_ZONE[I.zone];
-      if (sh && Math.hypot(x-sh.x, y-sh.y) < .30) continue;
-      if (Math.hypot(x-SHRINE_POS.root.x, y-SHRINE_POS.root.y) < .30) continue;   // the Root Shrine keeps the same .30u clearing as its sisters (it shares the Wilds zone with the Wilds Shrine, so it is checked by name)
-      if (segDist(x, y, BRIDGE_A).d < .30 || segDist(x, y, BRIDGE_B).d < .30) continue;   // causeways stay walkable
-      return { x, y };
-    }
-    return null;
-  };
-  const scatter = (I, n, mk) => { for (let i=0;i<n;i++){ const p = place(I); if (p) items.push(mk(p)); } };
-  /* Scale-up 2 counts: the 24u totals x~1.8 for the 32u world, plus a
-     dressing for the two islets (geography only — no POIs there yet). */
-  scatter(ISLES[0], 43, p => ({ t:'pond', x:p.x, y:p.y, r:.17 + rng()*.12 }));
-  scatter(ISLES[1], 43, p => ({ t:'pond', x:p.x, y:p.y, r:.17 + rng()*.12 }));
-  scatter(ISLES[2], 65, p => ({ t:'pond', x:p.x, y:p.y, r:.17 + rng()*.12 }));
-  scatter(ISLES[0], 475, p => ({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }));
-  scatter(ISLES[1], 410, p => ({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }));
-  scatter(ISLES[2], 497, p => ({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }));
-  scatter(ISLES[0], 259, p => ({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }));
-  scatter(ISLES[1], 216, p => ({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }));
-  scatter(ISLES[2], 259, p => ({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }));
-  scatter(ISLES[3], 1, p => ({ t:'pond', x:p.x, y:p.y, r:.17 + rng()*.12 }));   // Treasure: one pond on the rock
-  scatter(ISLES[3], 5, p => ({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }));
-  scatter(ISLES[3], 14, p => ({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }));   // Treasure: bare and rocky
-  scatter(ISLES[4], 1, p => ({ t:'pond', x:p.x, y:p.y, r:.17 + rng()*.12 }));   // Hermit: a quiet pond
-  scatter(ISLES[4], 12, p => ({ t:'tree', x:p.x, y:p.y, s:.8 + rng()*.5 }));
-  scatter(ISLES[4], 8, p => ({ t:'rock', x:p.x, y:p.y, s:.7 + rng()*.6 }));
-  /* POND RIMS (Batch C): every pond pre-computes its shore dressing —
-     stones, reed clumps and bare sand patches at seeded angles/radii —
-     so drawPonds can break the sprite's uniform tan ring with zero
-     per-frame allocation. rf spreads the dressing across the ring's
-     width instead of tracing one perfect circle. */
-  for (const d of items){
-    if (d.t !== 'pond') continue;
-    const n = 8 + Math.floor(rng() * 5);
-    d.rim = [];
-    for (let i = 0; i < n; i++)
-      d.rim.push({ a: (i + rng() * .7) / n * Math.PI * 2, rf: .90 + rng() * .30, k: rng() < .42 ? 'stone' : (rng() < .55 ? 'reed' : 'sand') });
-    /* POND OUTLINE WOBBLE (Batch D #10): 16 seeded radius factors, a
-       smoothed random walk clamped to [.92, 1.08] (+/-8%), so the shore
-       traced through them (drawPonds/pondPath) is a natural wobbling
-       loop instead of a clean ellipse band. Deterministic per pond. */
-    d.wob = [];
-    let wf = 1;
-    for (let i = 0; i < 16; i++){ wf = clamp(wf + (rng() - .5) * .09, .92, 1.08); d.wob.push(+wf.toFixed(3)); }
-    d.wob[15] = +((d.wob[15] + d.wob[0]) / 2).toFixed(3);   // soften the wrap seam
-  }
-  /* POI CLUSTERS (Batch C): fixed-centre scenic groups from POIS.
-     Jitter comes from this same seeded rng AFTER the scatter calls, so
-     the scatter layout above is untouched. Every item carries its poi
-     id; SPROUT_SPOTS' nearest-pond/tree/rock derivations are unaffected
-     (no new ponds; the new trees/rocks sit far from the shrine anchors
-     those derivations measure from). */
-  const poi = id => POIS.find(p => p.id === id);
-  { // RUINED CIRCLE — broken pillars: the ISW rock prop, grey-washed, one fallen
-    const P = poi('ruins');
-    for (let i = 0; i < 7; i++){
-      const a = i / 7 * Math.PI * 2 + .3;
-      items.push({ t:'rock', poi:P.id, x:P.x + Math.cos(a) * .30, y:P.y + Math.sin(a) * .21, s:.55 + rng() * .5, tint:'rgba(147,154,159,.55)', rot:(rng() - .5) * .5 });
-    }
-    items.push({ t:'rock', poi:P.id, x:P.x + .05, y:P.y + .03, s:.85, tint:'rgba(147,154,159,.55)', rot:1.25 });   // the fallen pillar
-  }
-  { // FLOWER GROVE — one ground item; drawFlowerGrove paints the dense patch
-    const P = poi('flowers');
-    items.push({ t:'flowers', poi:P.id, x:P.x, y:P.y, r:.55 });
-  }
-  { // HERMIT CAMP — a leaf tent, a campfire, two log seats
-    const P = poi('camp');
-    items.push({ t:'tent', poi:P.id, x:P.x - .14, y:P.y - .06, s:1 });
-    items.push({ t:'campfire', poi:P.id, x:P.x + .04, y:P.y + .10, s:1 });
-    items.push({ t:'log', poi:P.id, x:P.x + .22, y:P.y + .16, s:1, a:.5 });
-    items.push({ t:'log', poi:P.id, x:P.x - .20, y:P.y + .18, s:.9, a:-.4 });
-  }
-  { // MUSHROOM RING — nine mushrooms in a fairy circle
-    const P = poi('shrooms');
-    for (let i = 0; i < 9; i++){
-      const a = i / 9 * Math.PI * 2;
-      items.push({ t:'mushroom', poi:P.id, x:P.x + Math.cos(a) * .26, y:P.y + Math.sin(a) * .19, s:.7 + rng() * .6 });
-    }
-  }
-  { // STANDING STONES — five tall grey slabs in a broken ring
-    const P = poi('stones');
-    for (let i = 0; i < 5; i++){
-      const a = i / 5 * Math.PI * 2 + .8;
-      items.push({ t:'stone', poi:P.id, x:P.x + Math.cos(a) * .29, y:P.y + Math.sin(a) * .21, s:.85 + rng() * .45, tilt:(rng() - .5) * .16 });
-    }
-  }
-  { // THE DEADWOOD — four bare trees (drawTree's dead branch), grey-brown
-    const P = poi('deadwood');
-    const offs = [[0, 0], [.24, .10], [-.22, .14], [.06, -.20]];
-    for (const o of offs) items.push({ t:'tree', poi:P.id, dead:true, x:P.x + o[0], y:P.y + o[1], s:.85 + rng() * .4 });
-  }
-  /* SHRINE PATH LANDMARKS (Batch D #2): the town -> Meadow Shrine walk
-     (4.6u) was the emptiest stretch on the critical path. Two furniture
-     beats now mark it: a SIGNPOST at the town's east edge (boards point
-     both ways — town behind, shrine ahead) and the WAYSIDE REST halfway:
-     a standing stone + a bench log just south of the path line. */
-  items.push({ t:'signpost', x:TOWN.x + TOWN_R + .14, y:TOWN.y - .30, s:1 });
-  { const P = poi('wayside');
-    items.push({ t:'stone', poi:P.id, x:P.x, y:P.y, s:.62, tilt:.05 });
-    items.push({ t:'log', poi:P.id, x:P.x - .24, y:P.y + .03, s:1.15, a:.10 });
-  }
-  { // THE FIRST BLADE'S GRAVE (round 4) — one combined prop at the Hermit
-    // Islet's heart: a modest stone and the sword that was planted with it
-    const P = poi('grave');
-    items.push({ t:'grave', poi:P.id, x:P.x, y:P.y, s:1 });
-  }
-  return items;
-})();
-/* ============================================================ TILE MAP
-   (TILESET FLOOR — Handler ruling 2026-11-09: 'world floor is tile set
-   only.') The world floor is a precomputed CELL MAP at the floor tiles'
-   own pitch (0.55u — the pitch tile-grass/tile-water have always been
-   drawn at). Every cell is classified ONCE at load by sampling its
-   centre against the world's geography; drawField then paints only
-   tiles (or a per-cell palette fill if a tile image failed — still
-   cellular, never a plate, disc, gradient or ring). Bridges are plank
-   structures drawn OVER water cells (not floor); decor, shadows, pond
-   fx and particles sit on top of the floor and are not floor.
-   Sandbar cells are geography, not state: they are classified by strip
-   position and resolved at draw time (sand while the crossing stands,
-   water while it is drowned) — one boolean per strip, no resampling. */
-const TILE_PITCH = .55;
-const TC = { WATER:0, GRASS:1, GRASS2:2, SAND:3, DIRT:4, PATH:5, STONE:6, SBT:7, SBH:8 };
-const TILE_IMGS = ['tile-water','tile-grass','tile-grass2','tile-sand','tile-dirt','tile-path','tile-stone'];
-const TILE_FILL = ['#2c6d7b','#c9e5bb','#c1e0ac','#ead8a4','#d0b080','#e2c894','#c6beb0'];   // per-cell fallback fills in each tile's palette
-/* The worn-path corridors, as desire lines — the same routes the old
-   painted groundPath strips followed (town gate->plaza->inn, the
-   Thornwick hut triangle, Rotwatch tent->fire->crate) plus the straight
-   town -> Meadow Shrine walk. Now they are PATH cells, not paint. */
-const TILE_PATHS = [
-  [ { x:TOWN.x + TOWN_R + .30, y:TOWN.y - .04 }, { x:TOWN.x + .48, y:TOWN.y - .01 }, { x:TOWN.x, y:TOWN.y }, { x:TOWN.x + .02, y:TOWN.y + .36 }, { x:HOSPITAL_POS.x, y:HOSPITAL_POS.y - .12 } ],
-  [ { x:V_INN_POS.x, y:V_INN_POS.y + .14 }, { x:VILLAGE.x - .10, y:VILLAGE.y + .06 }, { x:V_SHOP_POS.x, y:V_SHOP_POS.y + .14 } ],
-  [ { x:VILLAGE.x + .02, y:VILLAGE.y + .10 }, { x:V_BANK_POS.x, y:V_BANK_POS.y - .12 } ],
-  [ { x:RW_TENT_POS.x, y:RW_TENT_POS.y + .10 }, { x:RW_FIRE_POS.x, y:RW_FIRE_POS.y + .05 }, { x:RW_CRATE_POS.x, y:RW_CRATE_POS.y + .10 } ],
-  [ { x:TOWN.x, y:TOWN.y }, SHRINE_POS.meadow ],
-];
-function tilePathDist(x, y){
-  let m = 1e9;
-  for (const line of TILE_PATHS) for (let i = 0; i < line.length - 1; i++){
-    const d = segDist(x, y, { x1:line[i].x, y1:line[i].y, x2:line[i+1].x, y2:line[i+1].y }).d;
-    if (d < m) m = d;
-  }
-  return m;
-}
-const TILEMAP = (()=>{
-  const n = Math.ceil(WORLD / TILE_PITCH), cells = new Uint8Array(n * n);
-  const ponds = DECOR.filter(d => d.t === 'pond');
-  for (let ty = 0; ty < n; ty++) for (let tx = 0; tx < n; tx++){
-    const cx = (tx + .5) * TILE_PITCH, cy = (ty + .5) * TILE_PITCH;
-    /* ponds first: the pond's wobbled ellipse (the footprint its sprite
-       used to paint: rx = r*1.1, ry at the sprite's 259/300 aspect) is
-       WATER inside, with a SAND rim ~0.30u wide outside it. */
-    let pondQ = 1e9, pondRx = 1;
-    for (const d of ponds){
-      const dx = cx - d.x, dy = cy - d.y, rr = d.r * 1.45;
-      if (dx > rr || dx < -rr || dy > rr || dy < -rr) continue;
-      const w = pondWobAt(d, Math.atan2(dy, dx));
-      const rx = d.r * 1.1 * w, ry = rx * 259 / 300;
-      const q = Math.sqrt((dx / rx) * (dx / rx) + (dy / ry) * (dy / ry));
-      if (q < pondQ){ pondQ = q; pondRx = rx; }
-    }
-    let c;
-    if (pondQ <= 1) c = TC.WATER;   // pond interior
-    else {
-      const ii = isleAt(cx, cy);
-      if (ii < 0){
-        // sandbar edges are hash-jittered ±.8 cell (basics gate): a
-        // dead-straight 2-cell strip read as a slab; the wobbled edge
-        // reads as shallows. Walkability keeps the analytic strip —
-        // only the painted edge moves.
-        if (segDist(cx, cy, SANDBAR_T).d <= BRIDGE_W / 2 + (hash01(tx * 7.31 + ty * 13.77 + 5.5) - .5) * TILE_PITCH * 1.6) c = TC.SBT;
-        else if (segDist(cx, cy, SANDBAR_H).d <= BRIDGE_W / 2 + (hash01(tx * 7.31 + ty * 13.77 + 9.25) - .5) * TILE_PITCH * 1.6) c = TC.SBH;
-        else c = TC.WATER;   // open sea — bridge strips included: planks are drawn over water cells
-      } else {
-        const I = ISLES[ii];
-        c = hash01(tx * 3.71 + ty * 9.13) < .38 ? TC.GRASS2 : TC.GRASS;
-        if (I.r - Math.hypot(cx - I.cx, cy - I.cy) < .30) c = TC.SAND;   // isle shore band
-        if ((pondQ - 1) * pondRx <= .30) c = TC.SAND;                    // pond rim band
-        for (const z of SAFE_ZONES){                                     // settlement yards: DIRT with a hash-noise edge
-          const er = z.r * (.84 + .32 * hash01(tx * 12.97 + ty * 78.23 + z.x));
-          if (Math.hypot(cx - z.x, cy - z.y) <= er){ c = TC.DIRT; break; }
-        }
-        if (tilePathDist(cx, cy) <= .30) c = TC.PATH;                    // worn corridors over grass/dirt/sand
-        if (Math.hypot(cx - TOWN.x, cy - TOWN.y) <= .44) c = TC.STONE;   // the plaza's paved heart
-        for (const k in SHRINE_POS){ const p = SHRINE_POS[k]; if (Math.hypot(cx - p.x, cy - p.y) <= .34){ c = TC.STONE; break; } }   // shrine aprons
-      }
-    }
-    cells[ty * n + tx] = c;
-  }
-  return { n, cells };
-})();
+/* (the archipelago DECOR scatter is gone with the tile world — zone dressing lives in PROPS, built per zone in the core block) */
+/* (the TILESET FLOOR is deleted — ground is the ISW plate + its water effect) */
 /* The three LOST SPROUTLINGS (stage 4 side tale): fixed scenic spots
    DERIVED from DECOR itself, so the descriptions are literally true on
    every client — at the edge of the innermost pond, under the tree
    nearest the Grove Shrine, beside the rock nearest the Wilds Shrine.
    Pure decoration data (DECOR is deterministic): the spots are the same
    for everyone; only the FOUND flags are per-player (progress.story). */
-const SPROUT_SPOTS = (()=>{
-  const ponds = DECOR.filter(d => d.t === 'pond'), trees = DECOR.filter(d => d.t === 'tree'), rocks = DECOR.filter(d => d.t === 'rock');
-  const nearest = (arr, x, y) => arr.reduce((best, d) => (!best || dist2(d.x, d.y, x, y) < dist2(best.x, best.y, x, y)) ? d : best, null);
-  const pond = nearest(ponds, TOWN.x, TOWN.y);
-  const pa = Math.atan2(TOWN.y - pond.y, TOWN.x - pond.x);   // the pond's shore, on the side facing town
-  const tree = nearest(trees, SHRINE_POS.grove.x, SHRINE_POS.grove.y);
-  const rock = nearest(rocks, SHRINE_POS.wilds.x, SHRINE_POS.wilds.y);
-  return [
-    { id:'pond',  x:+(pond.x + Math.cos(pa) * pond.r * .92).toFixed(3), y:+(pond.y + Math.sin(pa) * pond.r * .92).toFixed(3) },
-    { id:'grove', x:+(tree.x + .06).toFixed(3), y:+(tree.y + .07).toFixed(3) },
-    { id:'wilds', x:+(rock.x + .10).toFixed(3), y:+(rock.y + .04).toFixed(3) },
-  ];
-})();
+const SPROUT_SPOTS = [
+  { id:'pond',  zone:'glade', x:3.4,  y:7.0 },
+  { id:'grove', zone:'grove', x:4.2,  y:10.8 },
+  { id:'wilds', zone:'wilds', x:11.8, y:4.3 },
+];
 /* Shared wind field: ONE function so grass tufts, flowers, pond shimmer and
    tree canopies all sway with the same gusts crossing the map. */
 function windAt(x, y, t){ return Math.sin(t/1150 + x*2.2 + y*1.35) + .55*Math.sin(t/617 + x*4.7 + y*3.1); }
 /* Grass tufts: seeded scatter of little pixel grass clumps over the whole
    world, kept out of pond interiors and off the building pads. */
-const TUFTS = (()=>{
-  const rng = mulberry32(20261108);
-  const items = [];
-  let guard = 0;
-  while (items.length < 9000 && guard++ < 80000){   // tufts scale with world area (5,040 at 24u, x~1.78 at 32u)
-    // archipelago: tufts grow on LAND only — sample inside a random MAIN isle (the islets stay bare rock and quiet grass)
-    const I = ISLES[Math.floor(rng()*3)];
-    const a = rng()*Math.PI*2, d = Math.sqrt(rng()) * (I.r - .06);
-    const x = I.cx + Math.cos(a)*d, y = I.cy + Math.sin(a)*d;
-    if (Math.hypot(x-BANK_POS.x, y-BANK_POS.y) < .30 ||
-        Math.hypot(x-SHOP_POS.x, y-SHOP_POS.y) < .30 ||
-        Math.hypot(x-HOSPITAL_POS.x, y-HOSPITAL_POS.y) < .30) continue;
-    if (Math.hypot(x-VILLAGE.x, y-VILLAGE.y) < 1.0 || Math.hypot(x-ROTWATCH.x, y-ROTWATCH.y) < .75) continue;   // settlement clearings stay trampled, not tufted
-    let inPond = false;
-    for (const d of DECOR){ if (d.t==='pond' && Math.hypot(x-d.x, y-d.y) < d.r + .03){ inPond = true; break; } }
-    if (inPond) continue;
-    items.push({ x, y, s:.5 + rng()*.5, flip: rng() < .5 });
-  }
-  /* SHRINE PATH CORRIDOR LIFT (Batch D #2): +170 tufts inside the
-     town-east-edge -> Meadow Shrine rectangle (+/-.55u of the path
-     line) — the critical path's emptiest walk gets deliberate density
-     (the landmarks above mark it; this fills it). */
-  for (let i = 0; i < 170; i++){
-    const x = TOWN.x + TOWN_R + .08 + rng() * (SHRINE_POS.meadow.x - TOWN.x - TOWN_R - .16);
-    const y = TOWN.y + (rng() - .5) * 1.1;
-    let inPond = false;
-    for (const d of DECOR){ if (d.t==='pond' && Math.hypot(x-d.x, y-d.y) < d.r + .03){ inPond = true; break; } }
-    if (inPond) continue;
-    items.push({ x, y, s:.5 + rng()*.5, flip: rng() < .5 });
-  }
-  return items;
-})();
-/* Corridor flowers to match the tuft lift (Batch D #2): same rectangle,
-   same pond exclusion, appended to the world FLOWERS scatter. */
-{
-  const frng = mulberry32(20261109);
-  for (let i = 0; i < 130; i++){
-    const x = TOWN.x + TOWN_R + .08 + frng() * (SHRINE_POS.meadow.x - TOWN.x - TOWN_R - .16);
-    const y = TOWN.y + (frng() - .5) * 1.15;
-    let inPond = false;
-    for (const d of DECOR){ if (d.t==='pond' && Math.hypot(x-d.x, y-d.y) < d.r + .03){ inPond = true; break; } }
-    if (inPond) continue;
-    FLOWERS.push({ x, y, c:['#fff','#ffd1e8','#fff3a0'][i % 3], s:2 + (i % 3) });
-  }
-}
 function drawTufts(t){
   const img = WORLD_IMGS['decor-grass'];
   if (!imgOk(img)) return;                 // garnish only -- no fallback art
@@ -9510,9 +9404,10 @@ $('#playBtn').onclick = ()=>{
   /* RPG: the prologue chapter card fires ONCE, the first time any save
      enters the world (cardSeen persists, so it never refires) */
   const st0 = prog().story;
-  if (st0 && st0.quest === 'prologue' && st0.step === 0 && !st0.cardSeen){
+  if (st0 && st0.step === 0 && !st0.cardSeen && (st0.quest === 'arrival' || st0.quest === 'prologue')){
     act.setStory({ cardSeen: true }); saveGame();
-    showChapterCard(QUESTS[0].chapter, QUESTS[0].title, QUESTS[0].intro);
+    const q0 = questById(st0.quest);
+    if (q0) showChapterCard(q0.chapter, q0.title, q0.intro);
   }
   updateQuestTracker();
 };
