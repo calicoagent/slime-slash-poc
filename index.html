@@ -1957,15 +1957,15 @@ const store = createStore((set, get) => {
       const wxp = { ...cur.wxp };
       if (d.wxp) for (const [k,v] of Object.entries(d.wxp)){
         const i = k|0;
-        if (WEAPONS[i] && v) wxp[i] = { lv:clamp(v.lv|0 || 1, 1, WLV_MAX), xp:Math.max(0, v.xp|0) };   // cap is WLV_MAX (50) — the old 1..5 clamp would have confiscated post-gates levels on load
+        if (WEAPONS[i] && v) wxp[i] = { lv:clamp(v.lv|0 || 1, 1, WLV_MAX), xp:Math.max(0, isFinite(v.xp) ? +v.xp : 0) };   // cap is WLV_MAX (50) — the old 1..5 clamp would have confiscated post-gates levels on load; xp keeps FRACTIONS (economy ruling: |0 here would confiscate sub-1 weapon XP every load)
       }
       let weapon = d.weapon|0;
       if (!WEAPONS[weapon] || !owned.has(weapon)) weapon = Math.max(...owned);
       const next = {
-        level, xp: Math.max(0, d.xp|0), coins: Math.max(0, d.coins|0), kills: Math.max(0, d.kills|0), sp: Math.max(0, d.sp|0),
+        level, xp: Math.max(0, isFinite(d.xp) ? +d.xp : 0), coins: Math.max(0, isFinite(d.coins) ? +d.coins : 0), kills: Math.max(0, d.kills|0), sp: Math.max(0, d.sp|0),   // xp/coins keep FRACTIONS (economy ruling ×0.01 — validate finite >= 0, never |0-truncate a fractional balance)
         spBuys: Math.max(0, d.spBuys|0),   // old saves default to 0
         unlocked, gemBag, sockets, owned, gems, wxp, weapon,
-        banked: Math.max(0, d.banked|0),   // economy persists; HP deliberately does NOT
+        banked: Math.max(0, isFinite(d.banked) ? +d.banked : 0),   // economy persists (fractional since the ×0.01 ruling — deposits carry fractional coins); HP deliberately does NOT
         purse: !!d.purse,
         muted: !!d.muted,
       };
@@ -2167,6 +2167,18 @@ function npcDef(id){ return NPC_DEFS.find(d => d.id === id) || null; }
 
 /* ---- polish pass state ---- */
 /* ============================================================ slimes */
+/* ECONOMY RULING (Handler, 2026-11-09): AoE farming made progression
+   trivial, so every FARMABLE reward pays ×0.01 — kill XP, weapon XP,
+   kill coins, bounty payouts, and soul-gem drop chances all scale by
+   REWARD_MULT at their credit choke points (onKillFx / gainXp), with
+   zone/elite/boss/stat multipliers composing on top as before. Balances
+   (coins, xp, weapon xp) accumulate FRACTIONALLY and displays floor.
+   NOT scaled: one-time story/quest rewards (grantQuestRewards), shop /
+   inn / breakthrough prices, the bank SP exchange, and mining yields. */
+const REWARD_MULT = 0.01;
+/* Granted-amount text: whole coins floored; a sub-coin grant shows to
+   the cent so a ×0.01 reward never reads as '+0'. Balances always floor. */
+const fmtGrant = n => n >= 1 ? '' + Math.floor(n) : n.toFixed(2);
 const SLIME_KINDS = [
   { kind:'baby',  hp:12,  r:.020, coins:4,  xp:8,  speed:.014, weight:45, hopCycle:640,  hopDist:.030 },
   { kind:'mid',   hp:30,  r:.030, coins:9,  xp:16, speed:.011, weight:35, hopCycle:720,  hopDist:.034 },
@@ -3241,11 +3253,15 @@ function onKillFx(f){
   if (f.kind==='boss') notify('THE EMPEROR HAS FALLEN!', { type:'king' });
   if (f.by===me.id){
     const now = performance.now();
-    let cg = Math.round(f.coins * (1 + ses.stats.coin));
+    /* ECONOMY RULING ×0.01 (see REWARD_MULT): kill coins are FRACTIONAL
+       now — no rounding, the balance accumulates the fractions and every
+       display floors. Zone/elite/boss scaling already composed into
+       f.coins; the coin stat and GOLD RUSH compose on top as before. */
+    let cg = f.coins * REWARD_MULT * (1 + ses.stats.coin);
     if (now < me.goldRushUntil) cg *= 2;   // GOLD RUSH: double coins
     act.patchProgress(p => ({ coins: p.coins + cg, kills: p.kills + 1 }));
     me.mp = Math.min(me.maxMp, me.mp + 2);   // +2 MP per kill (own kills only)
-    gainWxp(prog().weapon, 10);   // +10 XP to the EQUIPPED weapon (all weapons level this way)
+    gainWxp(prog().weapon, 10 * REWARD_MULT);   // weapon XP from kills scales too (mining's gainWxp call does NOT — mining is unscaled)
     /* SPHERE POINTS from the big kills (Handler: 'Sphere point gained from
        farming emperor') — the Emperor pays +3 SP, a Slime King +1 SP,
        awarded HERE, the same single place soul gems drop. */
@@ -3254,11 +3270,15 @@ function onKillFx(f){
     /* SOUL GEM drops — rolled HERE, the single place local kill rewards
        are granted (remote kills and host/client overlap can't double-fire:
        this block runs once, for my kills only) */
-    if (f.kind==='boss'){ grantGem(2, f.x, f.y); grantGem(2, f.x, f.y); grantGem(2, f.x, f.y); }   // 3 gems, floor Rare
-    else if (f.kind==='king') grantGem(1, f.x, f.y);          // 1 gem, floor Fine
-    else if (f.kind==='metal') grantGem(2, f.x, f.y);         // 1 gem, floor Rare
-    else if (f.elite){ if (Math.random() < .30) grantGem(0, f.x, f.y); }
-    else if (Math.random() < .05) grantGem(0, f.x, f.y);
+    /* ECONOMY RULING ×0.01: drop CHANCES scale — the old guaranteed
+       king/boss/metal gems were a 100% chance, now a 1% roll each (the
+       boss rolls his 3 floor-Rare gems independently); rarity floors as
+       rolled. Normal .05 -> .0005, elite .30 -> .003. */
+    if (f.kind==='boss'){ for (let gi = 0; gi < 3; gi++) if (Math.random() < REWARD_MULT) grantGem(2, f.x, f.y); }   // 3 gems, floor Rare — each a 1% roll
+    else if (f.kind==='king'){ if (Math.random() < REWARD_MULT) grantGem(1, f.x, f.y); }          // 1 gem, floor Fine — 1% roll
+    else if (f.kind==='metal'){ if (Math.random() < REWARD_MULT) grantGem(2, f.x, f.y); }         // 1 gem, floor Rare — 1% roll
+    else if (f.elite){ if (Math.random() < .30 * REWARD_MULT) grantGem(0, f.x, f.y); }
+    else if (Math.random() < .05 * REWARD_MULT) grantGem(0, f.x, f.y);
     /* STAGE 4 story credit — the KILLER's client only (this whole block
        is by-me): a guardian's fall wakes its Sigil through the engine
        and marks the shrine done (its crystal glows from then on); the
@@ -3272,7 +3292,7 @@ function onKillFx(f){
       if (prog().story.complete && !ses.endingPlayed){ ses.endingPlayed = true; playEnding(); }
     }
     gainXp(f.xp); sfx.coin();
-    addFloat(f.x, f.y-.04, '+'+cg+' coins', '#ffd94d');
+    if (cg >= 1) addFloat(f.x, f.y-.04, '+'+Math.floor(cg)+' coins', '#ffd94d');   // sub-coin grants accumulate silently — a '+0 coins' float is noise
     if (f.kind==='king'){ bubble('KING SLAYER!', me.x, me.y); }
     if (f.kind==='boss'){ bubble('EMPEROR SLAYER!', me.x, me.y); }
     // combo chain: kills within the window of each other keep it alive (Combo Charm stretches it)
@@ -3286,9 +3306,9 @@ function onKillFx(f){
     if (prog().bounty && ((prog().bounty.type==='color' && f.c===prog().bounty.key) || (prog().bounty.type==='kind' && f.kind===prog().bounty.key))){
       act.bountyStep();
       if (prog().bounty.have >= prog().bounty.need){
-        const payout = Math.round(prog().bounty.reward * (1 + ses.stats.bounty));   // Bounty Hunter passive
-        act.patchProgress(p => ({ coins: p.coins + payout, sp: p.sp + 1 })); saveGame();   // SP + coins: persist on the event
-        notify('BOUNTY COMPLETE! +' + payout + ' coins +1 SP', { type:'success' });
+        const payout = prog().bounty.reward * REWARD_MULT * (1 + ses.stats.bounty);   // ECONOMY RULING ×0.01: bounties repeat, so they scale — fractional like kill coins; Bounty Hunter passive composes on top
+        act.patchProgress(p => ({ coins: p.coins + payout, sp: p.sp + 1 })); saveGame();   // SP + coins: persist on the event (the +1 SP is NOT scaled — SP is not exp/money/drops)
+        notify('BOUNTY COMPLETE! +' + fmtGrant(payout) + ' coins +1 SP', { type:'success' });
         sfx.buy();
         rollBounty();
       }
@@ -3300,7 +3320,13 @@ function onKillFx(f){
   }
 }
 function gainXp(n){
-  act.patchProgress(p => ({ xp: p.xp + Math.round(n * (1 + ses.stats.xp)) }));
+  /* ECONOMY RULING ×0.01 (see REWARD_MULT): kill XP is FRACTIONAL — no
+     rounding (rounding would zero a 0.08 XP baby kill and lose the
+     residue). Tiny gains park in the bar; the capped level loop below
+     only wakes when a full level has accumulated. The XP stat bonus
+     composes on top of the scaled base as before. Kill credit is the
+     only caller — story grants never pass through here. */
+  act.patchProgress(p => ({ xp: p.xp + n * REWARD_MULT * (1 + ses.stats.xp) }));
   /* LOOP, not if: one grant can span several levels — a scaled Emperor
      pays 1200 x 1.5 x bScale XP (~15.8k at Lv38 vs 3.8k per level), and
      the old single `if` levelled ONCE and parked the rest of the bar until
@@ -4392,8 +4418,8 @@ function openShop(){ showBuildingPanel('#shopPanel'); buildShopRows(); startPane
    the Bank is the expensive shortcut. */
 function spPrice(){ return Math.round(300 * Math.pow(1.5, prog().spBuys || 0)); }
 function updateBankPanel(){
-  $('#bankCarried').textContent = prog().coins;
-  $('#bankBanked').textContent = prog().banked;
+  $('#bankCarried').textContent = Math.floor(prog().coins);   // balances are fractional (×0.01 ruling) — displays floor, the fractions stay in the save
+  $('#bankBanked').textContent = Math.floor(prog().banked);
   $('#bankSp').textContent = prog().sp;
   $('#buySpBtn').textContent = 'BUY 1 SP — ' + spPrice() + 'c';
   $('#buySpBtn').disabled = (prog().banked + prog().coins) < spPrice();
@@ -4418,11 +4444,11 @@ const SHOP_ITEMS = [
    button silently died (the inn SLEEP & SAVE report). */
 let shopUpdaters = [], hospUpdaters = [];
 function updateShopPanel(){
-  $('#shopCoins').textContent = prog().coins;
+  $('#shopCoins').textContent = Math.floor(prog().coins);
   for (const u of shopUpdaters) u();
 }
 function buildShopRows(){
-  $('#shopCoins').textContent = prog().coins;
+  $('#shopCoins').textContent = Math.floor(prog().coins);
   shopUpdaters = [];
   const wrap = $('#shopRows'); wrap.innerHTML = '';
   for (const it of SHOP_ITEMS){
@@ -4530,7 +4556,7 @@ function spawnIsHere(){
 }
 function updateHospitalRows(){
   $('#hospHp').textContent = Math.max(0, Math.ceil(me.hp)) + ' / ' + me.maxHp;
-  $('#hospCoins').textContent = prog().coins;
+  $('#hospCoins').textContent = Math.floor(prog().coins);
   $('#hospSpawn').textContent = prog().spawnAt ? (prog().spawnAt.name || 'The Inn') : 'Town Centre';
   for (const u of hospUpdaters) u();
 }
@@ -5141,7 +5167,7 @@ function setText(el, v){ v = String(v); if (el._t !== v){ el._t = v; el.textCont
 function setStyle(el, prop, v){ const k = '_s' + prop; if (el[k] !== v){ el[k] = v; el.style[prop] = v; } }
 const pct = (a, b) => clamp(a/b*100, 0, 100).toFixed(1) + '%';
 function refreshHUD(){
-  setText($('#coins'), prog().coins);
+  setText($('#coins'), Math.floor(prog().coins));   // fractional balance, floored display
   setText($('#lvl'), prog().level);
   setText($('#kills'), prog().kills+' kills');
   setStyle($('#xpFill'), 'width', pct(prog().xp, prog().level*100));
@@ -5406,8 +5432,8 @@ function buildMenuMore(){ updateMenuMore(); }
 function updateMenuMore(){
   $('#menuLvl').textContent = prog().level;
   $('#menuKills').textContent = prog().kills;
-  $('#menuCarried').textContent = prog().coins;
-  $('#menuBanked').textContent = prog().banked;
+  $('#menuCarried').textContent = Math.floor(prog().coins);
+  $('#menuBanked').textContent = Math.floor(prog().banked);
   $('#menuSp').textContent = prog().sp;
 }
 /* ---- SOUL GEM panel: equipped weapon's slots, the loose-gem bag, and
@@ -5515,7 +5541,7 @@ function rollGemRarity(floor){
   return 4;
 }
 function grantGem(floor, x, y){
-  if (prog().gemBag.length >= 99){ act.addCoins(15); addFloat(x, y - .16, '+15c (BAG FULL)', '#ffd94d'); return; }   // bag cap 99: the drop converts to coins
+  if (prog().gemBag.length >= 99){ act.addCoins(15 * REWARD_MULT); addFloat(x, y - .16, 'GEM → COINS (BAG FULL)', '#ffd94d'); return; }   // bag cap 99: the drop converts to coins — a kill-drop coin grant, so it scales ×0.01 like the rest (the float drops its number: the grant is sub-coin)
   const stats = Object.keys(GEM_STATS);
   const gem = { id:'g' + Date.now().toString(36) + (ses.gemSeq++), stat:stats[Math.floor(Math.random()*stats.length)], rarity:rollGemRarity(floor) };
   act.addToGemBag(gem);
@@ -5897,7 +5923,7 @@ function rollBounty(){
 function updateBountyUI(){
   if (!prog().bounty) return;
   $('#bountyText').textContent = 'Slay '+prog().bounty.need+' '+prog().bounty.label+' slimes';
-  $('#bountyProg').textContent = prog().bounty.have+'/'+prog().bounty.need+' · Reward '+prog().bounty.reward+'c + 1 SP';
+  $('#bountyProg').textContent = prog().bounty.have+'/'+prog().bounty.need+' · Reward '+fmtGrant(prog().bounty.reward * REWARD_MULT)+'c + 1 SP';   // advertise the SCALED payout (the ×0.01 ruling) — what completes is what is paid
 }
 
 /* ---------- king banner ---------- */
