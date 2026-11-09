@@ -76,11 +76,11 @@
   #rackTabRow { display:flex; justify-content:center; margin-bottom:4px; pointer-events:none; }
   #rackTab { pointer-events:auto; font-size:10px; padding:8px 14px; }
   #rackTabChev { margin-left:8px; }
-  #rack { display:flex; gap:10px; justify-content:center; pointer-events:none; overflow:hidden; transition:max-height .18s ease; }
+  #rack { display:flex; gap:10px; justify-content:center; align-items:flex-start; pointer-events:none; overflow:hidden; transition:max-height .18s ease; padding-top:10px; box-sizing:border-box; }   /* flex-start: stretch let the max-height cap squeeze the cards below their content (name/xp bar spilled off the card) */
   #rackDock.collapsed #rack .wcard:not(.sel) { display:none; }
   .wcard {
     width:82px; padding:8px 4px 6px; text-align:center; cursor:pointer; position:relative; flex:none; pointer-events:auto;
-    background:#fff6df; border:3px solid #3a2b23; border-radius:0;
+    background:#fff6df; border:3px solid #3a2b23; border-radius:0; box-sizing:border-box;
     box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(38,32,40,.30); transition:transform .08s;
   }
   .wcard:active { transform:translate(2px,2px); box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 1px 1px 0 rgba(38,32,40,.30); }
@@ -90,7 +90,7 @@
   .wcard .wn { font-family:"Press Start 2P",monospace; font-size:7px; color:#3a2b23; line-height:1.3; white-space:nowrap; }
   .wcard .wl { position:absolute; top:-10px; right:-8px; background:#3a2b23; color:#ffd94d; font-size:15px; font-weight:700; border-radius:0; padding:2px 8px; line-height:1.1; }
   .wcard .key { position:absolute; top:-10px; left:-8px; background:#fff; border:2px solid #3a2b23; color:#3a2b23; font-family:"Press Start 2P",monospace; font-size:8px; border-radius:0; padding:2px 5px; }
-  .wcard .wlv { position:absolute; top:2px; left:2px; background:rgba(58,43,35,.88); color:#ffd94d; font-family:"VT323",monospace; font-size:13px; font-weight:700; line-height:1.15; padding:0 4px; }
+  .wcard .wlv { position:absolute; top:2px; left:2px; background:rgba(58,43,35,.88); color:#ffd94d; font-family:"VT323",monospace; font-size:13px; font-weight:700; line-height:1.15; padding:0 4px; white-space:nowrap; }   /* nowrap: a wrapped Lv bar doubles in height and swallows the weapon icon under fallback fonts */
   .wcard .wxpbar { height:4px; background:rgba(58,43,35,.55); border:1px solid #3a2b23; margin-top:3px; }
   .wcard .wxpbar > div { height:100%; background:#ff9a2e; }
   .wcard .wxpbar.ready > div { background:#ffd94d; animation:wxpPulse .6s ease-in-out infinite alternate; }
@@ -326,7 +326,12 @@
     /* items row joins the bottom-left cluster on phones too: 6px above
        the minimap (minimap bottom = --dockH + 10px, 96px tall here) */
     #items { left:max(8px, env(safe-area-inset-left)); right:auto; bottom:calc(var(--dockH, 92px) + 112px); gap:8px; }
-    #interactPrompt { bottom:calc(var(--dockH, 92px) + 10px); font-size:9px; padding:9px 14px; }
+    /* portrait restack (basics gate): at dock level the centred
+       prompt ran INTO the right-hand skill card and clipped its name
+       ('THSHAKER'). The prompt now rides one row ABOVE the actives
+       column; the left column is clear of it (minimap tops out below
+       this line at x<=82px, the prompt starts ~95px in). */
+    #interactPrompt { bottom:calc(var(--dockH, 92px) + 64px); font-size:9px; padding:9px 14px; }
     #bossBar { width:min(72vw,520px); }
     #bountyText { font-size:16px; line-height:1.2; }
     #bountyProg { font-size:14px; margin-top:1px; }
@@ -335,7 +340,7 @@
     #rackDock { padding-bottom:max(8px, env(safe-area-inset-bottom)); }
     #rackBtns { margin:0 8px 6px 0; gap:6px; }
     #rackTab { font-size:8px; padding:7px 10px; }
-    #rack { gap:4px; width:100%; padding:0 4px; box-sizing:border-box; }
+    #rack { gap:4px; width:100%; padding:10px 4px 0; box-sizing:border-box; }
     .wcard { width:46px; padding:5px 2px 4px; }
     .wcard svg { width:30px; height:30px; }
     .wcard img { width:30px !important; height:30px !important; }
@@ -400,7 +405,19 @@
     font-family:"Press Start 2P",monospace; font-size:11px; cursor:pointer;
     background:#ffd94d; color:#3a2b23; border:3px solid #3a2b23; border-radius:0;
     padding:11px 20px; box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(38,32,40,.35);
+    max-width:min(92vw, 560px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; box-sizing:border-box;
   }
+  /* TAP-LEAK SEAL (basics gate): children of interactive surfaces
+     never take the hit themselves — elementFromPoint must resolve to
+     the owning control, never a bare text node parked in front of the
+     canvas (the chapter card's #chLine ate real taps at screen
+     centre). Containers/labels stay inert; only real buttons catch
+     taps. */
+  button *, .wcard *, #questCard *, #npcBubble *, .chapterPlate * { pointer-events:none; }
+  /* the expanded weapon rack is a proper bottom PANEL: a parchment
+     tray with a hard top edge that the cards sit ON, instead of bare
+     cards floating over the world and running off the screen edge. */
+  #rackDock:not(.collapsed) #rack { background:#f3e5c3; border-top:3px solid #3a2b23; box-shadow:0 -4px 0 rgba(38,32,40,.18); padding-top:12px; padding-bottom:2px; }
   #interactPrompt:active { transform:translateX(-50%) translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(38,32,40,.35); }
   /* z-index 40: the items row sits ABOVE world-space labels/prompts
      (an INN sign once covered the BOMB button) and below modal panels.
@@ -635,7 +652,7 @@
   #title { overflow-y:auto; }
   #logo { margin-top:auto; }
   @media (max-width:640px) {
-    .wcard { width:min(56px,15vw); padding:6px 1px 5px; border-width:3px; border-radius:0; }
+    .wcard { width:min(46px,12.5vw); padding:6px 1px 5px; border-width:3px; border-radius:0; }   /* 7 cards + gaps must fit the phone: the old 56px width ran the rack off both edges */
     .wcard svg { width:26px; height:26px; } .wcard .wn { font-family:"VT323",monospace; font-size:13px; font-weight:700; }
     .wcard .key { display:none; } .wcard .wl { font-size:13px; padding:1px 6px; top:-8px; right:-5px; }
     .wcard.sel { transform:translateY(-4px); }
@@ -5076,6 +5093,9 @@ addEventListener('pointerdown', e=>{
   if (!ses.started) return;
   if (e.target.closest && e.target.closest('#hud') && !e.target.closest('#game')) { /* UI taps handled by buttons */ }
   if (e.target===cv){
+    // a tap on the world dismisses the expanded weapon rack (it also
+    // closes on selection — equipFromRack calls toggleRack)
+    if (!prog().rackCollapsed) toggleRack();
     // snap the sword to the (touch-lifted) tap point so the skill tap lands there
     me.px=me.x; me.py=me.y;
     me.x=clamp(ses.cam.x + e.clientX/UNIT(), .02, WORLD-.02);
@@ -5263,10 +5283,16 @@ function syncRackUI(){
   $('#rackTabChev').textContent = prog().rackCollapsed ? '▲' : '▼';
   const rack = $('#rack');
   if (prog().rackCollapsed){
-    const sel = rack.querySelector('.wcard.sel');
-    rack.style.maxHeight = (sel ? sel.offsetHeight : 76) + 'px';
-  } else {
+    // scrollHeight, not sel.offsetHeight: the card's in-flow tail
+    // (name + xp bar) can extend past its border box, and the rack
+    // must never clip it (the collapsed card used to lose its name
+    // and xp bar under the screen edge).
     rack.style.maxHeight = rack.scrollHeight + 'px';
+  } else {
+    // capped at half the viewport: the expanded rack is a bottom
+    // PANEL (see the :not(.collapsed) tray styling) — it can never
+    // push its cards past the screen edge again.
+    rack.style.maxHeight = Math.min(rack.scrollHeight, Math.round(innerHeight * .5)) + 'px';
   }
   syncDockH();
 }
@@ -6106,10 +6132,18 @@ function drawMinimap(){
       g.fillStyle = '#fff8e7'; g.beginPath(); g.arc(dx, dy, 1.8, 0, 7); g.fill();
     }
   }
+  /* MARKERS ONLY (basics gate): the old loop dotted EVERY slime —
+     ~600 dark-green specks on the grass discs read as pure noise at
+     portrait size (Handler's screenshot). The minimap is a chart
+     now, with the MAP tab's marker philosophy: landmasses, bridges,
+     doors, the objective diamond — and of the slimes only the two
+     things worth steering by: the boss/guardians (gold) and the
+     metal (silver, white halo). Kings and elites stay off: at their
+     spawn rates (~20 kings, ~50 elites in a full world) their dots
+     re-created the speckle carpet this cleanup removed. */
   for (const s of world.slimes.values()){
-    g.fillStyle = (s.kind==='king' || s.kind==='boss') ? '#ffd94d' : s.kind==='metal' ? '#c3ced4' : 'rgba(30,90,20,.55)';
-    g.beginPath(); g.arc(s.x*S2, s.y*S2, s.kind==='boss'?6 : s.kind==='king'?4.5 : s.kind==='metal'?4:2, 0, 7); g.fill();
-    if (s.kind==='metal'){ g.strokeStyle = '#ffffff'; g.lineWidth = 1.5; g.beginPath(); g.arc(s.x*S2, s.y*S2, 4, 0, 7); g.stroke(); }   // silver dot, white halo — the old r3 pale dot was camouflage among 80 green dots
+    if (s.kind==='boss' || s.kind==='guardian'){ g.fillStyle = '#ffd94d'; g.beginPath(); g.arc(s.x*S2, s.y*S2, 6, 0, 7); g.fill(); }
+    else if (s.kind==='metal'){ g.fillStyle = '#c3ced4'; g.beginPath(); g.arc(s.x*S2, s.y*S2, 4, 0, 7); g.fill(); g.strokeStyle = '#ffffff'; g.lineWidth = 1.5; g.beginPath(); g.arc(s.x*S2, s.y*S2, 4, 0, 7); g.stroke(); }
   }
   for (const p of world.peers.values()){ g.fillStyle = '#4dabff'; g.beginPath(); g.arc(p.x*S2, p.y*S2, 3, 0, 7); g.fill(); }
   g.fillStyle = '#fff'; g.strokeStyle = '#5b3a1e'; g.lineWidth = 2;
@@ -7119,8 +7153,12 @@ const TILEMAP = (()=>{
     else {
       const ii = isleAt(cx, cy);
       if (ii < 0){
-        if (segDist(cx, cy, SANDBAR_T).d <= BRIDGE_W / 2) c = TC.SBT;
-        else if (segDist(cx, cy, SANDBAR_H).d <= BRIDGE_W / 2) c = TC.SBH;
+        // sandbar edges are hash-jittered ±.8 cell (basics gate): a
+        // dead-straight 2-cell strip read as a slab; the wobbled edge
+        // reads as shallows. Walkability keeps the analytic strip —
+        // only the painted edge moves.
+        if (segDist(cx, cy, SANDBAR_T).d <= BRIDGE_W / 2 + (hash01(tx * 7.31 + ty * 13.77 + 5.5) - .5) * TILE_PITCH * 1.6) c = TC.SBT;
+        else if (segDist(cx, cy, SANDBAR_H).d <= BRIDGE_W / 2 + (hash01(tx * 7.31 + ty * 13.77 + 9.25) - .5) * TILE_PITCH * 1.6) c = TC.SBH;
         else c = TC.WATER;   // open sea — bridge strips included: planks are drawn over water cells
       } else {
         const I = ISLES[ii];
@@ -7300,9 +7338,15 @@ function drawTree(d, t){
   const img = WORLD_IMGS['decor-tree'];
   if (imgOk(img)){   // pixel tree sprite, bottom-anchored on the spot
     const w = .36*u*d.s, h = w * img.naturalHeight/img.naturalWidth;
-    // ground shadow (the sprite path had none — only the vector fallback did)
+    // SHADOW ANCHOR (basics gate): the ellipse centres on the sprite's
+    // VISIBLE base — the lowest opaque rows end ~.05w above the draw
+    // bottom (transparent margin in the sheet) — and tucks its top
+    // third under the bush ring. The old +.045u centre sat a full
+    // margin BELOW the draw bottom: a detached grey disc floating
+    // under the tree (Handler's screenshot, 2026-11-09).
+    const baseY = y + .03*u - .05*w, sry = w*.068;
     ctx.fillStyle = 'rgba(38,32,40,.18)';
-    ctx.beginPath(); ctx.ellipse(x, y + .045*u, w*.27, w*.075, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x, baseY + sry*.3, w*.29, sry, 0, 0, 7); ctx.fill();
     ctx.save();
     ctx.translate(x, y + .03*u);                 // pivot at the ground anchor (the sprite's bottom edge)
     ctx.rotate(windAt(d.x, d.y, t) * .02);       // barely-there canopy lean in the same wind
@@ -7629,8 +7673,10 @@ function drawPondRim(d, x, y, rx, ry, t){
     const wob = pondWobAt(d, it.a);   // rim dressing rides the wobbled shore (Batch D)
     const px = x + Math.cos(it.a) * rx * it.rf * wob, py = y + Math.sin(it.a) * ry * it.rf * wob;
     if (it.k === 'sand'){
-      ctx.fillStyle = 'rgba(230,207,154,.45)';
-      ctx.beginPath(); ctx.ellipse(px, py, .030 * u * (0.7 + it.rf * .4), .016 * u, it.a, 0, 7); ctx.fill();
+      // TILESET FLOOR owns the shore now: the tile map paints real
+      // sand cells around every pond, so the old painted sand smears
+      // (pale ellipses floating on grass past the shoreline) are gone.
+      continue;
     } else if (it.k === 'stone'){
       const ss = .011 * u * (0.8 + it.rf * .35);
       ctx.fillStyle = '#9aa0a3'; ctx.fillRect(px - ss/2, py - ss/2, ss, ss * .8);
@@ -7871,12 +7917,15 @@ function drawBuildings(only){
   const u = UNIT();
   const pad = (bx, by)=>{
     // ground shadow ONLY: same flat recipe as the tree shadow
-    // (rgba(38,32,40,.18) ellipse), sized a touch wider than the
-    // building and offset down so a dark rim grounds it on the floor.
-    // (TILESET FLOOR: the old painted '#e8d9ae' ground pad plate is
-    // gone — buildings stand on the tile map's dirt/stone cells.)
+    // (rgba(38,32,40,.18) ellipse), ANCHORED to the building's base:
+    // the sprite's content bottom sits at by+.10u, so the ellipse
+    // centres a hair below it with a small ry — a grounding rim, not
+    // the old .265u-wide plate centred .075u under the base, which
+    // spilled out beside the building (and read as a bystander's
+    // detached shadow next to Forge). (TILESET FLOOR: buildings stand
+    // on the tile map's dirt/stone cells.)
     ctx.fillStyle = 'rgba(38,32,40,.18)';
-    ctx.beginPath(); ctx.ellipse(NX(bx), NY(by)+.175*u, .265*u, .082*u, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(NX(bx), NY(by)+.112*u, .205*u, .046*u, 0, 0, 7); ctx.fill();
   };
   const sign = (x, y, text, bg, fg)=>{
     ctx.font = '900 ' + Math.round(.030*u) + 'px "Baloo 2",sans-serif';
@@ -8144,8 +8193,12 @@ function drawShrine(key, t){
   if (key === 'root') return drawRootShrine(t);
   const u = UNIT(), pos = SHRINE_POS[key];
   const x = NX(pos.x), yBot = NY(pos.y) + .10*u;
+  // shadow anchored to the stone ring's footprint: the sprite's
+  // content bottom ends ~.038u above its draw bottom (pos.y+.062u)
+  // and the ring spans ~.18u half-width — the old .24u plate centred
+  // at +.085u stuck out past the stones on every side.
   ctx.fillStyle = 'rgba(38,32,40,.18)';
-  ctx.beginPath(); ctx.ellipse(x, NY(pos.y) + .085*u, .24*u, .065*u, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x, NY(pos.y) + .068*u, .185*u, .042*u, 0, 0, 7); ctx.fill();
   const img = SHRINE_IMGS[key];
   const w = .46*u, h = imgOk(img) ? w * img.naturalHeight/img.naturalWidth : .46*u;
   if (shrineDone(key)){
@@ -8804,8 +8857,43 @@ function drawMetalArrow(now){
   if (!m) return;
   const u = UNIT(), vw = W/u, vh = H/u;
   if (m.x >= ses.cam.x && m.x <= ses.cam.x + vw && m.y >= ses.cam.y && m.y <= ses.cam.y + vh) return;   // on screen: the slime itself is the marker
-  const sx = NX(m.x), sy = NY(m.y), M = 34;
-  const cx = clamp(sx, M, W - M), cy = clamp(sy, M, H - M);
+  const sx = NX(m.x), sy = NY(m.y);
+  /* SAFE-RECT CLAMP (basics gate): the old 34px raw-edge clamp let the
+     METAL caption hang half off-screen at the bottom/side edges
+     (Handler's screenshot). The marker now lives in the same safe
+     rectangle as the objective pointer (84px sides, 150px top, 90px
+     bottom), slides clear of HUD rects, and the caption flips ABOVE
+     the diamond whenever below would leave the screen — the label is
+     always whole. The chevron still rotates to the true bearing. */
+  const L = 84, R = Math.max(L + 40, W - 84), T = 150, B = Math.max(T + 40, H - 90);
+  let cx = clamp(sx, L, R), cy = clamp(sy, T, B);
+  const PAD = 32;   // diamond (~15px) + caption span + breathing room
+  /* the objective pointer's corner-aware slide, verbatim in spirit:
+     slide ALONG the pinned edge (a nearest-exit push gets re-captured
+     by the safe-rect clamp in the corners — at bottom-left the
+     minimap's padded rect reaches past B, and the marker ended up
+     UNDER the minimap with only its caption peeking out). */
+  for (let pass = 0; pass < 3; pass++){
+    let slid = false;
+    for (const rc of hudRects(now)){
+      if (cx <= rc.l - PAD || cx >= rc.r + PAD || cy <= rc.t - PAD || cy >= rc.b + PAD) continue;
+      const onTB = (cy === T || cy === B), onLR = (cx === L || cx === R);
+      if (onTB && !onLR) cx = cx < (rc.l + rc.r)/2 ? rc.l - PAD : rc.r + PAD;
+      else if (onLR && !onTB) cy = cy < (rc.t + rc.b)/2 ? rc.t - PAD : rc.b + PAD;
+      else if (Math.abs(sx - W/2) >= Math.abs(sy - H/2)) cx = cx < (rc.l + rc.r)/2 ? rc.l - PAD : rc.r + PAD;
+      else cy = cy < (rc.t + rc.b)/2 ? rc.t - PAD : rc.b + PAD;
+      slid = true;
+    }
+    cx = clamp(cx, L, R); cy = clamp(cy, T, B);
+    if (!slid) break;
+  }
+  for (const rc of hudRects(now)){
+    if (cx <= rc.l - PAD || cx >= rc.r + PAD || cy <= rc.t - PAD || cy >= rc.b + PAD) continue;
+    const pl = cx - (rc.l - PAD), pr = (rc.r + PAD) - cx, pt = cy - (rc.t - PAD), pb = (rc.b + PAD) - cy;
+    const m = Math.min(pl, pr, pt, pb);
+    if (m === pl) cx = rc.l - PAD; else if (m === pr) cx = rc.r + PAD; else if (m === pt) cy = rc.t - PAD; else cy = rc.b + PAD;
+  }
+  cx = clamp(cx, PAD, W - PAD); cy = clamp(cy, PAD, H - PAD);   // hard on-screen guarantee
   const a = Math.atan2(sy - H/2, sx - W/2);   // bearing from screen centre toward the metal
   const pulse = 1 + .15 * Math.sin(now * Math.PI * 2 / 500);   // ~2Hz breathing, ±15%
   ctx.save(); ctx.translate(cx, cy); ctx.rotate(a);
@@ -8816,8 +8904,10 @@ function drawMetalArrow(now){
   const r = 13 * pulse;   // ~26px diamond — big enough to catch the eye at the screen edge
   ctx.fillStyle = '#dfe7ec'; ctx.strokeStyle = '#5f6f79'; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(0, -r); ctx.lineTo(r, 0); ctx.lineTo(0, r); ctx.lineTo(-r, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
-  ctx.font = '7px "Press Start 2P", monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillStyle = '#dfe7ec'; ctx.fillText('METAL', 0, r + 5);
+  ctx.font = '7px "Press Start 2P", monospace'; ctx.textAlign = 'center';
+  ctx.fillStyle = '#dfe7ec';
+  if (cy + r + 16 <= H - 4){ ctx.textBaseline = 'top'; ctx.fillText('METAL', 0, r + 5); }
+  else { ctx.textBaseline = 'bottom'; ctx.fillText('METAL', 0, -r - 5); }
   ctx.restore();
 }
 /* Screen-edge pointer for the current OBJECTIVE (Batch B): the Metal
