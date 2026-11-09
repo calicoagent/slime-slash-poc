@@ -2581,7 +2581,10 @@ function spawnSlime(opts={}){
        boss summons, the practice slime, and the metal guarantee —
        which announces itself with a banner — are exempt by design.) */
     const spots = playersInZone(zid);
-    const clearR = visibleHalfDiagU() + .5, clearR2 = clearR * clearR;
+    /* capped at .45 of the zone: if a view ever covers most of the
+       zone the rule is unsatisfiable, and an uncapped radius made
+       every candidate fail and the fallback centre-pile the stock */
+    const clearR = Math.min(visibleHalfDiagU() + .5, ZONE_U * .45), clearR2 = clearR * clearR;
     const tooClose = (x, y) => spots.some(c => dist2(x, y, c.x, c.y) < clearR2);
     let placed = false;
     for (let tries = 0; tries < 8 && !placed; tries++){
@@ -9550,13 +9553,21 @@ function unstageTitleScene(){
 function renderTitleStage(){
   stageTitleScene();
   computeView();
-  _ZK /= WORLD_ZOOM;   // the diorama keeps its composed pre-zoom framing (v0.6.3): the vignette was staged for the legacy view — at 5x it would be a meaningless crop of the plaza
+  /* the diorama keeps its composed pre-zoom framing (v0.6.3): the
+     vignette was staged for the legacy view — at 5x it would be a
+     meaningless crop of the plaza. The divide is LOCAL to this
+     synchronous pass and restored on exit: _ZK is a shared global,
+     and the PLAY click's world seeding (electHost) runs between
+     frames, where a leftover divided _ZK inflated the spawn-clear
+     radius past the whole zone and centre-piled the boot stock. */
+  const zkKeep = _ZK; _ZK /= WORLD_ZOOM;
   ctx.setTransform(DPR,0,0,DPR,0,0);
   drawField(TITLE_STILL_T);
   drawEntities(TITLE_STILL_T);
   drawAmbientAir(TITLE_STILL_T);
   ctx.fillStyle = 'rgba(23,43,18,.48)'; ctx.fillRect(0, 0, W, H);   // the menu's readable wash, baked into the still (the DOM #title gradient vignettes on top, as before)
   unstageTitleScene();
+  _ZK = zkKeep;
 }
 function freezeTitleStill(){
   if (!titleStillCv) titleStillCv = document.createElement('canvas');
