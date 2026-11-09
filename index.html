@@ -76,11 +76,11 @@
   #rackTabRow { display:flex; justify-content:center; margin-bottom:4px; pointer-events:none; }
   #rackTab { pointer-events:auto; font-size:10px; padding:8px 14px; }
   #rackTabChev { margin-left:8px; }
-  #rack { display:flex; gap:10px; justify-content:center; align-items:flex-start; pointer-events:none; overflow:hidden; transition:max-height .18s ease; padding-top:10px; box-sizing:border-box; }   /* flex-start: stretch let the max-height cap squeeze the cards below their content (name/xp bar spilled off the card) */
+  #rack { display:flex; gap:10px; justify-content:center; pointer-events:none; overflow:hidden; transition:max-height .18s ease; }
   #rackDock.collapsed #rack .wcard:not(.sel) { display:none; }
   .wcard {
     width:82px; padding:8px 4px 6px; text-align:center; cursor:pointer; position:relative; flex:none; pointer-events:auto;
-    background:#fff6df; border:3px solid #3a2b23; border-radius:0; box-sizing:border-box;
+    background:#fff6df; border:3px solid #3a2b23; border-radius:0;
     box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 3px 3px 0 rgba(38,32,40,.30); transition:transform .08s;
   }
   .wcard:active { transform:translate(2px,2px); box-shadow:inset 0 0 0 2px rgba(255,255,255,.4), 1px 1px 0 rgba(38,32,40,.30); }
@@ -90,7 +90,7 @@
   .wcard .wn { font-family:"Press Start 2P",monospace; font-size:7px; color:#3a2b23; line-height:1.3; white-space:nowrap; }
   .wcard .wl { position:absolute; top:-10px; right:-8px; background:#3a2b23; color:#ffd94d; font-size:15px; font-weight:700; border-radius:0; padding:2px 8px; line-height:1.1; }
   .wcard .key { position:absolute; top:-10px; left:-8px; background:#fff; border:2px solid #3a2b23; color:#3a2b23; font-family:"Press Start 2P",monospace; font-size:8px; border-radius:0; padding:2px 5px; }
-  .wcard .wlv { position:absolute; top:2px; left:2px; background:rgba(58,43,35,.88); color:#ffd94d; font-family:"VT323",monospace; font-size:13px; font-weight:700; line-height:1.15; padding:0 4px; white-space:nowrap; }   /* nowrap: a wrapped Lv bar doubles in height and swallows the weapon icon under fallback fonts */
+  .wcard .wlv { position:absolute; top:2px; left:2px; background:rgba(58,43,35,.88); color:#ffd94d; font-family:"VT323",monospace; font-size:13px; font-weight:700; line-height:1.15; padding:0 4px; }
   .wcard .wxpbar { height:4px; background:rgba(58,43,35,.55); border:1px solid #3a2b23; margin-top:3px; }
   .wcard .wxpbar > div { height:100%; background:#ff9a2e; }
   .wcard .wxpbar.ready > div { background:#ffd94d; animation:wxpPulse .6s ease-in-out infinite alternate; }
@@ -326,12 +326,7 @@
     /* items row joins the bottom-left cluster on phones too: 6px above
        the minimap (minimap bottom = --dockH + 10px, 96px tall here) */
     #items { left:max(8px, env(safe-area-inset-left)); right:auto; bottom:calc(var(--dockH, 92px) + 112px); gap:8px; }
-    /* portrait restack (basics gate): at dock level the centred
-       prompt ran INTO the right-hand skill card and clipped its name
-       ('THSHAKER'). The prompt now rides one row ABOVE the actives
-       column; the left column is clear of it (minimap tops out below
-       this line at x<=82px, the prompt starts ~95px in). */
-    #interactPrompt { bottom:calc(var(--dockH, 92px) + 64px); font-size:9px; padding:9px 14px; }
+    #interactPrompt { bottom:calc(var(--dockH, 92px) + 10px); font-size:9px; padding:9px 14px; }
     #bossBar { width:min(72vw,520px); }
     #bountyText { font-size:16px; line-height:1.2; }
     #bountyProg { font-size:14px; margin-top:1px; }
@@ -340,7 +335,7 @@
     #rackDock { padding-bottom:max(8px, env(safe-area-inset-bottom)); }
     #rackBtns { margin:0 8px 6px 0; gap:6px; }
     #rackTab { font-size:8px; padding:7px 10px; }
-    #rack { gap:4px; width:100%; padding:10px 4px 0; box-sizing:border-box; }
+    #rack { gap:4px; width:100%; padding:0 4px; box-sizing:border-box; }
     .wcard { width:46px; padding:5px 2px 4px; }
     .wcard svg { width:30px; height:30px; }
     .wcard img { width:30px !important; height:30px !important; }
@@ -405,19 +400,7 @@
     font-family:"Press Start 2P",monospace; font-size:11px; cursor:pointer;
     background:#ffd94d; color:#3a2b23; border:3px solid #3a2b23; border-radius:0;
     padding:11px 20px; box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 3px 3px 0 rgba(38,32,40,.35);
-    max-width:min(92vw, 560px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; box-sizing:border-box;
   }
-  /* TAP-LEAK SEAL (basics gate): children of interactive surfaces
-     never take the hit themselves — elementFromPoint must resolve to
-     the owning control, never a bare text node parked in front of the
-     canvas (the chapter card's #chLine ate real taps at screen
-     centre). Containers/labels stay inert; only real buttons catch
-     taps. */
-  button *, .wcard *, #questCard *, #npcBubble *, .chapterPlate * { pointer-events:none; }
-  /* the expanded weapon rack is a proper bottom PANEL: a parchment
-     tray with a hard top edge that the cards sit ON, instead of bare
-     cards floating over the world and running off the screen edge. */
-  #rackDock:not(.collapsed) #rack { background:#f3e5c3; border-top:3px solid #3a2b23; box-shadow:0 -4px 0 rgba(38,32,40,.18); padding-top:12px; padding-bottom:2px; }
   #interactPrompt:active { transform:translateX(-50%) translate(2px,2px); box-shadow:inset -3px -3px 0 rgba(38,32,40,.18), inset 3px 3px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(38,32,40,.35); }
   /* z-index 40: the items row sits ABOVE world-space labels/prompts
      (an INN sign once covered the BOMB button) and below modal panels.
@@ -652,7 +635,7 @@
   #title { overflow-y:auto; }
   #logo { margin-top:auto; }
   @media (max-width:640px) {
-    .wcard { width:min(46px,12.5vw); padding:6px 1px 5px; border-width:3px; border-radius:0; }   /* 7 cards + gaps must fit the phone: the old 56px width ran the rack off both edges */
+    .wcard { width:min(56px,15vw); padding:6px 1px 5px; border-width:3px; border-radius:0; }
     .wcard svg { width:26px; height:26px; } .wcard .wn { font-family:"VT323",monospace; font-size:13px; font-weight:700; }
     .wcard .key { display:none; } .wcard .wl { font-size:13px; padding:1px 6px; top:-8px; right:-5px; }
     .wcard.sel { transform:translateY(-4px); }
@@ -1015,7 +998,7 @@
 import { joinRoom, selfId } from 'https://cdn.jsdelivr.net/npm/trystero@0.21.6/nostr/+esm';
 import { createStore } from 'https://cdn.jsdelivr.net/npm/zustand@5.1.0/vanilla/+esm';
 
-const GAME_VERSION = '0.5.2';   // shown small on the title screen + pause menu
+const GAME_VERSION = '0.5.0';   // shown small on the title screen + pause menu
 
 /* ============================================================ utils */
 const $ = s => document.querySelector(s);
@@ -1258,11 +1241,11 @@ const BURST_IMG = new Image(); BURST_IMG.src = 'assets/fx/crit-bursts.png';
 // much higher crit chance and crit damage. Base crit: 5% x1.75.
 const WEAPONS = [
   { id:'dagger', price:0, name:'Dagger',     dmg:6,  reach:.085, cd:110, unlock:1, color:'#cfd8dc', motion:'stab',  crit:.25, critDmg:2.2, desc:'STAB · crit monster, fast thrusts' },
-  { id:'sword', price:15000,  name:'Sword',      dmg:11, reach:.125, cd:170, unlock:1, color:'#ffe082', motion:'swing', crit:.05, critDmg:1.75, desc:'SWING · balanced arcs' },
-  { id:'katana', price:40000, name:'Katana',     dmg:16, reach:.165, cd:150, unlock:2, color:'#f8bbd0', motion:'swing', crit:.08, critDmg:1.75, desc:'SWING · long swift arcs' },
-  { id:'spear', price:45000,  name:'Spear',      dmg:19, reach:.215, cd:210, unlock:2, color:'#a5d6a7', motion:'stab',  crit:.20, critDmg:2.2, desc:'STAB · longest reach, big crits' },
-  { id:'great', price:90000,  name:'Greatsword', dmg:30, reach:.205, cd:300, unlock:3, color:'#b0bec5', motion:'swing', crit:.05, critDmg:1.75, splash:.05, desc:'SWING · AoE chops with splash' },
-  { id:'hammer', price:140000, name:'Warhammer', dmg:42, reach:.150, cd:380, unlock:4, color:'#ffcc80', motion:'swing', crit:.05, critDmg:1.75, splash:.07, desc:'SWING · splash smash' },
+  { id:'sword', price:150,  name:'Sword',      dmg:11, reach:.125, cd:170, unlock:1, color:'#ffe082', motion:'swing', crit:.05, critDmg:1.75, desc:'SWING · balanced arcs' },
+  { id:'katana', price:400, name:'Katana',     dmg:16, reach:.165, cd:150, unlock:2, color:'#f8bbd0', motion:'swing', crit:.08, critDmg:1.75, desc:'SWING · long swift arcs' },
+  { id:'spear', price:450,  name:'Spear',      dmg:19, reach:.215, cd:210, unlock:2, color:'#a5d6a7', motion:'stab',  crit:.20, critDmg:2.2, desc:'STAB · longest reach, big crits' },
+  { id:'great', price:900,  name:'Greatsword', dmg:30, reach:.205, cd:300, unlock:3, color:'#b0bec5', motion:'swing', crit:.05, critDmg:1.75, splash:.05, desc:'SWING · AoE chops with splash' },
+  { id:'hammer', price:1400, name:'Warhammer', dmg:42, reach:.150, cd:380, unlock:4, color:'#ffcc80', motion:'swing', crit:.05, critDmg:1.75, splash:.07, desc:'SWING · splash smash' },
   { id:'pick', price:0, name:'Pickaxe', dmg:9, reach:.135, cd:210, unlock:1, color:'#ffca28', motion:'swing', crit:.05, critDmg:1.75, desc:'Cracks ore rocks. Slimes, less so.' },
 ];
 const WEAPON_IMGS = {};
@@ -1296,11 +1279,11 @@ const NODE_WEIGHTS = [4,3,2,2,1];   // spawn weights per NODE_TYPES index
 /* Forge recipes (weapon index -> cost) and promotion costs (target level ->
    cost). Promotion also requires the weapon's XP bar to be full. */
 const CRAFT_RECIPES = {
-  1:{ coins:10000,  gems:{ emerald:2 } },
-  2:{ coins:30000,  gems:{ sapphire:3, emerald:2 } },
-  3:{ coins:35000,  gems:{ topaz:3, sapphire:2 } },
-  4:{ coins:70000,  gems:{ ruby:4, topaz:3 } },
-  5:{ coins:110000, gems:{ amethyst:5, ruby:4 } },
+  1:{ coins:100,  gems:{ emerald:2 } },
+  2:{ coins:300,  gems:{ sapphire:3, emerald:2 } },
+  3:{ coins:350,  gems:{ topaz:3, sapphire:2 } },
+  4:{ coins:700,  gems:{ ruby:4, topaz:3 } },
+  5:{ coins:1100, gems:{ amethyst:5, ruby:4 } },
 };
 /* ---- weapon progression (Handler's ruling): weapons level up FREE-FLOW
    from XP — no cost, no button — up to Lv 50. Every 10 levels is a GATE
@@ -1310,13 +1293,13 @@ const CRAFT_RECIPES = {
 const WLV_MAX = 50;
 const GATE_LEVELS = [10, 20, 30, 40];
 const BREAKTHROUGH_COSTS = {
-  10:{ coins:150000,  gems:{ emerald:3, sapphire:3 } },
-  20:{ coins:400000,  gems:{ ruby:4, amethyst:3 } },
-  30:{ coins:1000000, gems:{ diamond:3, ruby:5 } },
-  40:{ coins:2500000, gems:{ diamond:6, amethyst:6 } },
+  10:{ coins:1500,  gems:{ emerald:3, sapphire:3 } },
+  20:{ coins:4000,  gems:{ ruby:4, amethyst:3 } },
+  30:{ coins:10000, gems:{ diamond:3, ruby:5 } },
+  40:{ coins:25000, gems:{ diamond:6, amethyst:6 } },
 };
 function isGate(lv){ return GATE_LEVELS.includes(lv); }
-function xpNeed(lv){ return 6000 * lv; }   // weapon XP to fill the bar at any level (×100 rescale: was 60*lv, gains scaled to match — pace identical)
+function xpNeed(lv){ return 60 * lv; }   // weapon XP to fill the bar at any level
 /* A weapon's {lv,xp} record. A weapon with no record gets one written on
    first read (as it always has — so saves list it), through the store. */
 function wxpOf(i){ const w = prog().wxp[i]; if (w) return w; act.setWxp(i, { lv:1, xp:0 }); return prog().wxp[i]; }
@@ -1621,14 +1604,15 @@ const freshSession = () => ({
     hp:100, maxHp:100, invulnUntil:0, lastDmgAt:0, shieldUntil:0,
     mp:100, maxMp:100, wSkillCdUntil:0,   // MP is LOCAL only too — never networked, never persisted (loads full, like HP)
     gemRushUntil:0,
-    ptrSpeedPx:0,   // decayed peak pointer speed (px/s) — RENDER ONLY (trail thinning). The damage gate reads me.speed: THIS frame's evaluated segment speed (manual-sword rule)
+    stabT0:0, stabAng:0,
+    ptrSpeedPx:0,   // latest pointer speed (px/s, max of recent events, decayed per frame) — an idle blade must not cut
     lastHitAt:new Map(), whirlUntil:0, trail:[],   // whirlUntil: WHIRLWIND skill render state only — the tap Spin Slash is gone
+    swingT0:0, swingDir:1,
   },
   stats: null,               // derived stat totals (Sphere nodes + equipped weapon's soul gems) — rebuilt by recalc(), never a source of truth
   // run lifecycle
   started: false,            // PLAY pressed: this tab is in the world
   startedAt: 0,              // when PLAY was pressed (banner suppression window)
-  titleStaging: false,       // true only inside the title still's single synchronous staging pass (lets drawEntities pose the townsfolk in the diorama)
   paused: false,
   // camera: top-left of the view, world coords — follows the sword
   cam: { x: TOWN.x - .5, y: TOWN.y - .5 },
@@ -1746,7 +1730,7 @@ const QUESTS = [
       { type:'killCount', n:8, text:'Slay slimes — prove the Blade still cuts' },
       { type:'return', to:'elder', text:'Return to Elder Mirra' },
     ],
-    rewards:{ coins:10000, sp:1 } },
+    rewards:{ coins:100, sp:1 } },
   { id:'meadow', chapter:'CHAPTER I', title:'Sigil of the Meadow', giver:'elder',
     summary:'The Verdant Warden fell at the Meadow Shrine, and the first Sigil woke.',
     intro:[
@@ -1758,7 +1742,7 @@ const QUESTS = [
       { type:'guardian', shrine:'meadow', text:'Defeat the Verdant Warden at the Meadow Shrine' },
       { type:'return', to:'elder', text:'Bring the Sigil to Elder Mirra' },
     ],
-    rewards:{ coins:15000, sp:1, relic:'pauldron' } },
+    rewards:{ coins:150, sp:1, relic:'pauldron' } },
   { id:'bell', chapter:'CHAPTER II', title:'The Thornwick Bell', giver:'elder',
     summary:'The Hermit at Thornwick told of the First Garden, and of the guardian who took the sickness into himself.',
     intro:[
@@ -1770,7 +1754,7 @@ const QUESTS = [
       { type:'talk', to:'hermit', text:'Ask the Hermit at Thornwick what the Rot is' },
       { type:'return', to:'elder', text:'Carry the Hermit\'s words back to Elder Mirra' },
     ],
-    rewards:{ coins:20000, sp:1 } },
+    rewards:{ coins:200, sp:1 } },
   { id:'grove', chapter:'CHAPTER III', title:'Sigil of the Grove', giver:'elder',
     summary:'The Thorn Regent\'s court dissolved, and the second Sigil woke.',
     intro:[
@@ -1782,7 +1766,7 @@ const QUESTS = [
       { type:'guardian', shrine:'grove', text:'Defeat the Thorn Regent at the Grove Shrine' },
       { type:'return', to:'elder', text:'Bring the Sigil to Elder Mirra' },
     ],
-    rewards:{ coins:25000, sp:1, relic:'crown' } },
+    rewards:{ coins:250, sp:1, relic:'crown' } },
   { id:'scout', chapter:'CHAPTER IV', title:'What the Scout Saw', giver:'elder',
     summary:'Scout Vex followed the Emperor by night and saw him keep a grave-watch at the Root Shrine on the far shore.',
     intro:[
@@ -1793,7 +1777,7 @@ const QUESTS = [
     objectives:[
       { type:'talk', to:'vex', text:'Hear Scout Vex\'s report at Rotwatch' },
     ],
-    rewards:{ coins:30000, sp:1 } },
+    rewards:{ coins:300, sp:1 } },
   { id:'wilds', chapter:'CHAPTER V', title:'Sigil of the Wilds', giver:'elder',
     summary:'The Rotbloom Colossus burst, and the third Sigil woke.',
     intro:[
@@ -1805,7 +1789,7 @@ const QUESTS = [
       { type:'guardian', shrine:'wilds', text:'Defeat the Rotbloom Colossus at the Wilds Shrine' },
       { type:'return', to:'elder', text:'Bring the Sigil to Elder Mirra' },
     ],
-    rewards:{ coins:40000, sp:2, relic:'heart' } },
+    rewards:{ coins:400, sp:2, relic:'heart' } },
   { id:'herald', chapter:'CHAPTER VI', title:'The Fourth Sigil', giver:'elder',
     summary:'The Root Herald fell at the far shore, and no Sigil woke — only the truth. The way below stands open.',
     intro:[
@@ -1816,7 +1800,7 @@ const QUESTS = [
     objectives:[
       { type:'guardian', shrine:'root', sigil:false, text:'Defeat the Root Herald at the Root Shrine' },
     ],
-    rewards:{ coins:60000, sp:2, relic:'eye' } },
+    rewards:{ coins:600, sp:2, relic:'eye' } },
   { id:'finale', chapter:'CHAPTER VII', title:'The Root of Rot', giver:'elder',
     summary:'The Chaos Emperor fell, the Rot was cut at its root, and the Tree bloomed again.',
     intro:[
@@ -1828,14 +1812,14 @@ const QUESTS = [
       { type:'talk', to:'elder', text:'Speak with Elder Mirra — set the Sigils' },
       { type:'emperorFinale', text:'Destroy the CHAOS EMPEROR' },
     ],
-    rewards:{ coins:100000, sp:3, relic:'eye' } },
+    rewards:{ coins:1000, sp:3, relic:'eye' } },
 ];
 /* Side tale (tracked separately from the chain): available once the
    prologue is done; story.sprouts counts finds, story.sproutsDone the
    return to the Child. */
 const SPROUT_QUEST = { id:'sprouts', chapter:'SIDE TALE', title:'Three Lost Sproutlings',
   summary:'The Child\'s three sproutlings came home, and the grove remembers kindness.',
-  rewards:{ coins:12000, relic:'sprout' } };
+  rewards:{ coins:120, relic:'sprout' } };
 /* ---- stage 4: shrines + guardians (static data; runtime lives in the
    world slice, story progress in progress.story). ARCHIPELAGO: one
    shrine per isle. Meadow 4.6u east of the town centre — outside TOWN_R,
@@ -1931,7 +1915,6 @@ const store = createStore((set, get) => {
       const p = get().progress, b = p.bounty;
       try{
         localStorage.setItem(SAVE_KEY, JSON.stringify({
-          econV:2,   // economy unit version: 2 = ×100-rescaled units. Absent/<2 in a save = pre-rescale units; loadProgress migrates ×100 exactly once.
           level:p.level, xp:p.xp, coins:p.coins, kills:p.kills, sp:p.sp, spBuys:p.spBuys,
           unlocked:[...p.unlocked], weapon:p.weapon, name:p.name, muted:p.muted, hintsSeen:p.hintsSeen,
           banked:p.banked, items:p.items, purse:p.purse, owned:[...p.owned],
@@ -1974,15 +1957,15 @@ const store = createStore((set, get) => {
       const wxp = { ...cur.wxp };
       if (d.wxp) for (const [k,v] of Object.entries(d.wxp)){
         const i = k|0;
-        if (WEAPONS[i] && v) wxp[i] = { lv:clamp(v.lv|0 || 1, 1, WLV_MAX), xp:Math.max(0, isFinite(v.xp) ? +v.xp : 0) };   // cap is WLV_MAX (50) — the old 1..5 clamp would have confiscated post-gates levels on load; xp keeps FRACTIONS (economy ruling: |0 here would confiscate sub-1 weapon XP every load)
+        if (WEAPONS[i] && v) wxp[i] = { lv:clamp(v.lv|0 || 1, 1, WLV_MAX), xp:Math.max(0, v.xp|0) };   // cap is WLV_MAX (50) — the old 1..5 clamp would have confiscated post-gates levels on load
       }
       let weapon = d.weapon|0;
       if (!WEAPONS[weapon] || !owned.has(weapon)) weapon = Math.max(...owned);
       const next = {
-        level, xp: Math.max(0, isFinite(d.xp) ? +d.xp : 0), coins: Math.max(0, isFinite(d.coins) ? +d.coins : 0), kills: Math.max(0, d.kills|0), sp: Math.max(0, d.sp|0),   // xp/coins keep FRACTIONS (economy ruling ×0.01 — validate finite >= 0, never |0-truncate a fractional balance)
+        level, xp: Math.max(0, d.xp|0), coins: Math.max(0, d.coins|0), kills: Math.max(0, d.kills|0), sp: Math.max(0, d.sp|0),
         spBuys: Math.max(0, d.spBuys|0),   // old saves default to 0
         unlocked, gemBag, sockets, owned, gems, wxp, weapon,
-        banked: Math.max(0, isFinite(d.banked) ? +d.banked : 0),   // economy persists (fractional since the ×0.01 ruling — deposits carry fractional coins); HP deliberately does NOT
+        banked: Math.max(0, d.banked|0),   // economy persists; HP deliberately does NOT
         purse: !!d.purse,
         muted: !!d.muted,
       };
@@ -1994,23 +1977,6 @@ const store = createStore((set, get) => {
       if (d.bounty && d.bounty.key && (d.bounty.type==='color' || d.bounty.type==='kind'))
         next.bounty = { type:d.bounty.type, key:d.bounty.key, label:String(d.bounty.label||'').slice(0,16) || 'SLIME',
                         need:Math.max(1, d.bounty.need|0 || 8), have:Math.max(0, d.bounty.have|0), reward:Math.max(0, d.bounty.reward|0 || 40) };
-      /* ECONOMY RESCALE MIGRATION (Handler, 2026-11-09): saves written
-         before the ×100 rescale (no econV flag — persistProgress now
-         always writes econV:2) hold coins, banked, player xp and weapon
-         xp in the OLD units. Multiply those four by 100 exactly once:
-         purchasing power and progress share are preserved exactly (the
-         level and weapon levels themselves do not change — only the
-         residue inside the current bar, against thresholds that also
-         grew ×100). The stored bounty reward needs NO scaling: it was
-         always the nominal value and the payout formula dropped its
-         ×0.01, so it already reads correctly in new units. If no
-         persist happens after this load, the stored save is still
-         un-flagged and simply migrates again from its original values
-         next load — never twice on the same stored numbers. */
-      if ((d.econV|0) < 2){
-        next.coins *= 100; next.banked *= 100; next.xp *= 100;
-        for (const k of Object.keys(next.wxp)) next.wxp[k] = { lv: next.wxp[k].lv, xp: next.wxp[k].xp * 100 };
-      }
       /* RPG story: additive — old saves (no story field) keep the fresh
          defaults untouched. Validated: known quest id, clamped counters,
          relic ids filtered to the RELICS table, equipped ⊆ owned, max 2. */
@@ -2057,18 +2023,29 @@ const ses = store.getState().session;
 const me = ses.player;
 const prog = () => store.getState().progress;   // ALWAYS read progress fresh: it is replaced on every write
 const act = Object.fromEntries(Object.entries(store.getState()).filter(([, v]) => typeof v === 'function'));   // the store actions (stable functions only — no state)
-// MANUAL SWORD (Handler, 2026-11-09: 'Remove sword auto swing. Player
-// must swing swords. Stab etc.'): there is NO scripted swing arc and NO
-// scripted stab lunge any more. The blade pose is exactly what the
-// player's hand does — it points along the (angularly smoothed) movement
-// heading and reaches exactly myReach(), never beyond it. swordAngleAt /
-// bladeAt remain the single pose source for rendering, hit tests and the
-// pos broadcast, so what peers see is the motion the player truly made.
+// The sword sweeps an ARC when you flick: it cocks back, then whips past
+// your heading — direction follows the swipe (right swipe = clockwise arc…).
 function swordAngleAt(now){
+  if (now < me.whirlUntil) return me.angle;   // WHIRLWIND render: pose frozen while drawSword spins the blade
+  const el = now - me.swingT0;
+  if (me.swingT0 && el < 190){
+    const p = el/190, e = 1-Math.pow(1-p,3);
+    return me.angle + me.swingDir * (-2.05 + 2.65*e);
+  }
   return me.angle;
 }
+// Unified blade pose: SWING weapons arc; STAB weapons (knife, polearm)
+// lunge straight along the flick direction and snap back.
 function bladeAt(now){
-  return { ang: me.angle, ext: 0 };
+  if (myWeapon().motion === 'stab'){
+    const el = now - me.stabT0;
+    if (me.stabT0 && el < 150){
+      const p = el/150;
+      return { ang: me.stabAng, ext: Math.sin(p*Math.PI)*.55 };
+    }
+    return { ang: me.angle, ext: 0 };
+  }
+  return { ang: swordAngleAt(now), ext: 0 };
 }
 /* ---- survival pass state ---- */
 const CONTACT_DMG = { baby:4, dart:4, mid:6, gold:2, metal:5, splitter:7, big:9, tank:13, king:16, boss:26, guardian:16 };   // guardian: king tier
@@ -2190,21 +2167,6 @@ function npcDef(id){ return NPC_DEFS.find(d => d.id === id) || null; }
 
 /* ---- polish pass state ---- */
 /* ============================================================ slimes */
-/* ECONOMY (Handler, 2026-11-09): AoE farming made progression trivial,
-   so farmable rewards were first cut ×0.01 at their credit choke points
-   (the REWARD_MULT era — fractional balances, floored displays). Then,
-   decimals being hard to read, the SAME balance was RESCALED ×100 into
-   whole numbers: coin/XP grants are back at their base table values,
-   every coin price and every XP threshold is ×100, quest rewards are
-   ×100, and old saves migrate ×100 once (econV in loadProgress) — the
-   hardened earnings:prices ratio is unchanged, only the units grew.
-   Balances can still carry fractions from stat bonuses; displays floor.
-   Soul-gem drop CHANCES keep the ×0.01 cut via DROP_MULT — a probability
-   is not money and does not rescale. SP is not money either: untouched. */
-const DROP_MULT = 0.01;   // gem drop chance scale: king/boss/metal 1% each, elite 0.3%, normal 0.05%
-/* Granted-amount text: whole coins, floored (post-rescale every grant
-   is >= 1c by construction; stat-bonus fractions floor like balances). */
-const fmtGrant = n => '' + Math.floor(n);
 const SLIME_KINDS = [
   { kind:'baby',  hp:12,  r:.020, coins:4,  xp:8,  speed:.014, weight:45, hopCycle:640,  hopDist:.030 },
   { kind:'mid',   hp:30,  r:.030, coins:9,  xp:16, speed:.011, weight:35, hopCycle:720,  hopDist:.034 },
@@ -2811,7 +2773,7 @@ function minedFx(d){
     addFloat(d.x, d.y-.1, '+1 ' + GEMS[d.g].name.toUpperCase(), GEMS[d.g].col, rare ? { big:true } : {});
     sfx.gem();
   }
-  gainWxp(6, 600);   // the chunk is the work — pickaxe XP even when no gem pops (×100 rescale: mining wxp was 6/chunk against the old 60*lv bar; both sides ×100, ratio preserved)
+  gainWxp(6, 6);   // the chunk is the work — pickaxe XP even when no gem pops
   saveGame(); refreshHUD();
 }
 function worldPayload(){
@@ -3098,16 +3060,17 @@ function myCd(){
   return Math.max(50, wCd * Math.max(.5, 1 + ses.stats.cd)) * (performance.now()<me.frenzyUntil ? .55 : 1);   // cooldown multiplier floored at .5x (gem haste + Sphere Quick Hands can never push it lower); 50ms absolute floor stays
 }
 
-// MANUAL SWORD ONLY (Handler, 2026-11-09): the blade cuts only while
-// the player's own pointer motion gives THIS frame's evaluated segment
-// real speed (> 240 px/s, the long-standing threshold). No window opens
-// on a press or a flick: a stopped hand stops cutting the same frame,
-// and a sword resting on a slime does nothing, forever.
-function bladeLive(){
-  return (me.speed||0) > 240;
+// The blade only cuts while it is being WIELDED: mid-swing-arc
+// (same 190ms window swordAngleAt animates), mid-stab-lunge (same 150ms
+// window bladeAt animates), or the pointer itself moving fast right now.
+// A parked sword is scenery — slimes that wander into it must NOT die.
+function bladeLive(now){
+  if (myWeapon().motion==='stab') { if (me.stabT0 && now-me.stabT0<150) return true; }
+  else if (me.swingT0 && now-me.swingT0<190) return true;
+  return (me.ptrSpeedPx||0) > 240;
 }
 function localHitCheck(now){
-  if (!bladeLive()) return;   // idle/AFK sword cuts nothing — no free kills
+  if (!bladeLive(now)) return;   // idle/AFK sword cuts nothing — no free kills
   /* lastHitAt hygiene: it gains an entry for every slime/ore id ever hit
      and ids are never reused, so without pruning it grows for the whole
      session. Every few seconds, once it is fat, drop entries whose
@@ -3119,43 +3082,37 @@ function localHitCheck(now){
       else if (!world.slimes.has(k)) me.lastHitAt.delete(k);
     }
   }
-  // The blade is the segment hand(pointer) -> tip. Between last frame
-  // and this one it sweeps a quad; test the quad's four edges — the
-  // current segment, the previous segment, and the paths the HAND and
-  // the TIP travelled. A lateral swing registers across the swept arc,
-  // and a pure axial STAB registers too: the tip's own path is one of
-  // the edges, so driving the point forward through a slime connects
-  // exactly like sweeping across it. Nothing outside the area the
-  // player's hand actually crossed can be hit.
+  // blade = segment from hand (pointer) to tip along the sword's CURRENT
+  // angle; SWING weapons also test the swept arc since last frame so fast
+  // arcs can't tunnel through slimes between frames
   const blade = bladeAt(now);
   const sa = blade.ang;
   const reach = myReach() * (1 + blade.ext);
-  const thick = myWeapon().motion==='stab' ? .006 : .012 + ses.stats.arcWide;   // stab = thin precise line, swing = wider body
-  const pa = (me.prevSa!==undefined && Number.isFinite(me.prevSa)) ? me.prevSa : sa;
-  const tipX = me.x + Math.cos(sa)*reach, tipY = me.y + Math.sin(sa)*reach;
-  const ptipX = me.px + Math.cos(pa)*reach, ptipY = me.py + Math.sin(pa)*reach;
-  const segs = [
-    me.x, me.y, tipX, tipY,          // the blade, this frame
-    me.px, me.py, ptipX, ptipY,      // the blade, last frame
-    ptipX, ptipY, tipX, tipY,        // the tip's path (the stab line)
-    me.px, me.py, me.x, me.y,        // the hand's path
-  ];
-  const segD2 = (px, py, ax, ay, bx, by) => {
-    const dx = bx-ax, dy = by-ay, L2 = dx*dx+dy*dy||1e-6;
-    const t = clamp(((px-ax)*dx+(py-ay)*dy)/L2, 0, 1);
-    return dist2(ax+dx*t, ay+dy*t, px, py);
+  const thick = myWeapon().motion==='stab' ? .006 : .012 + ses.stats.arcWide;   // stab = thin line, swing = wide arc
+  const segHit = (s, ang) => {
+    const bx = me.x + Math.cos(ang)*reach, by = me.y + Math.sin(ang)*reach;
+    const dx = bx-me.x, dy = by-me.y, L2 = dx*dx+dy*dy||1e-6;
+    const t = clamp(((s.x-me.x)*dx+(s.y-me.y)*dy)/L2, 0, 1);
+    return dist2(me.x+dx*t, me.y+dy*t, s.x, s.y) < (s.r+thick)**2;
   };
-  const bladeHit = (s) => {
-    const rr = (s.r+thick)*(s.r+thick);
-    for (let i=0;i<segs.length;i+=4)
-      if (segD2(s.x, s.y, segs[i], segs[i+1], segs[i+2], segs[i+3]) < rr) return true;
-    return false;
-  };
+  let testAngles = [sa];
+  if (myWeapon().motion==='swing' && me.prevSa!==undefined){
+    let dA = sa - me.prevSa;
+    /* FREEZE HARDENING (Batch D): both angles are atan2-derived, so
+       |dA| <= 2PI and one pass suffices in practice; the guard makes the
+       bound independent of that invariant (a NaN/Infinity angle can
+       never spin this — non-finite dA simply skips the sweep test). */
+    let dGuard = 0;
+    while (dA > Math.PI && dGuard++ < 4) dA -= Math.PI*2;
+    dGuard = 0;
+    while (dA < -Math.PI && dGuard++ < 4) dA += Math.PI*2;
+    if (Math.abs(dA) > .02 && Math.abs(dA) < 1.4) testAngles = [me.prevSa, me.prevSa + dA/2, sa];
+  }
   me.prevSa = sa;
   for (const s of world.slimes.values()){
     const last = me.lastHitAt.get(s.id)||0;
     if (now-last < myCd()) continue;
-    const hit = bladeHit(s);
+    const hit = testAngles.some(ang => segHit(s, ang));
     if (hit){
       me.lastHitAt.set(s.id, now);
       let dmg = myDamage();
@@ -3177,7 +3134,7 @@ function localHitCheck(now){
   for (const n of world.nodes.values()){
     const nk = 'node:'+n.id, nlast = me.lastHitAt.get(nk)||0;
     if (now - nlast < myCd()) continue;
-    const hit = bladeHit(n);
+    const hit = testAngles.some(ang => segHit(n, ang));
     if (!hit) continue;
     me.lastHitAt.set(nk, now);
     n.shakeT = now;   // prediction: the rock shakes on my screen right away
@@ -3284,16 +3241,11 @@ function onKillFx(f){
   if (f.kind==='boss') notify('THE EMPEROR HAS FALLEN!', { type:'king' });
   if (f.by===me.id){
     const now = performance.now();
-    /* ECONOMY RESCALE ×100 (see DROP_MULT note): kill coins pay their
-       base table value again — no rounding, stat-bonus fractions still
-       accumulate in the balance and every display floors. Zone/elite/
-       boss scaling already composed into f.coins; the coin stat and
-       GOLD RUSH compose on top as before. */
-    let cg = f.coins * (1 + ses.stats.coin);
+    let cg = Math.round(f.coins * (1 + ses.stats.coin));
     if (now < me.goldRushUntil) cg *= 2;   // GOLD RUSH: double coins
     act.patchProgress(p => ({ coins: p.coins + cg, kills: p.kills + 1 }));
     me.mp = Math.min(me.maxMp, me.mp + 2);   // +2 MP per kill (own kills only)
-    gainWxp(prog().weapon, 10);   // weapon XP from kills: 10/kill (×100 rescale — was 10 × 0.01 against the old 60*lv bar; mining's 600/chunk preserves the same live ratio)
+    gainWxp(prog().weapon, 10);   // +10 XP to the EQUIPPED weapon (all weapons level this way)
     /* SPHERE POINTS from the big kills (Handler: 'Sphere point gained from
        farming emperor') — the Emperor pays +3 SP, a Slime King +1 SP,
        awarded HERE, the same single place soul gems drop. */
@@ -3302,16 +3254,11 @@ function onKillFx(f){
     /* SOUL GEM drops — rolled HERE, the single place local kill rewards
        are granted (remote kills and host/client overlap can't double-fire:
        this block runs once, for my kills only) */
-    /* DROP CHANCES keep the ×0.01 cut (DROP_MULT) — probabilities are
-       not money and did NOT rescale: the old guaranteed king/boss/metal
-       gems are a 1% roll each (the boss rolls his 3 floor-Rare gems
-       independently); rarity floors as rolled. Normal .05 -> .0005,
-       elite .30 -> .003. */
-    if (f.kind==='boss'){ for (let gi = 0; gi < 3; gi++) if (Math.random() < DROP_MULT) grantGem(2, f.x, f.y); }   // 3 gems, floor Rare — each a 1% roll
-    else if (f.kind==='king'){ if (Math.random() < DROP_MULT) grantGem(1, f.x, f.y); }          // 1 gem, floor Fine — 1% roll
-    else if (f.kind==='metal'){ if (Math.random() < DROP_MULT) grantGem(2, f.x, f.y); }         // 1 gem, floor Rare — 1% roll
-    else if (f.elite){ if (Math.random() < .30 * DROP_MULT) grantGem(0, f.x, f.y); }
-    else if (Math.random() < .05 * DROP_MULT) grantGem(0, f.x, f.y);
+    if (f.kind==='boss'){ grantGem(2, f.x, f.y); grantGem(2, f.x, f.y); grantGem(2, f.x, f.y); }   // 3 gems, floor Rare
+    else if (f.kind==='king') grantGem(1, f.x, f.y);          // 1 gem, floor Fine
+    else if (f.kind==='metal') grantGem(2, f.x, f.y);         // 1 gem, floor Rare
+    else if (f.elite){ if (Math.random() < .30) grantGem(0, f.x, f.y); }
+    else if (Math.random() < .05) grantGem(0, f.x, f.y);
     /* STAGE 4 story credit — the KILLER's client only (this whole block
        is by-me): a guardian's fall wakes its Sigil through the engine
        and marks the shrine done (its crystal glows from then on); the
@@ -3325,7 +3272,7 @@ function onKillFx(f){
       if (prog().story.complete && !ses.endingPlayed){ ses.endingPlayed = true; playEnding(); }
     }
     gainXp(f.xp); sfx.coin();
-    if (cg >= 1) addFloat(f.x, f.y-.04, '+'+Math.floor(cg)+' coins', '#ffd94d');   // post-rescale every kill grant is >= 1c by construction; the guard stays so a hypothetical sub-coin grant never prints '+0 coins' noise
+    addFloat(f.x, f.y-.04, '+'+cg+' coins', '#ffd94d');
     if (f.kind==='king'){ bubble('KING SLAYER!', me.x, me.y); }
     if (f.kind==='boss'){ bubble('EMPEROR SLAYER!', me.x, me.y); }
     // combo chain: kills within the window of each other keep it alive (Combo Charm stretches it)
@@ -3339,9 +3286,9 @@ function onKillFx(f){
     if (prog().bounty && ((prog().bounty.type==='color' && f.c===prog().bounty.key) || (prog().bounty.type==='kind' && f.kind===prog().bounty.key))){
       act.bountyStep();
       if (prog().bounty.have >= prog().bounty.need){
-        const payout = prog().bounty.reward * (1 + ses.stats.bounty);   // ×100 rescale: the stored reward IS the payout again (it paid reward × 0.01 in the fractional era — same ratio, whole numbers); Bounty Hunter passive composes on top
-        act.patchProgress(p => ({ coins: p.coins + payout, sp: p.sp + 1 })); saveGame();   // SP + coins: persist on the event (the +1 SP is NOT scaled — SP is not exp/money/drops)
-        notify('BOUNTY COMPLETE! +' + fmtGrant(payout) + ' coins +1 SP', { type:'success' });
+        const payout = Math.round(prog().bounty.reward * (1 + ses.stats.bounty));   // Bounty Hunter passive
+        act.patchProgress(p => ({ coins: p.coins + payout, sp: p.sp + 1 })); saveGame();   // SP + coins: persist on the event
+        notify('BOUNTY COMPLETE! +' + payout + ' coins +1 SP', { type:'success' });
         sfx.buy();
         rollBounty();
       }
@@ -3353,28 +3300,21 @@ function onKillFx(f){
   }
 }
 function gainXp(n){
-  /* ECONOMY RESCALE ×100: kill XP pays its base table value again (a
-     baby kill is 8 XP, not 0.08) — no rounding, so stat-bonus fractions
-     still park in the bar un-lost; the capped level loop below only
-     wakes when a full level has accumulated. The XP stat bonus composes
-     on top as before. Kill credit is the only caller — story grants
-     never pass through here. */
-  act.patchProgress(p => ({ xp: p.xp + n * (1 + ses.stats.xp) }));
-  /* LOOP, not if: one grant can span several levels — an Emperor pays
-     1200 x zone x boss-scale XP (many levels' worth at high level), and
-     a single `if` would level ONCE and park the rest of the bar until
+  act.patchProgress(p => ({ xp: p.xp + Math.round(n * (1 + ses.stats.xp)) }));
+  /* LOOP, not if: one grant can span several levels — a scaled Emperor
+     pays 1200 x 1.5 x bScale XP (~15.8k at Lv38 vs 3.8k per level), and
+     the old single `if` levelled ONCE and parked the rest of the bar until
      later kills drained it one level at a time. Every level still pays
      its own SP (+1, +2 on every 3rd) and its +10 max HP top-up. */
   let leveled = false;
   /* FREEZE HARDENING (Batch D): each pass strictly reduces xp by
-     level*10000 (the ×100-rescaled curve — was level*100), so finite xp
-     always terminates — the 512 cap makes that true by construction
-     even for a corrupt save (a legit Emperor grant spans <100 levels;
-     any residue stays parked in the bar, un-lost). */
+     level*100, so finite xp always terminates — the 512 cap makes that
+     true by construction even for a corrupt save (a legit Emperor grant
+     spans <100 levels; any residue stays parked in the bar, un-lost). */
   let xpGuard = 0;
-  while (prog().xp >= prog().level*10000 && xpGuard++ < 512){
+  while (prog().xp >= prog().level*100 && xpGuard++ < 512){
     const maxBefore = me.maxHp;
-    act.patchProgress(p => ({ xp: p.xp - p.level*10000, level: p.level + 1, sp: p.sp + 1 })); leveled = true;
+    act.patchProgress(p => ({ xp: p.xp - p.level*100, level: p.level + 1, sp: p.sp + 1 })); leveled = true;
     recalc();   // re-derive maxHp at the new level
     me.hp += me.maxHp - maxBefore;   // top up by the capacity gained (+10/level) — never a free full heal
     let spMsg = '+1 Sphere Point';
@@ -3512,11 +3452,11 @@ function grantQuestRewards(q, label){
   if (r.coins) act.addCoins(r.coins);
   if (r.sp) act.patchProgress(p => ({ sp: p.sp + r.sp }));
   if (r.relic && !relicHeld) act.grantRelic(r.relic);
-  if (r.relic && relicHeld) act.addCoins(15000);
+  if (r.relic && relicHeld) act.addCoins(150);
   const bits = [];
   if (r.coins) bits.push('+' + r.coins + ' coins');
   if (r.sp) bits.push('+' + r.sp + ' SP');
-  if (r.relic && relicHeld) bits.push('+15000 coins');
+  if (r.relic && relicHeld) bits.push('+150 coins');
   else if (r.relic && RELICS[r.relic]) bits.push('RELIC: ' + RELICS[r.relic].name);
   notify(label + ' — ' + q.title.toUpperCase(), { type:'story', sub: bits.join(' · ') });
   playJingle('quest');
@@ -4447,13 +4387,13 @@ function openBank(){ showBuildingPanel('#bankPanel'); updateBankPanel(); startPa
 function openShop(){ showBuildingPanel('#shopPanel'); buildShopRows(); startPanelFocus($('#shopPanel'), document.querySelector('#shopRows button')); }
 /* Bank SP exchange — ESCALATING price (Handler: SP comes from farming the
    Emperor, 'or increasingly more expensive'): the Nth lifetime purchase
-   costs round(30000 * 1.5^N) (×100 rescale; was 300). spBuys persists in the save. Kings grant +1 SP
+   costs round(300 * 1.5^N). spBuys persists in the save. Kings grant +1 SP
    and the Emperor +3 SP on kill (onKillFx) — the farm is the real source;
    the Bank is the expensive shortcut. */
-function spPrice(){ return Math.round(30000 * Math.pow(1.5, prog().spBuys || 0)); }   // ×100 rescale: was round(300 * 1.5^N)
+function spPrice(){ return Math.round(300 * Math.pow(1.5, prog().spBuys || 0)); }
 function updateBankPanel(){
-  $('#bankCarried').textContent = Math.floor(prog().coins);   // balances are fractional (×0.01 ruling) — displays floor, the fractions stay in the save
-  $('#bankBanked').textContent = Math.floor(prog().banked);
+  $('#bankCarried').textContent = prog().coins;
+  $('#bankBanked').textContent = prog().banked;
   $('#bankSp').textContent = prog().sp;
   $('#buySpBtn').textContent = 'BUY 1 SP — ' + spPrice() + 'c';
   $('#buySpBtn').disabled = (prog().banked + prog().coins) < spPrice();
@@ -4466,10 +4406,10 @@ function buySpherePoint(){
   updateBankPanel(); refreshHUD(); saveGame();
 }
 const SHOP_ITEMS = [
-  { id:'potion', name:'Potion',      price:5000,  desc:'Heal 60 HP' },
-  { id:'bomb',   name:'Bomb',        price:8000,  desc:'Blast every slime near your sword' },
-  { id:'shield', name:'Aegis Charm', price:10000, desc:'Shield: 6s invulnerable' },
-  { id:'purse',  name:'Coin Purse',  price:50000, desc:'PERMANENT: death takes only 25% of carried coins' },
+  { id:'potion', name:'Potion',      price:50,  desc:'Heal 60 HP' },
+  { id:'bomb',   name:'Bomb',        price:80,  desc:'Blast every slime near your sword' },
+  { id:'shield', name:'Aegis Charm', price:100, desc:'Shield: 6s invulnerable' },
+  { id:'purse',  name:'Coin Purse',  price:500, desc:'PERMANENT: death takes only 25% of carried coins' },
 ];
 /* Panel rows are built ONCE on open; while a panel stays open, values
    refresh IN PLACE via these updaters (text + disabled on the SAME
@@ -4478,11 +4418,11 @@ const SHOP_ITEMS = [
    button silently died (the inn SLEEP & SAVE report). */
 let shopUpdaters = [], hospUpdaters = [];
 function updateShopPanel(){
-  $('#shopCoins').textContent = Math.floor(prog().coins);
+  $('#shopCoins').textContent = prog().coins;
   for (const u of shopUpdaters) u();
 }
 function buildShopRows(){
-  $('#shopCoins').textContent = Math.floor(prog().coins);
+  $('#shopCoins').textContent = prog().coins;
   shopUpdaters = [];
   const wrap = $('#shopRows'); wrap.innerHTML = '';
   for (const it of SHOP_ITEMS){
@@ -4580,8 +4520,8 @@ function buyItem(id){
 }
 /* ============================================================ THE INN: sleep to full, or sleep & save your respawn */
 function openHospital(){ showBuildingPanel('#hospitalPanel'); buildHospitalRows(); startPanelFocus($('#hospitalPanel'), document.querySelector('#hospRows button')); }
-function fullHealPrice(){ return Math.max(25, Math.ceil((me.maxHp - me.hp) * .25)); }   // Handler amendment (2026-11-09, 'inn too expensive'): the inn does NOT take the naive ×100 — a full heal from empty at high level is ~150c, a top-up is pocket change
-function sleepSavePrice(){ return (me.hp < me.maxHp ? fullHealPrice() : 0) + 100; }   // heal (if hurt) + 100c flat for the respawn (amendment: not 2500)
+function fullHealPrice(){ return Math.max(15, Math.ceil((me.maxHp - me.hp) * .8)); }
+function sleepSavePrice(){ return (me.hp < me.maxHp ? fullHealPrice() : 0) + 25; }   // heal (if hurt) + 25c flat for the respawn
 /* Is THIS inn (the door that opened the panel) already your respawn? */
 function spawnIsHere(){
   const sp = prog().spawnAt; if (!sp) return false;
@@ -4590,7 +4530,7 @@ function spawnIsHere(){
 }
 function updateHospitalRows(){
   $('#hospHp').textContent = Math.max(0, Math.ceil(me.hp)) + ' / ' + me.maxHp;
-  $('#hospCoins').textContent = Math.floor(prog().coins);
+  $('#hospCoins').textContent = prog().coins;
   $('#hospSpawn').textContent = prog().spawnAt ? (prog().spawnAt.name || 'The Inn') : 'Town Centre';
   for (const u of hospUpdaters) u();
 }
@@ -4603,7 +4543,7 @@ function buildHospitalRows(){
       disabled:()=> me.hp >= me.maxHp || prog().coins < fullHealPrice() },
     { id:'save',  name:'SLEEP & SAVE', btn:'SAVE', desc:'Heal to full + respawn here',
       price:()=>sleepSavePrice(),
-      // at full HP this stays buyable (flat 100c) UNLESS this inn is already your respawn
+      // at full HP this stays buyable (flat 25c) UNLESS this inn is already your respawn
       disabled:()=> (me.hp >= me.maxHp && spawnIsHere()) || prog().coins < sleepSavePrice() },
   ];
   for (const r of rows){
@@ -4949,7 +4889,6 @@ function pinPtr(x, y, t){   // teleport the sword (tap snap / respawn / dash lan
   pushPtrSample(x, y, t);
 }
 addEventListener('pointermove', e=>{
-  if (!ses.started) return;   // TITLE (Handler ruling 2026-11-09): game input is inert until PLAY — a sweep across the menu never reaches the sword's sample stream
   if (e.pointerType) ses.lastPtrType = e.pointerType;
   if (ses.uiPointer) return;
   const now = performance.now();
@@ -4975,8 +4914,9 @@ addEventListener('pointermove', e=>{
    motion evenly over rendered frames at ANY display rate; when the stream
    runs dry the newest point is HELD — no extrapolation, no overshoot.
    Combat keeps using the true path: this frame-to-frame evaluated segment
-   drives me.px/py -> me.x/y, me.speed (the bladeLive gate) and the
-   (smoothed) heading, exactly as the raw event feed drove them before. */
+   drives me.px/py -> me.x/y, ptrSpeed (the bladeLive gate), the swing/stab
+   flick triggers and the (smoothed) heading, exactly as the raw event feed
+   drove them before. */
 function updatePointer(now){
   if (!ses.ptrCount){ ses.ptrEvalT = now; return; }
   const evalT = now - PTR_DELAY;
@@ -5106,22 +5046,22 @@ function updatePointer(now){
     while (dA < -Math.PI && dGuard++ < 4) dA += Math.PI*2;
     me.angle += dA * (1 - Math.exp(-fdt/32));
   }
-  /* MANUAL SWORD (Handler, 2026-11-09): the old flick triggers lived
-     here — a fast segment used to ARM a scripted swing arc (620 px/s)
-     or stab lunge (950 px/s) that then swept the blade on its own for
-     150–190ms. Gone. This evaluator only reports the hand's real motion
-     (position, me.speed, heading); nothing downstream animates the
-     blade beyond it. */
+  // flick triggers: same weapons, thresholds and cooldowns as the old event handler
+  if (ses.started && now >= me.whirlUntil){
+    if (myWeapon().motion==='stab'){
+      if (spd>950 && now-me.stabT0>170){ me.stabT0=now; me.stabAng=Math.atan2(dyPx,dxPx); }
+    } else if (spd>620 && now-me.swingT0>200){
+      me.swingT0=now;
+      me.swingDir = Math.abs(dxPx)>=Math.abs(dyPx) ? (dxPx>=0?1:-1) : (dyPx>=0?1:-1);
+    }
+  }
 }
 addEventListener('pointerdown', e=>{
-  if (!ses.started){ ses.uiPointer = true; ses.downInfo = null; return; }   // TITLE: the press belongs to the menu layer alone — it must never prime a sword snap or a skill cast
   ses.uiPointer = e.target !== cv;   // UI presses are for buttons/panels — flag them so pointermove ignores the drag
   if (e.pointerType) ses.lastPtrType = e.pointerType;   // drives the interact prompt's E vs TAP cap
+  if (!ses.started) return;
   if (e.target.closest && e.target.closest('#hud') && !e.target.closest('#game')) { /* UI taps handled by buttons */ }
   if (e.target===cv){
-    // a tap on the world dismisses the expanded weapon rack (it also
-    // closes on selection — equipFromRack calls toggleRack)
-    if (!prog().rackCollapsed) toggleRack();
     // snap the sword to the (touch-lifted) tap point so the skill tap lands there
     me.px=me.x; me.py=me.y;
     me.x=clamp(ses.cam.x + e.clientX/UNIT(), .02, WORLD-.02);
@@ -5134,7 +5074,6 @@ addEventListener('pointerdown', e=>{
   }
 });
 addEventListener('pointerup', e=>{
-  if (!ses.started){ ses.uiPointer = false; ses.downInfo = null; ses.lastClient = null; return; }   // TITLE: a release over the menu casts nothing
   if (ses.uiPointer){ ses.uiPointer = false; ses.lastClient = null; return; }   // release of a UI press: no cast, no stale delta
   if (!ses.downInfo) return;
   const info = ses.downInfo; ses.downInfo = null;
@@ -5152,7 +5091,7 @@ addEventListener('pointerover', e=>{
   const btn = e.target.closest('button');
   if (btn && panel.contains(btn) && !btn.disabled && (!ses.panelFocus || ses.panelFocus.el !== btn)) setPanelFocus(panel, btn);
 });
-addEventListener('touchmove', e=>{ if (ses.started) e.preventDefault(); }, {passive:false});   // in-game a drag steers the sword and must never scroll; on the TITLE the menu keeps its native scroll
+addEventListener('touchmove', e=>{ e.preventDefault(); }, {passive:false});
 addEventListener('keydown', e=>{
   if (!ses.started) return;
   if (e.key==='Escape' && !$('#menuPanel').classList.contains('hidden')){ closeMenu(); return; }
@@ -5202,10 +5141,10 @@ function setText(el, v){ v = String(v); if (el._t !== v){ el._t = v; el.textCont
 function setStyle(el, prop, v){ const k = '_s' + prop; if (el[k] !== v){ el[k] = v; el.style[prop] = v; } }
 const pct = (a, b) => clamp(a/b*100, 0, 100).toFixed(1) + '%';
 function refreshHUD(){
-  setText($('#coins'), Math.floor(prog().coins));   // fractional balance, floored display
+  setText($('#coins'), prog().coins);
   setText($('#lvl'), prog().level);
   setText($('#kills'), prog().kills+' kills');
-  setStyle($('#xpFill'), 'width', pct(prog().xp, prog().level*10000));
+  setStyle($('#xpFill'), 'width', pct(prog().xp, prog().level*100));
   // player HP (local only)
   setStyle($('#hpFill'), 'width', pct(me.hp, me.maxHp));
   setText($('#hpText'), Math.max(0, Math.ceil(me.hp)) + ' / ' + me.maxHp);   // overlaid ON the bar — numbers only, no 'HP' prefix
@@ -5310,16 +5249,10 @@ function syncRackUI(){
   $('#rackTabChev').textContent = prog().rackCollapsed ? '▲' : '▼';
   const rack = $('#rack');
   if (prog().rackCollapsed){
-    // scrollHeight, not sel.offsetHeight: the card's in-flow tail
-    // (name + xp bar) can extend past its border box, and the rack
-    // must never clip it (the collapsed card used to lose its name
-    // and xp bar under the screen edge).
-    rack.style.maxHeight = rack.scrollHeight + 'px';
+    const sel = rack.querySelector('.wcard.sel');
+    rack.style.maxHeight = (sel ? sel.offsetHeight : 76) + 'px';
   } else {
-    // capped at half the viewport: the expanded rack is a bottom
-    // PANEL (see the :not(.collapsed) tray styling) — it can never
-    // push its cards past the screen edge again.
-    rack.style.maxHeight = Math.min(rack.scrollHeight, Math.round(innerHeight * .5)) + 'px';
+    rack.style.maxHeight = rack.scrollHeight + 'px';
   }
   syncDockH();
 }
@@ -5473,8 +5406,8 @@ function buildMenuMore(){ updateMenuMore(); }
 function updateMenuMore(){
   $('#menuLvl').textContent = prog().level;
   $('#menuKills').textContent = prog().kills;
-  $('#menuCarried').textContent = Math.floor(prog().coins);
-  $('#menuBanked').textContent = Math.floor(prog().banked);
+  $('#menuCarried').textContent = prog().coins;
+  $('#menuBanked').textContent = prog().banked;
   $('#menuSp').textContent = prog().sp;
 }
 /* ---- SOUL GEM panel: equipped weapon's slots, the loose-gem bag, and
@@ -5582,7 +5515,7 @@ function rollGemRarity(floor){
   return 4;
 }
 function grantGem(floor, x, y){
-  if (prog().gemBag.length >= 99){ act.addCoins(15); addFloat(x, y - .16, 'GEM → +15 COINS (BAG FULL)', '#ffd94d'); return; }   // bag cap 99: the drop converts to coins — 15c in rescaled units (the x0.01-era effective payout was 0.15c; the x100 rescale preserves the ratio exactly)
+  if (prog().gemBag.length >= 99){ act.addCoins(15); addFloat(x, y - .16, '+15c (BAG FULL)', '#ffd94d'); return; }   // bag cap 99: the drop converts to coins
   const stats = Object.keys(GEM_STATS);
   const gem = { id:'g' + Date.now().toString(36) + (ses.gemSeq++), stat:stats[Math.floor(Math.random()*stats.length)], rarity:rollGemRarity(floor) };
   act.addToGemBag(gem);
@@ -5964,7 +5897,7 @@ function rollBounty(){
 function updateBountyUI(){
   if (!prog().bounty) return;
   $('#bountyText').textContent = 'Slay '+prog().bounty.need+' '+prog().bounty.label+' slimes';
-  $('#bountyProg').textContent = prog().bounty.have+'/'+prog().bounty.need+' · Reward '+fmtGrant(prog().bounty.reward)+'c + 1 SP';   // advertise the actual payout (post-rescale the stored reward IS the payout) — what completes is what is paid
+  $('#bountyProg').textContent = prog().bounty.have+'/'+prog().bounty.need+' · Reward '+prog().bounty.reward+'c + 1 SP';
 }
 
 /* ---------- king banner ---------- */
@@ -6159,18 +6092,10 @@ function drawMinimap(){
       g.fillStyle = '#fff8e7'; g.beginPath(); g.arc(dx, dy, 1.8, 0, 7); g.fill();
     }
   }
-  /* MARKERS ONLY (basics gate): the old loop dotted EVERY slime —
-     ~600 dark-green specks on the grass discs read as pure noise at
-     portrait size (Handler's screenshot). The minimap is a chart
-     now, with the MAP tab's marker philosophy: landmasses, bridges,
-     doors, the objective diamond — and of the slimes only the two
-     things worth steering by: the boss/guardians (gold) and the
-     metal (silver, white halo). Kings and elites stay off: at their
-     spawn rates (~20 kings, ~50 elites in a full world) their dots
-     re-created the speckle carpet this cleanup removed. */
   for (const s of world.slimes.values()){
-    if (s.kind==='boss' || s.kind==='guardian'){ g.fillStyle = '#ffd94d'; g.beginPath(); g.arc(s.x*S2, s.y*S2, 6, 0, 7); g.fill(); }
-    else if (s.kind==='metal'){ g.fillStyle = '#c3ced4'; g.beginPath(); g.arc(s.x*S2, s.y*S2, 4, 0, 7); g.fill(); g.strokeStyle = '#ffffff'; g.lineWidth = 1.5; g.beginPath(); g.arc(s.x*S2, s.y*S2, 4, 0, 7); g.stroke(); }
+    g.fillStyle = (s.kind==='king' || s.kind==='boss') ? '#ffd94d' : s.kind==='metal' ? '#c3ced4' : 'rgba(30,90,20,.55)';
+    g.beginPath(); g.arc(s.x*S2, s.y*S2, s.kind==='boss'?6 : s.kind==='king'?4.5 : s.kind==='metal'?4:2, 0, 7); g.fill();
+    if (s.kind==='metal'){ g.strokeStyle = '#ffffff'; g.lineWidth = 1.5; g.beginPath(); g.arc(s.x*S2, s.y*S2, 4, 0, 7); g.stroke(); }   // silver dot, white halo — the old r3 pale dot was camouflage among 80 green dots
   }
   for (const p of world.peers.values()){ g.fillStyle = '#4dabff'; g.beginPath(); g.arc(p.x*S2, p.y*S2, 3, 0, 7); g.fill(); }
   g.fillStyle = '#fff'; g.strokeStyle = '#5b3a1e'; g.lineWidth = 2;
@@ -6484,7 +6409,7 @@ const COLOR2IMG = {
 };
 /* ---- pixel world art: grass tile, decor and building sprites ---- */
 const WORLD_IMGS = {};
-for (const n of ['tile-grass','tile-water','tile-sand','tile-grass2','tile-dirt','tile-path','tile-stone','decor-tree','decor-rock','decor-pond','decor-grass','bld-bank','bld-shop','bld-hospital','bld-hut-a','bld-hut-b','bld-hut-c']){
+for (const n of ['tile-grass','tile-water','tile-sand','decor-tree','decor-rock','decor-pond','decor-grass','bld-bank','bld-shop','bld-hospital','bld-hut-a','bld-hut-b','bld-hut-c']){
   const im=new Image(); im.src='assets/img/'+n+'.png'; WORLD_IMGS[n]=im;
 }
 const NPC_IMGS = {};
@@ -7122,89 +7047,6 @@ const DECOR = (()=>{
   }
   return items;
 })();
-/* ============================================================ TILE MAP
-   (TILESET FLOOR — Handler ruling 2026-11-09: 'world floor is tile set
-   only.') The world floor is a precomputed CELL MAP at the floor tiles'
-   own pitch (0.55u — the pitch tile-grass/tile-water have always been
-   drawn at). Every cell is classified ONCE at load by sampling its
-   centre against the world's geography; drawField then paints only
-   tiles (or a per-cell palette fill if a tile image failed — still
-   cellular, never a plate, disc, gradient or ring). Bridges are plank
-   structures drawn OVER water cells (not floor); decor, shadows, pond
-   fx and particles sit on top of the floor and are not floor.
-   Sandbar cells are geography, not state: they are classified by strip
-   position and resolved at draw time (sand while the crossing stands,
-   water while it is drowned) — one boolean per strip, no resampling. */
-const TILE_PITCH = .55;
-const TC = { WATER:0, GRASS:1, GRASS2:2, SAND:3, DIRT:4, PATH:5, STONE:6, SBT:7, SBH:8 };
-const TILE_IMGS = ['tile-water','tile-grass','tile-grass2','tile-sand','tile-dirt','tile-path','tile-stone'];
-const TILE_FILL = ['#2c6d7b','#c9e5bb','#c1e0ac','#ead8a4','#d0b080','#e2c894','#c6beb0'];   // per-cell fallback fills in each tile's palette
-/* The worn-path corridors, as desire lines — the same routes the old
-   painted groundPath strips followed (town gate->plaza->inn, the
-   Thornwick hut triangle, Rotwatch tent->fire->crate) plus the straight
-   town -> Meadow Shrine walk. Now they are PATH cells, not paint. */
-const TILE_PATHS = [
-  [ { x:TOWN.x + TOWN_R + .30, y:TOWN.y - .04 }, { x:TOWN.x + .48, y:TOWN.y - .01 }, { x:TOWN.x, y:TOWN.y }, { x:TOWN.x + .02, y:TOWN.y + .36 }, { x:HOSPITAL_POS.x, y:HOSPITAL_POS.y - .12 } ],
-  [ { x:V_INN_POS.x, y:V_INN_POS.y + .14 }, { x:VILLAGE.x - .10, y:VILLAGE.y + .06 }, { x:V_SHOP_POS.x, y:V_SHOP_POS.y + .14 } ],
-  [ { x:VILLAGE.x + .02, y:VILLAGE.y + .10 }, { x:V_BANK_POS.x, y:V_BANK_POS.y - .12 } ],
-  [ { x:RW_TENT_POS.x, y:RW_TENT_POS.y + .10 }, { x:RW_FIRE_POS.x, y:RW_FIRE_POS.y + .05 }, { x:RW_CRATE_POS.x, y:RW_CRATE_POS.y + .10 } ],
-  [ { x:TOWN.x, y:TOWN.y }, SHRINE_POS.meadow ],
-];
-function tilePathDist(x, y){
-  let m = 1e9;
-  for (const line of TILE_PATHS) for (let i = 0; i < line.length - 1; i++){
-    const d = segDist(x, y, { x1:line[i].x, y1:line[i].y, x2:line[i+1].x, y2:line[i+1].y }).d;
-    if (d < m) m = d;
-  }
-  return m;
-}
-const TILEMAP = (()=>{
-  const n = Math.ceil(WORLD / TILE_PITCH), cells = new Uint8Array(n * n);
-  const ponds = DECOR.filter(d => d.t === 'pond');
-  for (let ty = 0; ty < n; ty++) for (let tx = 0; tx < n; tx++){
-    const cx = (tx + .5) * TILE_PITCH, cy = (ty + .5) * TILE_PITCH;
-    /* ponds first: the pond's wobbled ellipse (the footprint its sprite
-       used to paint: rx = r*1.1, ry at the sprite's 259/300 aspect) is
-       WATER inside, with a SAND rim ~0.30u wide outside it. */
-    let pondQ = 1e9, pondRx = 1;
-    for (const d of ponds){
-      const dx = cx - d.x, dy = cy - d.y, rr = d.r * 1.45;
-      if (dx > rr || dx < -rr || dy > rr || dy < -rr) continue;
-      const w = pondWobAt(d, Math.atan2(dy, dx));
-      const rx = d.r * 1.1 * w, ry = rx * 259 / 300;
-      const q = Math.sqrt((dx / rx) * (dx / rx) + (dy / ry) * (dy / ry));
-      if (q < pondQ){ pondQ = q; pondRx = rx; }
-    }
-    let c;
-    if (pondQ <= 1) c = TC.WATER;   // pond interior
-    else {
-      const ii = isleAt(cx, cy);
-      if (ii < 0){
-        // sandbar edges are hash-jittered ±.8 cell (basics gate): a
-        // dead-straight 2-cell strip read as a slab; the wobbled edge
-        // reads as shallows. Walkability keeps the analytic strip —
-        // only the painted edge moves.
-        if (segDist(cx, cy, SANDBAR_T).d <= BRIDGE_W / 2 + (hash01(tx * 7.31 + ty * 13.77 + 5.5) - .5) * TILE_PITCH * 1.6) c = TC.SBT;
-        else if (segDist(cx, cy, SANDBAR_H).d <= BRIDGE_W / 2 + (hash01(tx * 7.31 + ty * 13.77 + 9.25) - .5) * TILE_PITCH * 1.6) c = TC.SBH;
-        else c = TC.WATER;   // open sea — bridge strips included: planks are drawn over water cells
-      } else {
-        const I = ISLES[ii];
-        c = hash01(tx * 3.71 + ty * 9.13) < .38 ? TC.GRASS2 : TC.GRASS;
-        if (I.r - Math.hypot(cx - I.cx, cy - I.cy) < .30) c = TC.SAND;   // isle shore band
-        if ((pondQ - 1) * pondRx <= .30) c = TC.SAND;                    // pond rim band
-        for (const z of SAFE_ZONES){                                     // settlement yards: DIRT with a hash-noise edge
-          const er = z.r * (.84 + .32 * hash01(tx * 12.97 + ty * 78.23 + z.x));
-          if (Math.hypot(cx - z.x, cy - z.y) <= er){ c = TC.DIRT; break; }
-        }
-        if (tilePathDist(cx, cy) <= .30) c = TC.PATH;                    // worn corridors over grass/dirt/sand
-        if (Math.hypot(cx - TOWN.x, cy - TOWN.y) <= .44) c = TC.STONE;   // the plaza's paved heart
-        for (const k in SHRINE_POS){ const p = SHRINE_POS[k]; if (Math.hypot(cx - p.x, cy - p.y) <= .34){ c = TC.STONE; break; } }   // shrine aprons
-      }
-    }
-    cells[ty * n + tx] = c;
-  }
-  return { n, cells };
-})();
 /* The three LOST SPROUTLINGS (stage 4 side tale): fixed scenic spots
    DERIVED from DECOR itself, so the descriptions are literally true on
    every client — at the edge of the innermost pond, under the tree
@@ -7322,16 +7164,29 @@ function drawPonds(t){
     if (d.x<ses.cam.x-.4 || d.x>ses.cam.x+vw+.4 || d.y<ses.cam.y-.4 || d.y>ses.cam.y+vh+.4) continue;   // view-culled
     const x = NX(d.x), y = NY(d.y);
     const br = 1 + .010*Math.sin(t/1400 + d.x*3);   // water breathe: a slow +/-1% pulse around the centre
-    /* TILESET FLOOR: the pond's WATER is tile-map cells now (the map
-       classifies the pond's wobbled ellipse as WATER with a SAND rim) —
-       the painted pond sprite, its sand/waterline overtrace strokes and
-       the flat fallback fills are all gone. What remains here is not
-       floor: the shimmer fx clipped to the shore, and the rim dressing
-       (stones / reeds / sand patches), riding the sprite's old
-       footprint (rx = r*1.1, ry at its 259/300 aspect). */
-    const rx = d.r*1.1*u*br, ry = rx * 259/300;
-    drawPondFx(d, x, y, rx, ry, t);
-    drawPondRim(d, x, y, rx, ry, t);
+    const img = WORLD_IMGS['decor-pond'];
+    if (imgOk(img)){   // pixel pond sprite, centred on the spot
+      const w = d.r*2.2*u*br, h = w * img.naturalHeight/img.naturalWidth;
+      ctx.drawImage(img, x-w/2, y-h/2, w, h);
+      /* WOBBLED SHORE (Batch D #10): the sprite's own tan ring is a
+         perfect ellipse band — overtrace it with the pond's seeded
+         wobble: a sand stroke riding just outside the waterline and a
+         deep waterline stroke on it, so the visible edge wanders
+         in and out of the sprite's ring instead of tracing it. */
+      pondPath(x, y, w/2 * 1.02, h/2 * 1.02, d);
+      ctx.strokeStyle = 'rgba(230,207,154,.45)'; ctx.lineWidth = Math.max(3, .010*u); ctx.stroke();
+      pondPath(x, y, w/2, h/2, d);
+      ctx.strokeStyle = 'rgba(33,84,128,.35)'; ctx.lineWidth = Math.max(2, .005*u); ctx.stroke();
+      drawPondFx(d, x, y, w/2, h/2, t);
+      drawPondRim(d, x, y, w/2, h/2, t);   // Batch C: break the uniform tan ring
+      continue;
+    }
+    const r = d.r*u*br;
+    pondPath(x, y, r, r*.62, d); ctx.fillStyle = '#4da3e0'; ctx.fill();
+    pondPath(x - r*.12, y - r*.08, r*.68, r*.4, d); ctx.fillStyle = '#7cc0f2'; ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.beginPath(); ctx.ellipse(x-r*.3, y-r*.16, r*.2, r*.07, -.4, 0, 7); ctx.fill();
+    drawPondFx(d, x, y, r, r*.62, t);
+    drawPondRim(d, x, y, r, r*.62, t);
   }
 }
 /* Water life, clipped to the pond's own ellipse: two soft shimmer bands of
@@ -7365,15 +7220,9 @@ function drawTree(d, t){
   const img = WORLD_IMGS['decor-tree'];
   if (imgOk(img)){   // pixel tree sprite, bottom-anchored on the spot
     const w = .36*u*d.s, h = w * img.naturalHeight/img.naturalWidth;
-    // SHADOW ANCHOR (basics gate): the ellipse centres on the sprite's
-    // VISIBLE base — the lowest opaque rows end ~.05w above the draw
-    // bottom (transparent margin in the sheet) — and tucks its top
-    // third under the bush ring. The old +.045u centre sat a full
-    // margin BELOW the draw bottom: a detached grey disc floating
-    // under the tree (Handler's screenshot, 2026-11-09).
-    const baseY = y + .03*u - .05*w, sry = w*.068;
+    // ground shadow (the sprite path had none — only the vector fallback did)
     ctx.fillStyle = 'rgba(38,32,40,.18)';
-    ctx.beginPath(); ctx.ellipse(x, baseY + sry*.3, w*.29, sry, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x, y + .045*u, w*.27, w*.075, 0, 0, 7); ctx.fill();
     ctx.save();
     ctx.translate(x, y + .03*u);                 // pivot at the ground anchor (the sprite's bottom edge)
     ctx.rotate(windAt(d.x, d.y, t) * .02);       // barely-there canopy lean in the same wind
@@ -7678,9 +7527,16 @@ function drawCampfire(d, t){
    seeded burst of pixel flowers — far denser than the world scatter. */
 function drawFlowerGrove(d, t){
   const u = UNIT(), x = NX(d.x), y = NY(d.y), r = d.r * u;
-  /* TILESET FLOOR: the grove's soft speckle ground patch is gone too —
-     the floor under the flowers is tile-map grass like everywhere else.
-     Only the flowers themselves (decor) remain. */
+  /* NO filled disc: a hard ellipse edge read as a UI blob in playtest
+     stills. The meadow patch is suggested instead by a soft falloff of
+     darker grass speckles (sqrt distribution concentrates them at the
+     centre, so the patch fades out organically). */
+  ctx.fillStyle = 'rgba(46,125,50,.16)';
+  for (let i = 0; i < 110; i++){
+    const a = hash01(i * 5.31 + d.x) * Math.PI * 2, rr = Math.sqrt(hash01(i * 7.97 + d.y));
+    const sx = x + Math.cos(a) * rr * r * .85, sy = y + Math.sin(a) * rr * r * .62, ss = 3 + (i % 3) * 2;
+    ctx.fillRect(sx - ss/2, sy - ss/2, ss, ss);
+  }
   const cols = ['#ffffff', '#ffd1e8', '#fff3a0', '#ffb3d9', '#c39bff'];
   for (let i = 0; i < 90; i++){
     const a = hash01(i * 3.77 + d.x) * Math.PI * 2, rr = Math.sqrt(hash01(i * 9.13 + d.y)) * .92;
@@ -7700,10 +7556,8 @@ function drawPondRim(d, x, y, rx, ry, t){
     const wob = pondWobAt(d, it.a);   // rim dressing rides the wobbled shore (Batch D)
     const px = x + Math.cos(it.a) * rx * it.rf * wob, py = y + Math.sin(it.a) * ry * it.rf * wob;
     if (it.k === 'sand'){
-      // TILESET FLOOR owns the shore now: the tile map paints real
-      // sand cells around every pond, so the old painted sand smears
-      // (pale ellipses floating on grass past the shoreline) are gone.
-      continue;
+      ctx.fillStyle = 'rgba(230,207,154,.45)';
+      ctx.beginPath(); ctx.ellipse(px, py, .030 * u * (0.7 + it.rf * .4), .016 * u, it.a, 0, 7); ctx.fill();
     } else if (it.k === 'stone'){
       const ss = .011 * u * (0.8 + it.rf * .35);
       ctx.fillStyle = '#9aa0a3'; ctx.fillRect(px - ss/2, py - ss/2, ss, ss * .8);
@@ -7866,25 +7720,20 @@ function updatePoiNotices(){
 }
 function drawField(t){
   const u=UNIT(), vw=W/u, vh=H/u;
-  /* ===== THE FLOOR (TILESET FLOOR, Handler ruling 2026-11-09): the
-     precomputed TILE MAP, drawn cell by cell over the visible range —
-     tiles only. A cell whose tile image failed falls back to that
-     cell's own palette fill (still a cell, never a plate or gradient).
-     Sandbar cells resolve by their strip's one story boolean. ===== */
-  {
-    const ts = TILE_PITCH*u;
-    const tx0 = Math.max(0, Math.floor(ses.cam.x/TILE_PITCH)), ty0 = Math.max(0, Math.floor(ses.cam.y/TILE_PITCH));
-    const tx1 = Math.min(TILEMAP.n - 1, Math.floor((ses.cam.x + vw)/TILE_PITCH)), ty1 = Math.min(TILEMAP.n - 1, Math.floor((ses.cam.y + vh)/TILE_PITCH));
-    const sbT = sandbarOpen('T'), sbH = sandbarOpen('H');
-    for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++){
-      let c = TILEMAP.cells[ty * TILEMAP.n + tx];
-      if (c === TC.SBT) c = sbT ? TC.SAND : TC.WATER;
-      else if (c === TC.SBH) c = sbH ? TC.SAND : TC.WATER;
-      const px = NX(tx * TILE_PITCH), py = NY(ty * TILE_PITCH);
-      const im = WORLD_IMGS[TILE_IMGS[c]];
-      if (imgOk(im)) ctx.drawImage(im, px, py, ts + 1, ts + 1);   // +1px kills seams
-      else { ctx.fillStyle = TILE_FILL[c]; ctx.fillRect(px, py, ts + 1, ts + 1); }
-    }
+  /* ===== THE SEA (archipelago): everything that isn't an isle or a
+     bridge is open water — an ISW water tile if it loaded, else a deep
+     teal gradient; seeded glints twinkle on water only. ===== */
+  const wtile = WORLD_IMGS['tile-water'];
+  if (imgOk(wtile)){
+    const ts = .55*u;
+    const tx0 = Math.floor(ses.cam.x/.55), ty0 = Math.floor(ses.cam.y/.55);
+    const tx1 = Math.floor((ses.cam.x+vw)/.55), ty1 = Math.floor((ses.cam.y+vh)/.55);
+    for (let tx=tx0; tx<=tx1; tx++)
+      for (let ty=ty0; ty<=ty1; ty++)
+        ctx.drawImage(wtile, NX(tx*.55), NY(ty*.55), ts+1, ts+1);   // +1px kills seams
+  } else {
+    const g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#17697a'); g.addColorStop(1,'#0f4c5c');
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
   }
   {
     const wss = Math.max(2, Math.round(u*.004));
@@ -7911,6 +7760,75 @@ function drawField(t){
     ctx.fillRect(0, -wdt/2 - 2, len, 5); ctx.fillRect(0, wdt/2 - 3, len, 5);   // twin rails
     ctx.restore();
   }
+  /* ===== SANDBARS (round 4): the earned islet crossings — pale sand
+     shallows lying just at the waterline when the tide is calmed, drawn
+     under the isles like the bridges so the discs cap their landings.
+     Dry sand core with a wet edge and a breathing foam fringe; nothing
+     at all when the crossing is drowned. ===== */
+  for (const [seg, which] of [[SANDBAR_T, 'T'], [SANDBAR_H, 'H']]){
+    if (!sandbarOpen(which)) continue;
+    const ax = seg.x1 - seg.ux*.10, ay = seg.y1 - seg.uy*.10, bx = seg.x2 + seg.ux*.10, by = seg.y2 + seg.uy*.10;
+    const x1 = NX(ax), y1 = NY(ay), x2 = NX(bx), y2 = NY(by);
+    const ang = Math.atan2(y2-y1, x2-x1), len = Math.hypot(x2-x1, y2-y1), wdt = BRIDGE_W*u;
+    ctx.save(); ctx.translate(x1, y1); ctx.rotate(ang);
+    ctx.fillStyle = 'rgba(214,192,134,.55)'; ctx.fillRect(0, -wdt*.72, len, wdt*1.44);   // wet apron bleeding into the sea
+    ctx.fillStyle = '#e8d49a'; ctx.fillRect(0, -wdt/2, len, wdt);                        // the dry walkable core
+    const ssb = Math.max(2, Math.round(u*.004));
+    ctx.fillStyle = '#d8c48a';                                   // seeded speckle, same hash recipe as the plaza
+    for (let d = .04*u; d < len; d += .07*u){
+      const off = (hash01(d*3.71 + seg.x1) - .5) * wdt * .72;
+      ctx.fillRect(d, off - ssb/2, ssb, ssb);
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,' + (.22 + .12*Math.sin(t/900 + seg.x1)).toFixed(3) + ')';
+    ctx.lineWidth = Math.max(1.5, .012*u);
+    ctx.beginPath(); ctx.moveTo(0, -wdt/2); ctx.lineTo(len, -wdt/2); ctx.moveTo(0, wdt/2); ctx.lineTo(len, wdt/2); ctx.stroke();   // foam fringe
+    ctx.restore();
+  }
+  /* ===== THE ISLES: sand disc (shore tile if loaded), grass heart
+     (the grass tile, clipped), a wet rim, and a breathing foam edge. */
+  const gtile = WORLD_IMGS['tile-grass'], stile = WORLD_IMGS['tile-sand'];
+  for (const I of ISLES){
+    if (I.cx + I.r < ses.cam.x || I.cx - I.r > ses.cam.x + vw || I.cy + I.r < ses.cam.y || I.cy - I.r > ses.cam.y + vh) continue;   // off-view isle
+    const cx = NX(I.cx), cy = NY(I.cy);
+    // soft shadow in the water just off the shore: grounds the isle
+    ctx.strokeStyle = 'rgba(4,50,60,.20)'; ctx.lineWidth = .055*u;
+    ctx.beginPath(); ctx.arc(cx, cy, (I.r + .028)*u, 0, 7); ctx.stroke();
+    // sand disc
+    if (imgOk(stile)){
+      ctx.save();
+      ctx.beginPath(); ctx.arc(cx, cy, I.r*u, 0, 7); ctx.clip();
+      const ts = .55*u;
+      for (let tx = Math.floor((I.cx - I.r)/.55); tx <= Math.floor((I.cx + I.r)/.55); tx++)
+        for (let ty = Math.floor((I.cy - I.r)/.55); ty <= Math.floor((I.cy + I.r)/.55); ty++)
+          ctx.drawImage(stile, NX(tx*.55), NY(ty*.55), ts+1, ts+1);
+      ctx.restore();
+    } else {
+      ctx.fillStyle = '#e8d49a';
+      ctx.beginPath(); ctx.arc(cx, cy, I.r*u, 0, 7); ctx.fill();
+    }
+    // wet rim where the sea worries the sand
+    ctx.strokeStyle = 'rgba(160,125,70,.35)'; ctx.lineWidth = .025*u;
+    ctx.beginPath(); ctx.arc(cx, cy, (I.r - .012)*u, 0, 7); ctx.stroke();
+    // grass heart
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, (I.r - SHORE)*u, 0, 7); ctx.clip();
+    if (imgOk(gtile)){
+      const ts = .55*u;
+      for (let tx = Math.floor((I.cx - I.r)/.55); tx <= Math.floor((I.cx + I.r)/.55); tx++)
+        for (let ty = Math.floor((I.cy - I.r)/.55); ty <= Math.floor((I.cy + I.r)/.55); ty++)
+          ctx.drawImage(gtile, NX(tx*.55), NY(ty*.55), ts+1, ts+1);
+    } else {
+      const g=ctx.createLinearGradient(0, cy - I.r*u, 0, cy + I.r*u); g.addColorStop(0,'#8fd06e'); g.addColorStop(1,'#69b84e');
+      ctx.fillStyle=g; ctx.fillRect(cx - I.r*u, cy - I.r*u, 2*I.r*u, 2*I.r*u);
+      ctx.fillStyle='rgba(255,255,255,.05)';
+      for (let wx = Math.ceil(I.cx - I.r); wx < I.cx + I.r; wx++) if (((wx%2)+2)%2===0) ctx.fillRect(NX(wx), cy - I.r*u, u, 2*I.r*u);
+    }
+    ctx.restore();
+    // foam edge, breathing on the swell
+    ctx.strokeStyle = 'rgba(255,255,255,' + (.28 + .13*Math.sin(t/900 + I.zone*2.1)).toFixed(3) + ')';
+    ctx.lineWidth = Math.max(2, .020*u);
+    ctx.beginPath(); ctx.arc(cx, cy, (I.r + .012)*u, 0, 7); ctx.stroke();
+  }
   // flowers (only those in view, and only on land): tiny pixel squares
   for (const f of FLOWERS){
     if (f.x<ses.cam.x-.1 || f.x>ses.cam.x+vw+.1 || f.y<ses.cam.y-.1 || f.y>ses.cam.y+vh+.1) continue;
@@ -7919,6 +7837,111 @@ function drawField(t){
     ctx.fillStyle=f.c; ctx.fillRect(fx-fs/2, fy-fs/2, fs, fs);
     ctx.fillStyle='rgba(176,120,20,.9)'; ctx.fillRect(fx-.8, fy-.8, 1.6, 1.6);   // pollen centre pixel
   }
+  /* TOWN PLAZA: a sandy disc (r = TOWN_R) under the town — seeded pixel
+     speckles (hash of the 0.06u grid cell, one jittered square per cell)
+     and a continuous two-tone stone curb around the boundary, so the
+     safe zone reads at a glance. Drawn over the grass. */
+  {
+    const cx = NX(TOWN.x), cy = NY(TOWN.y), R = TOWN_R*u;
+    ctx.fillStyle = '#ecd9a2';
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.fill();
+    // soft edge shadow just outside the disc: grounds the plaza on the grass
+    ctx.strokeStyle = 'rgba(38,32,40,.10)'; ctx.lineWidth = Math.max(2, .016*u);
+    ctx.beginPath(); ctx.arc(cx, cy, R + .009*u, 0, 7); ctx.stroke();
+    const cell = .06, ss = Math.max(2, Math.round(u*.0035));   // speckle square ~2-4px
+    const gx0 = Math.max(0, Math.floor((TOWN.x - TOWN_R)/cell)), gx1 = Math.min(WORLD/cell, Math.ceil((TOWN.x + TOWN_R)/cell));
+    const gy0 = Math.max(0, Math.floor((TOWN.y - TOWN_R)/cell)), gy1 = Math.min(WORLD/cell, Math.ceil((TOWN.y + TOWN_R)/cell));
+    for (let gx=gx0; gx<gx1; gx++) for (let gy=gy0; gy<gy1; gy++){
+      const wx = (gx+.5)*cell, wy = (gy+.5)*cell;
+      if (wx < ses.cam.x-.1 || wx > ses.cam.x+vw+.1 || wy < ses.cam.y-.1 || wy > ses.cam.y+vh+.1) continue;   // view cull
+      const hs = Math.sin(gx*127.1 + gy*311.7)*43758.5453, hf = hs - Math.floor(hs);
+      if (hf > .85) continue;   // most cells get a speckle, a few stay clean
+      const jx = (hf*7.13 - Math.floor(hf*7.13) - .5)*cell*.7, jy = (hf*3.71 - Math.floor(hf*3.71) - .5)*cell*.7;
+      if (Math.hypot(wx+jx - TOWN.x, wy+jy - TOWN.y) > TOWN_R - .02) continue;   // keep speckles on the disc
+      ctx.fillStyle = hf < .42 ? '#ddc78c' : '#f6e7ba';
+      ctx.fillRect(NX(wx+jx)-ss/2, NY(wy+jy)-ss/2, ss, ss);
+    }
+    /* PLAZA EDGING (Batch D): the old ring stamped one .045u block
+       every .085u of arc — half air — so the border read as disconnected
+       grey blocks floating on the grass. Now each two-tone segment is an
+       arc stroke slightly LONGER than its spacing: neighbours overlap
+       into one continuous low stone curb, the tone changes left as
+       visible joints. A thin darker line under the band seats it. */
+    const nb = Math.round(2*Math.PI*TOWN_R/.085), bs = .045*u;
+    ctx.strokeStyle = 'rgba(38,32,40,.16)'; ctx.lineWidth = bs + Math.max(2, .008*u);
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.stroke();
+    ctx.lineWidth = bs; ctx.lineCap = 'butt';
+    for (let i=0; i<nb; i++){
+      const a0 = (i - .10)/nb*Math.PI*2, a1 = (i + 1.10)/nb*Math.PI*2;
+      const bx = TOWN.x + Math.cos((a0 + a1)/2)*TOWN_R, by = TOWN.y + Math.sin((a0 + a1)/2)*TOWN_R;
+      if (bx < ses.cam.x-.12 || bx > ses.cam.x+vw+.12 || by < ses.cam.y-.12 || by > ses.cam.y+vh+.12) continue;
+      ctx.strokeStyle = i%2 ? '#a89f92' : '#c2bab0';
+      ctx.beginPath(); ctx.arc(cx, cy, R, a0, a1); ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(255,250,230,.35)'; ctx.lineWidth = Math.max(1.5, .006*u);   // worn top highlight, inside the curb
+    ctx.beginPath(); ctx.arc(cx, cy, R - bs*.32, 0, 7); ctx.stroke();
+  }
+  /* SETTLEMENT GROUND (Settlements): Thornwick and Rotwatch wear the
+     plaza's language at smaller scale — a flat disc in the zone's
+     radius, the same seeded speckle recipe, a soft edge shadow — so a
+     settlement reads as a PLACE at a glance, not a clearing. */
+  const groundDisc = (zw, base, spA, spB)=>{
+    const cx = NX(zw.x), cy = NY(zw.y), R = zw.r * u;
+    if (cx + R < -20 || cy + R < -20 || cx - R > W + 20 || cy - R > H + 20) return;   // view cull
+    ctx.fillStyle = base;
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(38,32,40,.10)'; ctx.lineWidth = Math.max(2, .014*u);
+    ctx.beginPath(); ctx.arc(cx, cy, R + .008*u, 0, 7); ctx.stroke();
+    const cell = .06, ss = Math.max(2, Math.round(u*.0035));
+    const gx0 = Math.max(0, Math.floor((zw.x - zw.r)/cell)), gx1 = Math.min(WORLD/cell, Math.ceil((zw.x + zw.r)/cell));
+    const gy0 = Math.max(0, Math.floor((zw.y - zw.r)/cell)), gy1 = Math.min(WORLD/cell, Math.ceil((zw.y + zw.r)/cell));
+    for (let gx=gx0; gx<gx1; gx++) for (let gy=gy0; gy<gy1; gy++){
+      const wx = (gx+.5)*cell, wy = (gy+.5)*cell;
+      if (wx < ses.cam.x-.1 || wx > ses.cam.x+vw+.1 || wy < ses.cam.y-.1 || wy > ses.cam.y+vh+.1) continue;   // view cull
+      const hs = Math.sin(gx*127.1 + gy*311.7)*43758.5453, hf = hs - Math.floor(hs);
+      if (hf > .85) continue;
+      const jx = (hf*7.13 - Math.floor(hf*7.13) - .5)*cell*.7, jy = (hf*3.71 - Math.floor(hf*3.71) - .5)*cell*.7;
+      if (Math.hypot(wx+jx - zw.x, wy+jy - zw.y) > zw.r - .02) continue;   // keep speckles on the disc
+      ctx.fillStyle = hf < .42 ? spA : spB;
+      ctx.fillRect(NX(wx+jx)-ss/2, NY(wy+jy)-ss/2, ss, ss);
+    }
+  };
+  groundDisc(SAFE_ZONES[1], '#e6d5a0', '#d8c48a', '#f4e7ba');   // Thornwick: pale trampled sand
+  groundDisc(SAFE_ZONES[2], '#cdbb8d', '#bfae7c', '#ddcda2');   // Rotwatch: dirtier camp earth
+  /* SETTLEMENT PATHS (round 4, light): worn dirt strips where feet
+     actually go — the town's gate->plaza->inn walk, Thornwick's
+     hut-to-hut links, Rotwatch's tent->fire->crate trample. A dark
+     worn band with a lighter centre line and seeded speckle, in the
+     groundDisc palette family; pure ground paint, no state. */
+  const groundPath = (pts, wdt, band, wear)=>{
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.strokeStyle = band; ctx.lineWidth = wdt * u;
+    ctx.beginPath();
+    pts.forEach((p, i)=>{ const px = NX(p.x), py = NY(p.y); if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py); });
+    ctx.stroke();
+    ctx.strokeStyle = wear; ctx.lineWidth = wdt * u * .45;
+    ctx.beginPath();
+    pts.forEach((p, i)=>{ const px = NX(p.x), py = NY(p.y); if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py); });
+    ctx.stroke();
+    const ssb = Math.max(2, Math.round(u*.0035));
+    ctx.fillStyle = band;
+    for (let i = 0; i < pts.length - 1; i++){
+      const a = pts[i], b = pts[i + 1], segLen = Math.hypot(b.x - a.x, b.y - a.y);
+      const n = Math.floor(segLen / .07);
+      for (let j = 0; j < n; j++){
+        const f = (j + .5) / n, wx = a.x + (b.x - a.x) * f, wy = a.y + (b.y - a.y) * f;
+        if (wx < ses.cam.x - .1 || wx > ses.cam.x + vw + .1 || wy < ses.cam.y - .1 || wy > ses.cam.y + vh + .1) continue;
+        const hf = hash01(wx * 91.7 + wy * 57.3 + i * 13.1);
+        if (hf > .8) continue;
+        const off = (hf - .4) * wdt * .6;
+        ctx.fillRect(NX(wx) + off * u - ssb / 2, NY(wy) + (hf * 7.13 - Math.floor(hf * 7.13) - .5) * wdt * .5 * u - ssb / 2, ssb, ssb);
+      }
+    }
+  };
+  groundPath([{ x:TOWN.x + TOWN_R + .30, y:TOWN.y - .04 }, { x:TOWN.x + .48, y:TOWN.y - .01 }, { x:TOWN.x, y:TOWN.y }, { x:TOWN.x + .02, y:TOWN.y + .36 }, { x:HOSPITAL_POS.x, y:HOSPITAL_POS.y - .12 }], .17, '#d9c186', '#e6d29c');   // town: gate -> plaza -> inn
+  groundPath([{ x:V_INN_POS.x, y:V_INN_POS.y + .14 }, { x:VILLAGE.x - .10, y:VILLAGE.y + .06 }, { x:V_SHOP_POS.x, y:V_SHOP_POS.y + .14 }], .14, '#d3ba7d', '#e0c88f');   // Thornwick: inn <-> shop through the green
+  groundPath([{ x:VILLAGE.x + .02, y:VILLAGE.y + .10 }, { x:V_BANK_POS.x, y:V_BANK_POS.y - .12 }], .14, '#d3ba7d', '#e0c88f');   // Thornwick: green -> bank post
+  groundPath([{ x:RW_TENT_POS.x, y:RW_TENT_POS.y + .10 }, { x:RW_FIRE_POS.x, y:RW_FIRE_POS.y + .05 }, { x:RW_CRATE_POS.x, y:RW_CRATE_POS.y + .10 }], .15, '#b3a075', '#c2b088');   // Rotwatch: tent -> fire -> crate
   // grass tufts over the flowers, swaying in the same wind (never on the plaza)
   drawTufts(t);
   // ponds only -- flat ground decals (trees/rocks live in the y-sorted entity pass)
@@ -7943,16 +7966,15 @@ function drawField(t){
 function drawBuildings(only){
   const u = UNIT();
   const pad = (bx, by)=>{
-    // ground shadow ONLY: same flat recipe as the tree shadow
-    // (rgba(38,32,40,.18) ellipse), ANCHORED to the building's base:
-    // the sprite's content bottom sits at by+.10u, so the ellipse
-    // centres a hair below it with a small ry — a grounding rim, not
-    // the old .265u-wide plate centred .075u under the base, which
-    // spilled out beside the building (and read as a bystander's
-    // detached shadow next to Forge). (TILESET FLOOR: buildings stand
-    // on the tile map's dirt/stone cells.)
+    // ground shadow FIRST: same flat recipe as the tree shadow
+    // (rgba(38,32,40,.18) ellipse), sized a touch wider than the pad and
+    // offset down so a dark rim grounds the building on the plaza
     ctx.fillStyle = 'rgba(38,32,40,.18)';
-    ctx.beginPath(); ctx.ellipse(NX(bx), NY(by)+.112*u, .205*u, .046*u, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(NX(bx), NY(by)+.175*u, .265*u, .082*u, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#e8d9ae';
+    ctx.beginPath(); ctx.ellipse(NX(bx), NY(by)+.14*u, .25*u, .105*u, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = 'rgba(38,32,40,.10)';
+    ctx.beginPath(); ctx.ellipse(NX(bx), NY(by)+.155*u, .21*u, .075*u, 0, 0, 7); ctx.fill();
   };
   const sign = (x, y, text, bg, fg)=>{
     ctx.font = '900 ' + Math.round(.030*u) + 'px "Baloo 2",sans-serif';
@@ -8220,12 +8242,8 @@ function drawShrine(key, t){
   if (key === 'root') return drawRootShrine(t);
   const u = UNIT(), pos = SHRINE_POS[key];
   const x = NX(pos.x), yBot = NY(pos.y) + .10*u;
-  // shadow anchored to the stone ring's footprint: the sprite's
-  // content bottom ends ~.038u above its draw bottom (pos.y+.062u)
-  // and the ring spans ~.18u half-width — the old .24u plate centred
-  // at +.085u stuck out past the stones on every side.
   ctx.fillStyle = 'rgba(38,32,40,.18)';
-  ctx.beginPath(); ctx.ellipse(x, NY(pos.y) + .068*u, .185*u, .042*u, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x, NY(pos.y) + .085*u, .24*u, .065*u, 0, 0, 7); ctx.fill();
   const img = SHRINE_IMGS[key];
   const w = .46*u, h = imgOk(img) ? w * img.naturalHeight/img.naturalWidth : .46*u;
   if (shrineDone(key)){
@@ -8640,11 +8658,11 @@ function drawEntities(t){
   }
   // townsfolk join the same depth order at their feet (the Child's spot
   // is npcPositionAt's deterministic wander — no state, no sync).
-  // TITLE: pre-PLAY the townsfolk are pushed ONLY inside the title
-  // still's staging pass (ses.titleStaging), where the frozen diorama
-  // poses them deliberately — the live title never runs this pass.
+  // BATCH A: behind the TITLE (not started) no NPC is pushed at all —
+  // the title shows the dimmed living town (ambient slimes + decor),
+  // never a character standing on the logo or the PLAY button.
   for (const def of NPC_DEFS){
-    if (!ses.started && !ses.titleStaging) break;
+    if (!ses.started) break;
     const p = npcPositionAt(def, t);
     if (p.x<ses.cam.x-.45 || p.x>ses.cam.x+vw+.45 || p.y<ses.cam.y-.55 || p.y>ses.cam.y+vh+.25) continue;   // view-culled
     ents.push({ baseY:p.y, kind:'npc', def, x:p.x, y:p.y });
@@ -8884,43 +8902,8 @@ function drawMetalArrow(now){
   if (!m) return;
   const u = UNIT(), vw = W/u, vh = H/u;
   if (m.x >= ses.cam.x && m.x <= ses.cam.x + vw && m.y >= ses.cam.y && m.y <= ses.cam.y + vh) return;   // on screen: the slime itself is the marker
-  const sx = NX(m.x), sy = NY(m.y);
-  /* SAFE-RECT CLAMP (basics gate): the old 34px raw-edge clamp let the
-     METAL caption hang half off-screen at the bottom/side edges
-     (Handler's screenshot). The marker now lives in the same safe
-     rectangle as the objective pointer (84px sides, 150px top, 90px
-     bottom), slides clear of HUD rects, and the caption flips ABOVE
-     the diamond whenever below would leave the screen — the label is
-     always whole. The chevron still rotates to the true bearing. */
-  const L = 84, R = Math.max(L + 40, W - 84), T = 150, B = Math.max(T + 40, H - 90);
-  let cx = clamp(sx, L, R), cy = clamp(sy, T, B);
-  const PAD = 32;   // diamond (~15px) + caption span + breathing room
-  /* the objective pointer's corner-aware slide, verbatim in spirit:
-     slide ALONG the pinned edge (a nearest-exit push gets re-captured
-     by the safe-rect clamp in the corners — at bottom-left the
-     minimap's padded rect reaches past B, and the marker ended up
-     UNDER the minimap with only its caption peeking out). */
-  for (let pass = 0; pass < 3; pass++){
-    let slid = false;
-    for (const rc of hudRects(now)){
-      if (cx <= rc.l - PAD || cx >= rc.r + PAD || cy <= rc.t - PAD || cy >= rc.b + PAD) continue;
-      const onTB = (cy === T || cy === B), onLR = (cx === L || cx === R);
-      if (onTB && !onLR) cx = cx < (rc.l + rc.r)/2 ? rc.l - PAD : rc.r + PAD;
-      else if (onLR && !onTB) cy = cy < (rc.t + rc.b)/2 ? rc.t - PAD : rc.b + PAD;
-      else if (Math.abs(sx - W/2) >= Math.abs(sy - H/2)) cx = cx < (rc.l + rc.r)/2 ? rc.l - PAD : rc.r + PAD;
-      else cy = cy < (rc.t + rc.b)/2 ? rc.t - PAD : rc.b + PAD;
-      slid = true;
-    }
-    cx = clamp(cx, L, R); cy = clamp(cy, T, B);
-    if (!slid) break;
-  }
-  for (const rc of hudRects(now)){
-    if (cx <= rc.l - PAD || cx >= rc.r + PAD || cy <= rc.t - PAD || cy >= rc.b + PAD) continue;
-    const pl = cx - (rc.l - PAD), pr = (rc.r + PAD) - cx, pt = cy - (rc.t - PAD), pb = (rc.b + PAD) - cy;
-    const m = Math.min(pl, pr, pt, pb);
-    if (m === pl) cx = rc.l - PAD; else if (m === pr) cx = rc.r + PAD; else if (m === pt) cy = rc.t - PAD; else cy = rc.b + PAD;
-  }
-  cx = clamp(cx, PAD, W - PAD); cy = clamp(cy, PAD, H - PAD);   // hard on-screen guarantee
+  const sx = NX(m.x), sy = NY(m.y), M = 34;
+  const cx = clamp(sx, M, W - M), cy = clamp(sy, M, H - M);
   const a = Math.atan2(sy - H/2, sx - W/2);   // bearing from screen centre toward the metal
   const pulse = 1 + .15 * Math.sin(now * Math.PI * 2 / 500);   // ~2Hz breathing, ±15%
   ctx.save(); ctx.translate(cx, cy); ctx.rotate(a);
@@ -8931,10 +8914,8 @@ function drawMetalArrow(now){
   const r = 13 * pulse;   // ~26px diamond — big enough to catch the eye at the screen edge
   ctx.fillStyle = '#dfe7ec'; ctx.strokeStyle = '#5f6f79'; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(0, -r); ctx.lineTo(r, 0); ctx.lineTo(0, r); ctx.lineTo(-r, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
-  ctx.font = '7px "Press Start 2P", monospace'; ctx.textAlign = 'center';
-  ctx.fillStyle = '#dfe7ec';
-  if (cy + r + 16 <= H - 4){ ctx.textBaseline = 'top'; ctx.fillText('METAL', 0, r + 5); }
-  else { ctx.textBaseline = 'bottom'; ctx.fillText('METAL', 0, -r - 5); }
+  ctx.font = '7px "Press Start 2P", monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillStyle = '#dfe7ec'; ctx.fillText('METAL', 0, r + 5);
   ctx.restore();
 }
 /* Screen-edge pointer for the current OBJECTIVE (Batch B): the Metal
@@ -9033,18 +9014,6 @@ function frame(now){
   // timestamp-based (see audit in the commit), so refresh rate can never
   // speed the game up.
   const dt = ses.paused ? 0 : Math.min(50, now-ses.lastT); ses.lastT=now;   // pause freezes local dt only; world/netcode keep running
-  if (!ses.started){
-    /* TITLE — NOT THE GAME (Handler ruling 2026-11-09: "title screen
-       shouldn't be the game I can't click anything because sword
-       moves!"): while the title is up, the world does not exist — no
-       pointer evaluation, no simulation, no world render runs behind
-       the menu. The canvas shows ONE frozen composed diorama (see
-       drawTitleStill below) and the DOM #title layer owns all input;
-       every game input handler is separately gated on ses.started.
-       PLAY boots the world fresh, exactly as it always has. */
-    drawTitleStill();
-    return;
-  }
   me.ptrSpeedPx *= Math.exp(-dt/110);   // pointer-speed memory decays fast — a stopped hand stops cutting within ~a few hundred ms
   updatePointer(now);   // place the blade from the pointer sample stream (interpolated, frame-rate) BEFORE anything reads me.x/me.y this frame
   ctx.setTransform(DPR,0,0,DPR,0,0);
@@ -9151,18 +9120,12 @@ function frame(now){
   }
   updateDmgFlash(now);   // flat red damage screen: per-hit flash decay + low-HP tint
 
-  // camera eases after the sword — push toward an edge to travel the world.
-  // The ease time constant IS the edge-travel speed: pinned at a screen
-  // edge, the camera gap sits at ~half the view, so sustained travel runs
-  // at gap/TAU — Handler (2026-11-09) ruled that speed too fast and cut it
-  // to a quarter: TAU 240ms -> 960ms. In-screen blade tracking is NOT this
-  // (updatePointer places the blade on the pointer stream 1:1), so fine
-  // control near the blade is untouched — only the far/edge catch-up slows.
+  // camera eases after the sword — push toward an edge to travel the world
   {
     const vw = W/UNIT(), vh = H/UNIT();
     const tx = clamp(me.x - vw/2, 0, Math.max(0, WORLD - vw));
     const ty = clamp(me.y - vh/2, 0, Math.max(0, WORLD - vh));
-    const k = 1 - Math.exp(-dt/960);
+    const k = 1 - Math.exp(-dt/240);
     ses.cam.x += (tx - ses.cam.x) * k; ses.cam.y += (ty - ses.cam.y) * k;
   }
 
@@ -9210,7 +9173,12 @@ function frame(now){
   // y-sorted entity pass: trees, rocks, buildings and slimes by ground
   // anchor, then occlusion ghosts for slimes hidden behind props
   drawEntities(now);
-  drawAmbientAir(now);   // Batch C: gulls, fireflies, drifting petals
+  drawAmbientAir(now);   // Batch C: gulls, fireflies, drifting petals (drawn before the title dim, so the title stays dimmed)
+  /* BATCH A title composition: while the title is up, the world renders
+     DIMMED under a translucent overlay (the DOM #title gradient stays as
+     the vignette) — ambient slimes and decor keep living underneath,
+     but no NPC, name plate, float or HUD competes with the logo. */
+  if (!ses.started){ ctx.fillStyle = 'rgba(23,43,18,.48)'; ctx.fillRect(0, 0, W, H); }
 
   if (ses.started) tickActives(now, dt);
   // minimap at ~20Hz, not every frame: it is a navigation aid (50ms
@@ -9385,91 +9353,13 @@ function frame(now){
   // scoreboard innerHTML rebuild) TWICE per tick for nothing.
   if (ses.started && now-ses.slowTickAt>500){ ses.slowTickAt=now; refreshPeers(); checkZone(); }
 }
-/* ============================================================ TITLE STILL
-   The title backdrop is a FROZEN COMPOSED DIORAMA, not the game: at
-   boot we stage ONE town-meadow vignette — the tilemap floor, the town
-   buildings and decor, the townsfolk at their posts, and a hand-placed
-   cast of slimes — render it ONCE through the normal world painters at
-   one fixed instant (TITLE_STILL_T), snapshot the canvas, and from
-   then on the title frame is a plain blit of that snapshot. No slime
-   is ever simulated behind the menu (the old live "ambient wander"
-   setInterval and its amb-slimes are gone), nothing animates, and the
-   world itself is only booted by PLAY. While the sprite sheets are
-   still streaming in, the staged scene is re-rendered (same fixed
-   instant, same poses — the picture simply gains its art); once every
-   staged image has loaded (or a 4s deadline passes, so a dead asset
-   can never keep the title live) the snapshot freezes for good. A
-   viewport resize re-stages at the new aspect and re-freezes. */
-const TITLE_STILL_T = 2600;   // the frozen instant the diorama is painted at — hop phases, NPC wander spots and ambient motes all read this one clock
-let titleStillCv = null;      // offscreen snapshot canvas (device pixels)
-let titleStillKey = '';       // 'WxHxDPR' the snapshot was taken at
-let titleStillFrozen = false;
-let titleStillBornAt = 0;
-/* The cast: hand-placed around the plaza ring, clear of the centred
-   menu column, all inside the town disc. Colours pick the sprite. */
-const TITLE_CAST = [
-  { kind:'baby', color:'#7ee787', dx:-.58, dy:+.16, seed:1.3 },
-  { kind:'baby', color:'#6fd3ff', dx:+.50, dy:+.34, seed:4.1 },
-  { kind:'baby', color:'#ffb3d9', dx:-.16, dy:+.52, seed:7.7 },
-  { kind:'mid',  color:'#8affd1', dx:+.60, dy:-.22, seed:2.9 },
-  { kind:'mid',  color:'#ffb3d9', dx:-.34, dy:-.44, seed:5.3 },
-  { kind:'big',  color:'#c39bff', dx:+.34, dy:+.58, seed:3.7 },
-  { kind:'gold', color:'#ffe066', dx:-.64, dy:-.28, seed:6.1 },
-  { kind:'dart', color:'#ffab7a', dx:+.18, dy:-.58, seed:8.3 },
-];
-function titleImgsReady(){
-  const ok = im => !!im && im.complete && im.naturalWidth > 0;
-  for (const n in WORLD_IMGS) if (!ok(WORLD_IMGS[n])) return false;
-  for (const n in SLIME_IMGS) if (!ok(SLIME_IMGS[n])) return false;
-  for (const n in NPC_IMGS) if (!ok(NPC_IMGS[n])) return false;
-  for (const n in SHRINE_IMGS) if (!ok(SHRINE_IMGS[n])) return false;
-  return ok(SPROUT_IMG);
-}
-function stageTitleScene(){
-  // camera: the town vignette, centred a touch north of the plaza so
-  // the bank/shop doorways crown the top of the frame
-  const vw = W/UNIT(), vh = H/UNIT();
-  ses.cam.x = clamp(TOWN.x - vw/2, 0, Math.max(0, WORLD - vw));
-  ses.cam.y = clamp(TOWN.y - .08 - vh/2, 0, Math.max(0, WORLD - vh));
-  for (let i=0;i<TITLE_CAST.length;i++){
-    const c = TITLE_CAST[i], k = SLIME_KINDS.find(m=>m.kind===c.kind) || SLIME_KINDS[0];
-    const id = 'ttl' + i;
-    world.slimes.set(id, { id, kind:k.kind, hp:k.hp, max:k.hp, r:k.r, x:TOWN.x + c.dx, y:TOWN.y + c.dy, vx:0, vy:0, dir:0, color:c.color, seed:c.seed, squish:0, flash:0 });
-  }
-  ses.titleStaging = true;   // lets drawEntities pose the townsfolk for this one pass
-}
-function unstageTitleScene(){
-  for (let i=0;i<TITLE_CAST.length;i++) world.slimes.delete('ttl' + i);
-  ses.titleStaging = false;
-}
-function renderTitleStage(){
-  stageTitleScene();
-  ctx.setTransform(DPR,0,0,DPR,0,0);
-  drawField(TITLE_STILL_T);
-  drawEntities(TITLE_STILL_T);
-  drawAmbientAir(TITLE_STILL_T);
-  ctx.fillStyle = 'rgba(23,43,18,.48)'; ctx.fillRect(0, 0, W, H);   // the menu's readable wash, baked into the still (the DOM #title gradient vignettes on top, as before)
-  unstageTitleScene();
-}
-function freezeTitleStill(){
-  if (!titleStillCv) titleStillCv = document.createElement('canvas');
-  titleStillCv.width = cv.width; titleStillCv.height = cv.height;
-  titleStillCv.getContext('2d').drawImage(cv, 0, 0);
-  titleStillKey = W + 'x' + H + 'x' + DPR;
-  titleStillFrozen = true;
-}
-function drawTitleStill(){
-  if (!W || !H) return;
-  if (titleStillFrozen && titleStillKey === W + 'x' + H + 'x' + DPR){
-    ctx.setTransform(1,0,0,1,0,0);
-    ctx.drawImage(titleStillCv, 0, 0);   // device-pixel 1:1 blit — the still cannot move
-    return;
-  }
-  if (!titleStillBornAt) titleStillBornAt = performance.now();
-  renderTitleStage();
-  if (titleImgsReady() || performance.now() - titleStillBornAt > 4000) freezeTitleStill();
-}
 requestAnimationFrame(frame);
+// title-screen ambient slimes (solo sim before joining)
+for(let i=0;i<9;i++){ const k=pickKind(); const id='amb'+i; world.slimes.set(id,{id,kind:k.kind,hp:k.hp,max:k.hp,r:k.r,x:rand(.08,.92),y:rand(.15,.9),vx:0,vy:0,dir:rand(0,7),turnAt:performance.now()+rand(800,2000),color:SLIME_COLORS[i%SLIME_COLORS.length],seed:Math.random()*10,squish:0,flash:0}); }
+setInterval(()=>{ if(!ses.started){ // ambient wander on title
+  const now=performance.now();
+  for (const s of world.slimes.values()){ if(now>s.turnAt){s.dir=rand(0,7); s.turnAt=now+rand(900,2400);} s.x+=Math.cos(s.dir)*.0016; s.y+=Math.sin(s.dir)*.0011; s.x=clamp(s.x,.05,.95); s.y=clamp(s.y,.1,.93); }
+}},50);
 
 /* ============================================================ start */
 // ONE single world for everyone — fixed Trystero room id under the hood, never shown to players.
@@ -9499,9 +9389,10 @@ $('#playBtn').onclick = ()=>{
   buildRack(); refreshHUD(); refreshPeers();
   if (!prog().bounty) rollBounty();
   updateHint();
-  // the title staged its diorama slimes only for single synchronous
-  // render passes and removed them itself — the world boots empty here,
-  // exactly as electHost's slimes.size===0 seed check expects
+  // the 9 title-screen ambient slimes (ids amb0..amb8, parked in the world's top-left
+  // corner, no zone scaling) must not leak into the real world: with them
+  // still in the map, electHost's slimes.size===0 check skipped the 50-slime seed
+  for (const id of [...world.slimes.keys()]) if (String(id).startsWith('amb')) world.slimes.delete(id);
   try { joinWorld(WORLD_ID); }
   catch(e){ notify('Multiplayer failed to start — playing solo. (' + e.message + ')', { ms:4000 }); world.isHost=true; world.hostId=me.id; if(world.slimes.size===0) for(let i=0;i<50;i++) spawnSlime(); }
   notify('Slash the slimes! One world — everyone with the link is in it.', { ms:2600 });
