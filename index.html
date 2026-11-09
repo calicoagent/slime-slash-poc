@@ -6456,7 +6456,7 @@ function drawCoachChip(now){
   const bw = tw + 26, bh = lines.length * 18 + 15;
   const bob = Math.sin(now / 300) * 3;
   const cx = clamp(p[0], bw / 2 + 6, W - bw / 2 - 6);
-  const cy = p[1] - 72 * ZK() - 18 - bh / 2 + bob;   // above the stick figure's head AND the name plate
+  const cy = p[1] - 30 - bh / 2 + bob;   // above the name plate (stick figure removed in v0.6.4)
   ctx.fillStyle = 'rgba(38,32,40,.30)'; ctx.fillRect(cx - bw / 2 + 4, cy - bh / 2 + 4, bw, bh);
   ctx.fillStyle = '#ffffff'; ctx.fillRect(cx - bw / 2, cy - bh / 2, bw, bh);
   ctx.strokeStyle = '#3a2b23'; ctx.lineWidth = 3; ctx.strokeRect(cx - bw / 2, cy - bh / 2, bw, bh);
