@@ -1015,7 +1015,7 @@
 import { joinRoom, selfId } from 'https://cdn.jsdelivr.net/npm/trystero@0.21.6/nostr/+esm';
 import { createStore } from 'https://cdn.jsdelivr.net/npm/zustand@5.1.0/vanilla/+esm';
 
-const GAME_VERSION = '0.6.5';   // shown small on the title screen + pause menu
+const GAME_VERSION = '0.6.6';   // shown small on the title screen + pause menu
 
 /* ============================================================ utils */
 const $ = s => document.querySelector(s);
@@ -1575,14 +1575,59 @@ const WATER_GRID_N = 48;
 const zoneWater = {};        // zoneId -> Uint8Array(48*48)
 const zoneWaterCells = {};   // zoneId -> [blockIndex] of water blocks (water FX + glints)
 const zoneWaterPath = {};    // zoneId -> Path2D of the water region in drawn plate px (built once at load — the per-frame water pass only clips + scrolls light)
+const zonePath = {};         // zoneId -> Uint8Array(48*48): 1 = painted road/path block (built with the water grid)
+const zoneDisc = {};         // zoneId -> transient full-res disc sampler, alive only while buildWaterGrid runs genProps (see below)
+/* Painted-road pixel rules per zone (Handler, 2026-11-10: 'Tree
+   shouldn't be on the road'). Calibrated from the plates themselves —
+   town plaza cobble (188,167,135), glade dirt track (166,136,82),
+   hermit golden path (183,136,79) vs meadow greens (g-r +10..+39):
+   a pixel is road when it is WARM dirt/stone (r-g >= rg, r-b >= rb)
+   at or above a luminance floor; floors rise where the natural ground
+   is itself brown (hollow bracken, witherbriar dirt). The ash wilds
+   invert the rule: Cinderfell's track is DARKER red-brown than the
+   ash field around it. tools/prop_audit.py mirrors these numbers. */
+const PATH_RULES = {
+  town:    { rg:8, rb:25, lum:92 },
+  glade:   { rg:8, rb:25, lum:92 },
+  camp:    { rg:8, rb:25, lum:92 },
+  grove:   { rg:8, rb:25, lum:92 },
+  hermit:  { rg:8, rb:25, lum:92 },
+  hollow:  { rg:8, rb:25, lum:105 },
+  treasure:{ rg:8, rb:25, lum:110 },
+  wilds:   { dark:1, rg:8, rb:16, lumMax:58 },
+};
+function roadPx(rule, r, g, b){
+  if (rule.dark) return (r - g >= rule.rg && r - b >= rule.rb && (r + g + b) / 3 <= rule.lumMax);
+  return (r - g >= rule.rg && r - b >= rule.rb && (r + g + b) / 3 >= rule.lum);
+}
+function pathAt(zoneId, x, y){
+  const g = zonePath[zoneId]; if (!g) return false;
+  const bx = (x / ZONE_U * WATER_GRID_N) | 0, by = (y / ZONE_U * WATER_GRID_N) | 0;
+  if (bx < 0 || by < 0 || bx >= WATER_GRID_N || by >= WATER_GRID_N) return false;
+  return g[by * WATER_GRID_N + bx] === 1;
+}
 const PROPS = {};            // zoneId -> [{ t, x, y, s }] (seeded scatter, built with the water grid)
 function plateOf(zoneId){ return PLATE_IMGS[zoneId]; }
+const zoneBuilding = {};
 function tryBuildWaterGrid(zoneId){
-  if (zoneWater[zoneId]) return;
+  if (zoneWater[zoneId] || zoneBuilding[zoneId]) return;
   const zd = ZONES_DEF[zoneId], img = PLATE_IMGS[zoneId];
   if (!imgOk(img)) return;
   const mask = zd.mask ? PLATE_MASKS[zoneId] : null;
   if (zd.mask && !imgOk(mask)) return;   // wait for the mask too
+  /* imgOk only proves dimensions exist — a plate can pass it while
+     still undecodable, and drawImage then paints BLANK pixels (town's
+     plate lost that race on every headless run: sampled grids came
+     out all-zero while the game looked fine). Gate the build on
+     decode() so the sampled pixels are real, on any hardware. */
+  zoneBuilding[zoneId] = 1;
+  const dec = im => (im && im.decode) ? im.decode().catch(() => {}) : Promise.resolve();
+  Promise.all([dec(img), dec(mask)]).then(() => buildWaterGrid(zoneId));
+}
+function buildWaterGrid(zoneId){
+  if (zoneWater[zoneId]) return;
+  const zd = ZONES_DEF[zoneId], img = PLATE_IMGS[zoneId];
+  const mask = zd.mask ? PLATE_MASKS[zoneId] : null;
   const SW = 192, SH = Math.max(2, Math.round(SW * img.naturalHeight / img.naturalWidth));
   const cvx = document.createElement('canvas'); cvx.width = SW; cvx.height = SH;
   const g = cvx.getContext('2d', { willReadFrequently: true });
@@ -1610,6 +1655,35 @@ function tryBuildWaterGrid(zoneId){
     grid[by * WATER_GRID_N + bx] = water ? 1 : 0;
   }
   zoneWater[zoneId] = grid;
+  /* Painted-road grid on the same 48x48 blocks: sample a patch of a
+     384-wide plate downsample around each block centre and mark the
+     block when >=45% of the patch reads as road (PATH_RULES). The
+     water grid's 192-wide downsample averages the glade's half-unit
+     dirt track into the grass — 384 keeps it. Props consult the grid
+     in genProps; collision alone never knew the roads. */
+  if (plateData){
+    const SW2 = 384, SH2 = Math.max(2, Math.round(SW2 * img.naturalHeight / img.naturalWidth));
+    cvx.width = SW2; cvx.height = SH2;
+    g.drawImage(img, 0, 0, SW2, SH2);
+    let pathData = null;
+    try { pathData = g.getImageData(0, 0, SW2, SH2).data; } catch(e){}
+    if (pathData){
+      const rule = PATH_RULES[zoneId], pgrid = new Uint8Array(WATER_GRID_N * WATER_GRID_N);
+      for (let by = 0; by < WATER_GRID_N; by++) for (let bx = 0; bx < WATER_GRID_N; bx++){
+        const I = (bx + .5) * .5, J = (by + .5) * .5;
+        const px = (I - J) * pw / 48 + pw / 2, py = (I + J + 1) * pw / 96;
+        const sx = clamp(Math.round(px / pw * SW2), 0, SW2 - 1), sy = clamp(Math.round(py / ph * SH2), 0, SH2 - 1);
+        let road = 0, tot = 0;
+        for (let dy = -2; dy <= 2; dy++) for (let dx = -4; dx <= 3; dx++){
+          const X = clamp(sx + dx, 0, SW2 - 1), Y = clamp(sy + dy, 0, SH2 - 1), ix = (Y * SW2 + X) * 4;
+          if (roadPx(rule, pathData[ix], pathData[ix + 1], pathData[ix + 2])) road++;
+          tot++;
+        }
+        pgrid[by * WATER_GRID_N + bx] = (road / tot >= .45) ? 1 : 0;
+      }
+      zonePath[zoneId] = pgrid;
+    }
+  }
   const cells = [];
   for (let i = 0; i < grid.length; i++) if (grid[i]) cells.push(i);
   zoneWaterCells[zoneId] = cells;
@@ -1631,7 +1705,35 @@ function tryBuildWaterGrid(zoneId){
     }
     zoneWaterPath[zoneId] = path;
   } catch(e){ zoneWaterPath[zoneId] = null; }
+  /* Full-resolution disc sampler for genProps' relocation pass: the
+     384-downsample block vote can average a grass-flecked dirt track
+     under the threshold (a Witherbriar tree stood mid-track while its
+     block read grass). Sampling the plate at natural size — a disc of
+     r=.18u, 21 points, road at >=45% — is the same ground truth
+     tools/prop_audit.py verifies against. Transient: the natural-size
+     pixels are dropped as soon as the props are placed. */
+  try {
+    const nc = document.createElement('canvas'); nc.width = pw; nc.height = ph;
+    const ng = nc.getContext('2d', { willReadFrequently: true });
+    ng.drawImage(img, 0, 0);
+    const nd = ng.getImageData(0, 0, pw, ph).data, rule = PATH_RULES[zoneId];
+    const OFFS = [];
+    for (const dx of [-.135, -.0675, 0, .0675, .135]) for (const dy of [-.135, -.0675, 0, .0675, .135])
+      if (dx * dx + dy * dy <= .18 * .18) OFFS.push([dx, dy]);
+    zoneDisc[zoneId] = (x, y) => {
+      let road = 0;
+      for (const [dx, dy] of OFFS){
+        const I = (x + dx) / .6, J = (y + dy) / .6;
+        const sx = clamp(Math.round((I - J) * pw / 48 + pw / 2), 0, pw - 1);
+        const sy = clamp(Math.round((I + J + 1) * pw / 96), 0, ph - 1);
+        const ix = (sy * pw + sx) * 4;
+        if (roadPx(rule, nd[ix], nd[ix + 1], nd[ix + 2])) road++;
+      }
+      return road / OFFS.length >= .45;
+    };
+  } catch(e){ /* no disc sampler: the block grid alone decides */ }
   genProps(zoneId);
+  delete zoneDisc[zoneId];
 }
 function waterAt(zoneId, x, y){
   const g = zoneWater[zoneId]; if (!g) return false;
@@ -1747,6 +1849,50 @@ function genProps(zoneId){
     items.push({ t:'log', x:4.85, y:12.15, s:1 });
     items.push({ t:'log', x:5.75, y:11.25, s:1 });
   }
+  /* RELOCATION (Handler, 2026-11-10: 'Tree shouldn't be on the road'):
+     the scatter above only knew collision (canStandZ), never the
+     plate's painted roads — trees landed mid-street in Alderwake and
+     on the glade's dirt track. Any scattered tree/rock whose ground
+     sits on a painted road block (its own block or any neighbour —
+     a trunk keeps a block of clearance) moves to the NEAREST legal
+     spot: full clear() rules + off-road + .35u off every other prop,
+     ring search out to 2u. "On road" is the block grid OR the full-res
+     disc sampler (zoneDisc) — the disc catches grass-flecked tracks
+     the block vote averages away. No legal spot within 2u -> the prop
+     is dropped, not left on the road. Authored set pieces (grave,
+     tents, the Rotwatch cluster) are never moved — they are checked
+     as obstacles only. tools/prop_audit.py audits the result. */
+  const onRoad = (x, y) => {
+    if (!zonePath[zoneId]) return false;
+    const bx = (x / ZONE_U * WATER_GRID_N) | 0, by = (y / ZONE_U * WATER_GRID_N) | 0;
+    for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++){
+      const nx = bx + ox, ny = by + oy;
+      if (nx < 0 || ny < 0 || nx >= WATER_GRID_N || ny >= WATER_GRID_N) continue;
+      if (zonePath[zoneId][ny * WATER_GRID_N + nx]) return true;
+    }
+    return false;
+  };
+  const discRoad = (x, y) => zoneDisc[zoneId] ? zoneDisc[zoneId](x, y) : false;
+  const legalSpot = (x, y, self) => {
+    if (!clear(x, y)) return false;
+    if (onRoad(x, y) || discRoad(x, y)) return false;
+    for (const o of items) if (o !== self && dist2(x, y, o.x, o.y) < .1225) return false;   // .35u off other props
+    return true;
+  };
+  for (const it of items){
+    if (it.t !== 'tree' && it.t !== 'rock') continue;
+    if (!onRoad(it.x, it.y) && !discRoad(it.x, it.y) && canStandZ(zoneId, it.x, it.y)) continue;
+    let moved = false;
+    outer: for (let r = .15; r <= 2.0; r += .15){
+      for (let i = 0; i < 12; i++){
+        const a = i / 12 * Math.PI * 2 + r, nx = it.x + Math.cos(a) * r, ny = it.y + Math.sin(a) * r;
+        if (!legalSpot(nx, ny, it)) continue;
+        it.x = nx; it.y = ny; moved = true; break outer;
+      }
+    }
+    if (!moved) it.dropped = true;
+  }
+  for (let i = items.length - 1; i >= 0; i--) if (items[i].dropped) items.splice(i, 1);
   PROPS[zoneId] = items;
 }
 /* generic segment distance (kept from the archipelago era) */
@@ -7391,15 +7537,10 @@ function drawTree(d, t){
   const img = WORLD_IMGS['decor-tree'];
   if (imgOk(img)){   // pixel tree sprite, bottom-anchored on the spot
     const w = .36*u*d.s, h = w * img.naturalHeight/img.naturalWidth;
-    // SHADOW ANCHOR (basics gate): the ellipse centres on the sprite's
-    // VISIBLE base — the lowest opaque rows end ~.05w above the draw
-    // bottom (transparent margin in the sheet) — and tucks its top
-    // third under the bush ring. The old +.045u centre sat a full
-    // margin BELOW the draw bottom: a detached grey disc floating
-    // under the tree (Handler's screenshot, 2026-11-09).
-    const baseY = y + .03*u - .05*w, sry = w*.068;
-    ctx.fillStyle = 'rgba(38,32,40,.18)';
-    ctx.beginPath(); ctx.ellipse(x, baseY + sry*.3, w*.29, sry, 0, 0, 7); ctx.fill();
+    // NO TREE SHADOW (Handler, 2026-11-10: 'Trees don't need shadow'):
+    // the procedural ground ellipse under trees is gone entirely —
+    // trees stand directly on the plate. (The pre-v0.6.6 anchor maths
+    // that sat it on the sprite's visible base is moot now.)
     ctx.save();
     ctx.translate(x, y + .03*u);                 // pivot at the ground anchor (the sprite's bottom edge)
     ctx.rotate(windAt(d.x, d.y, t) * .02);       // barely-there canopy lean in the same wind
@@ -7407,9 +7548,8 @@ function drawTree(d, t){
     ctx.restore();
     return;
   }
-  // vector fallback: brown trunk + layered green canopy
+  // vector fallback: brown trunk + layered green canopy (no shadow — see sprite path)
   const s = d.s, tw = .016*u*s, th = .05*u*s, cr = .085*u*s;
-  ctx.fillStyle = 'rgba(38,32,40,.18)'; ctx.beginPath(); ctx.ellipse(x, y+th*.4, cr*.9, cr*.28, 0, 0, 7); ctx.fill();
   ctx.fillStyle = '#7a4d16'; ctx.fillRect(x-tw/2, y-th, tw, th);
   ctx.fillStyle = '#2e7d32'; ctx.beginPath(); ctx.arc(x, y-th-cr*.55, cr, 0, 7); ctx.fill();
   ctx.fillStyle = '#43a047';
@@ -7422,8 +7562,7 @@ function drawTree(d, t){
    tinted would still read as a leafy tree in grey, not a dead one. */
 function drawDeadTree(d, x, y, u){
   const s = d.s, th = .34 * u * s, tw = .030 * u * s;
-  ctx.fillStyle = 'rgba(38,32,40,.18)';
-  ctx.beginPath(); ctx.ellipse(x, y + .012 * u, tw * 2.6, tw * .8, 0, 0, 7); ctx.fill();
+  // no ground shadow (Handler, 2026-11-10: trees cast no shadow)
   ctx.fillStyle = '#7d6a58';   // grey-brown trunk, lit from the left
   ctx.beginPath();
   ctx.moveTo(x - tw, y); ctx.lineTo(x - tw * .38, y - th); ctx.lineTo(x + tw * .38, y - th); ctx.lineTo(x + tw, y);
