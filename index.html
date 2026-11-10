@@ -1015,7 +1015,7 @@
 import { joinRoom, selfId } from 'https://cdn.jsdelivr.net/npm/trystero@0.21.6/nostr/+esm';
 import { createStore } from 'https://cdn.jsdelivr.net/npm/zustand@5.1.0/vanilla/+esm';
 
-const GAME_VERSION = '0.6.4';   // shown small on the title screen + pause menu
+const GAME_VERSION = '0.6.5';   // shown small on the title screen + pause menu
 
 /* ============================================================ utils */
 const $ = s => document.querySelector(s);
@@ -3423,7 +3423,12 @@ function myReach(){
   let r = myWeapon().reach;
   if (wHas(2,'w21')) r *= 1.12;   // Katana tree: Long Blade
   if (wHas(3,'w32')) r *= 1.10;   // Spear tree: Long Haft
-  return r * (1 + ses.stats.reach);
+  /* ISO RE-BASE (v0.6.5): the WEAPONS reach values were tuned for the old
+     top-down world where SCALE() was screen-based (~800px/unit), so in the
+     iso world (1u projects to ~54px x ZK) the blade rendered ~18px long —
+     effectively invisible, worst at rest under the dull overlay. x6 puts
+     the sword at ~0.75u, the exaggerated read the old build had. */
+  return r * (1 + ses.stats.reach) * 6;
 }
 function myCd(){
   const wCd = myWeapon().cd * (wHas(0,'w02') ? .90 : 1);   // Dagger tree: Rapid Hands
@@ -7880,7 +7885,7 @@ function drawField(t){
     ctx.restore();
   } else {
     // plate still loading: the bare diamond in a zone-dark tint
-    const c1 = SP(0, 0), c2 = SP(ZONE_U, 0), c3 = SP(ZONE_U, ZONE_U), c4 = SP(0, ZONE_U);
+    const c1 = SP(0, 0).slice(), c2 = SP(ZONE_U, 0).slice(), c3 = SP(ZONE_U, ZONE_U).slice(), c4 = SP(0, ZONE_U).slice();   // .slice(): SP returns a shared array
     ctx.fillStyle = '#3d5a34';
     ctx.beginPath(); ctx.moveTo(c1[0], c1[1]); ctx.lineTo(c2[0], c2[1]); ctx.lineTo(c3[0], c3[1]); ctx.lineTo(c4[0], c4[1]); ctx.closePath(); ctx.fill();
   }
@@ -8881,7 +8886,7 @@ function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,whirling,ext=0,reachPxI
   }
   // trail — additive so the blade carries a lightsaber-ish glow of its own
   ctx.save(); ctx.globalCompositeOperation='lighter';
-  ctx.strokeStyle = color; ctx.globalAlpha = .28 * (.25 + .75 * lf); ctx.lineWidth = weaponIdx>=3?13:9; ctx.lineCap='round';
+  ctx.strokeStyle = color; ctx.globalAlpha = .28 * (.4 + .6 * lf); ctx.lineWidth = weaponIdx>=3?13:9; ctx.lineCap='round';
   ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(tipX,tipY); ctx.stroke();
   ctx.restore(); ctx.globalAlpha=1;
   ctx.save(); ctx.translate(x,y); ctx.rotate(a);
@@ -8903,7 +8908,7 @@ function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,whirling,ext=0,reachPxI
       /* DULL BLADE: a grey silhouette settles over the steel (and the
          pommel gem) — slow = grey is the whole lesson, readable in a
          still frame. At full speed this pass vanishes entirely. */
-      ctx.save(); ctx.globalAlpha = (1 - lf) * .78;
+      ctx.save(); ctx.globalAlpha = (1 - lf) * .5;
       ctx.drawImage(colorTintOf(wimg, '#8f979e'), -L*.17, -ih/2, iw, ih);
       ctx.fillStyle = '#8f979e'; ctx.beginPath(); ctx.arc(0, 0, 7, 0, 7); ctx.fill();
       ctx.restore();
@@ -9296,9 +9301,9 @@ function frame(now){
   // (Render order confirmed: this block runs after drawEntities, so spears
   // draw over slimes, and before the swords.)
   for (const sh of ses.shots){
-    const sp0 = SP(sh.x, sh.y), sp1 = SP(sh.x + sh.vx, sh.y + sh.vy), sx = sp0[0], sy = sp0[1], sa = Math.atan2(sp1[1] - sp0[1], sp1[0] - sp0[0]), u = UNIT();
+    const sp0 = SP(sh.x, sh.y), sx = sp0[0], sy = sp0[1], sp1 = SP(sh.x + sh.vx, sh.y + sh.vy), sa = Math.atan2(sp1[1] - sy, sp1[0] - sx), u = UNIT();   // sx/sy snapshotted BEFORE the second SP call — SP returns a shared array
     ctx.save(); ctx.translate(sx, sy); ctx.rotate(sa);
-    const tail = Math.hypot(sp1[0] - sp0[0], sp1[1] - sp0[1]) * .07;   // streak length = speed * 70ms of travel (projected px)
+    const tail = Math.hypot(sp1[0] - sx, sp1[1] - sy) * .07;   // streak length = speed * 70ms of travel (projected px) — from the snapshotted sx/sy, sp0 aliases sp1 by now
     ctx.lineCap = 'round';
     ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 8;   // outer glow pass
     ctx.beginPath(); ctx.moveTo(-tail, 0); ctx.lineTo(0, 0); ctx.stroke();
@@ -9331,7 +9336,7 @@ function frame(now){
       const ptgt = p.whirling ? 1 : clamp((pspd - 100) / 200, 0, 1);
       p.liveF = p.liveF === undefined ? ptgt : p.liveF + (ptgt - p.liveF) * (1 - Math.exp(-dt / 45));
     }
-    const pg = SP(p.x, p.y), ptip = SP(p.x + Math.cos(p.angle), p.y + Math.sin(p.angle));
+    const pg = SP(p.x, p.y).slice(), ptip = SP(p.x + Math.cos(p.angle), p.y + Math.sin(p.angle));   // .slice(): SP returns a shared array (see local-sword note)
     drawSword(pg[0], pg[1], Math.atan2(ptip[1] - pg[1], ptip[0] - pg[0]), p.weapon, p.color, p.name, false, now, p.whirling, p.ext||0, Math.hypot(ptip[0] - pg[0], ptip[1] - pg[1]), p.liveF === undefined ? 1 : p.liveF);
   }
   // my sword on top, with the slash trail: the full blade segment (grip +
@@ -9428,7 +9433,7 @@ function frame(now){
     }
     if (ses.started && now < me.shieldUntil){
       // Aegis shield: a translucent blue bubble around the sword
-      const mp3 = SP(me.x, me.y), srx = 113.1*(myReach()+.05)*_ZK, sry = 56.55*(myReach()+.05)*_ZK;
+      const mp3 = SP(me.x, me.y), srx = 113.1*.18*_ZK, sry = 56.55*.18*_ZK;   // bubble hugs the PLAYER (~0.18u, its pre-v0.6.5 size) — it keyed off myReach() until the reach re-base ballooned it
       ctx.fillStyle = 'rgba(77,171,255,.13)';
       ctx.beginPath(); ctx.ellipse(mp3[0], mp3[1], srx, sry, 0, 0, 7); ctx.fill();
       ctx.strokeStyle = 'rgba(120,200,255,.85)'; ctx.lineWidth = 3;
@@ -9438,9 +9443,9 @@ function frame(now){
       // invulnerability blink ring
       const mp4 = SP(me.x, me.y);
       ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 2.5;
-      ctx.beginPath(); ctx.ellipse(mp4[0], mp4[1], 113.1*(myReach()+.045)*_ZK, 56.55*(myReach()+.045)*_ZK, 0, 0, 7); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(mp4[0], mp4[1], 113.1*.175*_ZK, 56.55*.175*_ZK, 0, 0, 7); ctx.stroke();   // ring hugs the player (see shield note)
     }
-    const mg = SP(me.x, me.y), mt = SP(me.x + Math.cos(bl.ang) * myReach() * (1 + bl.ext), me.y + Math.sin(bl.ang) * myReach() * (1 + bl.ext));
+    const mg = SP(me.x, me.y).slice(), mt = SP(me.x + Math.cos(bl.ang) * myReach() * (1 + bl.ext), me.y + Math.sin(bl.ang) * myReach() * (1 + bl.ext));   // .slice(): SP returns a SHARED array — without the snapshot mg aliases the tip and the blade renders zero-length (the v0.6.0-v0.6.4 invisible-sword bug)
     drawSword(mg[0], mg[1], Math.atan2(mt[1] - mg[1], mt[0] - mg[0]), prog().weapon, me.color, ses.started?prog().name:'', true, now, now<me.whirlUntil, bl.ext, Math.hypot(mt[0] - mg[0], mt[1] - mg[1]), ses.liveF === undefined ? 1 : ses.liveF);
   }
   if (ses.started) drawCoachChip(now);   // the coach chip floats over the blade, above the sword pass
@@ -9450,7 +9455,7 @@ function frame(now){
   // the LAST canvas op while paused so it always stays visible under the overlay
   if (ses.paused && ses.started){
     const bl = bladeAt(now);
-    const mg2 = SP(me.x, me.y), mt2 = SP(me.x + Math.cos(bl.ang) * myReach() * (1 + bl.ext), me.y + Math.sin(bl.ang) * myReach() * (1 + bl.ext));
+    const mg2 = SP(me.x, me.y).slice(), mt2 = SP(me.x + Math.cos(bl.ang) * myReach() * (1 + bl.ext), me.y + Math.sin(bl.ang) * myReach() * (1 + bl.ext));   // .slice(): SP returns a shared array
     drawSword(mg2[0], mg2[1], Math.atan2(mt2[1] - mg2[1], mt2[0] - mg2[0]), prog().weapon, me.color, prog().name, true, now, false, bl.ext, Math.hypot(mt2[0] - mg2[0], mt2[1] - mg2[1]), ses.liveF === undefined ? 1 : ses.liveF);
   }
 
