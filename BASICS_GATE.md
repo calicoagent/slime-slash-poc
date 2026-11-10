@@ -105,7 +105,8 @@ Design notes worth knowing before "fixing" a number:
 
 | build | sword | trees | crowd | labels |
 |---|---|---|---|---|
-| v0.6.6 (current) | PASS (rendered 0.80–0.83) | PASS (source clean, median Δ ≈ 0) | PASS (0.46–0.54 / 0.55–0.62) | see known defect |
+| v0.6.7 (current) | PASS (rendered 0.80) | PASS (source clean, median Δ ≈ 0) | PASS (0.52–0.55 / 0.61–0.63) | PASS — plus forced-edge harness 63/63 cases, 0 violations (see first catch) |
+| v0.6.6 | PASS (rendered 0.80–0.83) | PASS (source clean, median Δ ≈ 0) | PASS (0.46–0.54 / 0.55–0.62) | FAIL intermittently — fixed in v0.6.7 |
 | v0.6.5 | PASS — v0.6.5 IS the sword fix | FAIL (source dirty; median Δ −0.083) | PASS | FAIL |
 | v0.6.4 | FAIL (rendered 0.02–0.07) | FAIL (source dirty; median Δ −0.109) | PASS | FAIL |
 | v0.6.0 transplant | FAIL (rendered 0) | FAIL (source dirty) | FAIL (0.22 / 0.13 — the carpet) | FAIL |
@@ -114,18 +115,30 @@ Calibration runs live in the same archive (`2026-11-10T06-30-46`,
 `06-33-11`, `06-35-05`); the first green run on v0.6.6 is
 `2026-11-10T06-42-25`.
 
-## Known defect the gate found (2026-11-10) — NOT fixed here
+## First catch — FIXED in v0.6.7 (2026-11-10)
 
-**ELITE name plates clip at the screen edge.** Plates are drawn
-centred on their slime with no viewport clamping, so an elite at the
-frame edge gets its tag cut — measured overhangs up to ~20 CSS px past
+**ELITE name plates clipped at the screen edge.** Plates were drawn
+centred on their entity with no viewport clamping, so an elite at the
+frame edge got its tag cut — measured overhangs up to ~20 CSS px past
 the portrait right edge (visible bottom-right of
-`2026-11-10T06-13-03/crowd-portrait.png`). It is intermittent per run
-(it needs an elite at the edge during the capture window): violations
-in 4 of 10 gate runs on v0.6.6, and on every old build tested. A green
-labels line in one run does NOT clear it. The fix belongs in the game
-(clamp the plate rect inside the canvas when drawing elite/boss/NPC
-tags); per the gate's own rule it is reported, not shipped around.
+`2026-11-10T06-13-03/crowd-portrait.png`). Intermittent per run (it
+needs an elite at the edge during the capture window): violations in
+4 of 10 gate runs on v0.6.6, and on every old build tested.
+
+Fixed in v0.6.7: every entity plate/tag draw — the ELITE tag, the
+Emperor and guardian plates, NPC name plates, and the player/peer
+names in drawSword — now clamps its centre through `plateC()` so the
+whole rect stays inside the canvas with a 4 px margin; the plate
+slides along the edge and stays attached to its entity instead of
+being cut. Verified DETERMINISTICALLY, not by sampling luck: a
+forced-edge harness (`~/workspace/gauntlet-archive/plate-clamp/
+edge-test.cjs`) drives every plate type onto every screen edge at
+both viewports (entities placed via the game's own screenToZone
+inverse, rects reconstructed with this gate's own textRect) —
+63/63 cases counted, 128 violations on v0.6.6 → 0 on v0.6.7, zero
+page errors. The sampling check above stays as the always-on
+tripwire; a green labels line in one run still does not by itself
+clear an intermittent plate defect.
 
 ## Stated limitations
 

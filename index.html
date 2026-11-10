@@ -1015,7 +1015,7 @@
 import { joinRoom, selfId } from 'https://cdn.jsdelivr.net/npm/trystero@0.21.6/nostr/+esm';
 import { createStore } from 'https://cdn.jsdelivr.net/npm/zustand@5.1.0/vanilla/+esm';
 
-const GAME_VERSION = '0.6.6';   // shown small on the title screen + pause menu
+const GAME_VERSION = '0.6.7';   // shown small on the title screen + pause menu
 
 /* ============================================================ utils */
 const $ = s => document.querySelector(s);
@@ -8337,10 +8337,11 @@ function drawNPC(e, t){
     ctx.save();
     ctx.font = '7px "Press Start 2P", monospace';
     const tw = ctx.measureText(def.name).width, lw = tw + 10, lh = 13;
-    const lx = x - lw / 2, ly = topY - lh - 4;
+    const cx = plateC(x, lw / 2, W), cy = plateC(topY - lh - 4 + lh / 2, lh / 2, H);   // plate clamp (v0.6.7)
+    const lx = cx - lw / 2, ly = cy - lh / 2;
     ctx.fillStyle = '#3a2b23'; ctx.fillRect(lx, ly, lw, lh);
     ctx.fillStyle = '#ffd94d'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(def.name, x, ly + lh / 2 + .5);
+    ctx.fillText(def.name, cx, ly + lh / 2 + .5);
     ctx.restore();
   }
 }
@@ -8610,16 +8611,27 @@ function drawKindMarks(s, x, y, baseR, t){
    alone kept failing identification in playtest stills (subtle alphas,
    tiny on small kinds); a word cannot be misread. topEdge = the screen y
    the tag must float ABOVE (the HP bar's top, or the sprite's top). */
+/* PLATE CLAMP (v0.6.7 — the basics gate's first catch): entity name
+   plates/tags are drawn centred on their entity, so at a screen edge
+   the plate clipped off-canvas (ELITE tags measured ~20px past the
+   portrait right edge; BASICS_GATE.md rule d). Clamp the plate CENTRE
+   so the whole rect stays inside the canvas with a 4px margin: the
+   plate slides along the edge and stays attached to its entity
+   instead of being cut. A plate wider than the viewport itself stays
+   centred on the viewport. */
+function plateC(c, half, lim){ return half * 2 + 8 >= lim ? lim / 2 : clamp(c, half + 4, lim - half - 4); }
 function drawEliteTag(x, topEdge){
   const label = 'ELITE', lh = 13;
   ctx.save();
   ctx.font = '7px "Press Start 2P", monospace';
   const tw = ctx.measureText(label).width;
-  const lw = tw + 10, lx = x - lw/2, ly = topEdge - 3 - lh;
+  const lw = tw + 10;
+  const cx = plateC(x, lw / 2, W), cy = plateC(topEdge - 3 - lh / 2, lh / 2, H);
+  const lx = cx - lw / 2, ly = cy - lh / 2;
   ctx.fillStyle = '#40121d'; ctx.fillRect(lx, ly, lw, lh);
   ctx.strokeStyle = '#ffd94d'; ctx.lineWidth = 1.5; ctx.strokeRect(lx + .75, ly + .75, lw - 1.5, lh - 1.5);
   ctx.fillStyle = '#ffd94d'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(label, x, ly + lh/2 + .5);
+  ctx.fillText(label, cx, ly + lh/2 + .5);
   ctx.restore();
 }
 function drawSlime(s,t){
@@ -8680,11 +8692,13 @@ function drawSlime(s,t){
     ctx.save();
     ctx.font = '10px "Press Start 2P", monospace';
     const label = chaos ? 'CHAOS EMPEROR' : 'SLIME EMPEROR', tw = ctx.measureText(label).width;
-    const lw = tw + 14, lh = 17, lx = x - lw/2, ly = y - baseR*1.45 - lh/2;
+    const lw = tw + 14, lh = 17;
+    const cx = plateC(x, lw / 2, W), cy = plateC(y - baseR * 1.45, lh / 2, H);   // plate clamp (v0.6.7)
+    const lx = cx - lw / 2, ly = cy - lh / 2;
     ctx.fillStyle = '#40121d'; ctx.fillRect(lx, ly, lw, lh);
     ctx.strokeStyle = '#ffd94d'; ctx.lineWidth = 2; ctx.strokeRect(lx+1, ly+1, lw-2, lh-2);
     ctx.fillStyle = '#ffd94d'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(label, x, ly + lh/2 + 1);
+    ctx.fillText(label, cx, ly + lh/2 + 1);
     ctx.restore();
   }
   if (s.kind==='guardian'){
@@ -8699,11 +8713,13 @@ function drawSlime(s,t){
       ctx.save();
       ctx.font = '10px "Press Start 2P", monospace';
       const label = cfg.name, tw = ctx.measureText(label).width;
-      const lw = tw + 14, lh = 17, lx = x - lw/2, ly = y - baseR*1.45 - lh/2;
+      const lw = tw + 14, lh = 17;
+      const cx = plateC(x, lw / 2, W), cy = plateC(y - baseR * 1.45, lh / 2, H);   // plate clamp (v0.6.7)
+      const lx = cx - lw / 2, ly = cy - lh / 2;
       ctx.fillStyle = '#40121d'; ctx.fillRect(lx, ly, lw, lh);
       ctx.strokeStyle = '#ffd94d'; ctx.lineWidth = 2; ctx.strokeRect(lx+1, ly+1, lw-2, lh-2);
       ctx.fillStyle = '#ffd94d'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(label, x, ly + lh/2 + 1);
+      ctx.fillText(label, cx, ly + lh/2 + 1);
       ctx.restore();
     }
   }
@@ -9056,7 +9072,12 @@ function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,whirling,ext=0,reachPxI
     if (name){
       ctx.font='800 13px "Baloo 2",sans-serif'; ctx.textAlign='center';
       ctx.lineWidth=4; ctx.strokeStyle='rgba(50,80,30,.75)';
-      ctx.strokeText(name, x, y-16); ctx.fillStyle='#fff'; ctx.fillText(name, x, y-16);
+      /* plate clamp (v0.6.7): the bare name is centred on the grip — at a
+         screen edge it clipped like the plates did. Clamp the draw point
+         so glyphs + the 4px stroke stay inside the canvas. */
+      const nw = ctx.measureText(name).width + 4;
+      const nx = plateC(x, nw / 2, W), ny = H - 8 < 20 ? y - 16 : clamp(y - 16, 20, H - 8);
+      ctx.strokeText(name, nx, ny); ctx.fillStyle='#fff'; ctx.fillText(name, nx, ny);
     }
     return {tipX,tipY};
   }
@@ -9083,7 +9104,10 @@ function drawSword(x,y,angle,weaponIdx,color,name,isMe,t,whirling,ext=0,reachPxI
   if (name){
     ctx.font='800 13px "Baloo 2",sans-serif'; ctx.textAlign='center';
     ctx.lineWidth=4; ctx.strokeStyle='rgba(50,80,30,.75)';
-    ctx.strokeText(name, x, y-16); ctx.fillStyle='#fff'; ctx.fillText(name, x, y-16);
+    /* plate clamp (v0.6.7): same clamp as the weapon-sprite path above. */
+    const nw = ctx.measureText(name).width + 4;
+    const nx = plateC(x, nw / 2, W), ny = H - 8 < 20 ? y - 16 : clamp(y - 16, 20, H - 8);
+    ctx.strokeText(name, nx, ny); ctx.fillStyle='#fff'; ctx.fillText(name, nx, ny);
   }
   return {tipX,tipY};
 }
